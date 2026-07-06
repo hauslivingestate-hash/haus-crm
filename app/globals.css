@@ -1,0 +1,169 @@
+/* =========================================================================
+   HAUS CRM — DESIGN TOKENS  (from haus-design-system/tokens.css)
+   Aesthetic: Linear/Attio minimalism, warm HAUS crimson as the one accent.
+   COMPONENTS USE ONLY SEMANTIC TOKENS. Never hard-code a hex in a component.
+   ========================================================================= */
+
+@import "tailwindcss";
+
+/* Class-based dark mode: <html class="dark"> (e.g. via next-themes) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------- PRIMITIVES */
+:root {
+  --maroon-900: #631222;   /* logo / brand anchor — do NOT use as UI accent */
+  --crimson-500: #a32638;  /* app accent (sales unit) */
+  --crimson-600: #8e1d36;  /* accent hover / pressed */
+  --crimson-12:  #a326381f;
+  --crimson-8:   #a3263814;
+
+  --bronze-500: #8a5a32;
+  --bronze-12:  #8a5a321f;
+
+  --green-500: #237a46; --green-bg: #237a461f;
+  --blue-500:  #2f6fa8; --blue-bg:  #2f6fa81f;
+  --violet-500:#9057a8; --violet-bg:#9057a81f;
+  --amber-500: #95660a; --amber-bg: #c9930026;
+  --red-500:   #c4491f; --red-bg:   #c4491f1f;
+
+  --dot-blue:   #2a6dfb;
+  --dot-teal:   #00a0a0;
+  --dot-violet: #7c5cff;
+  --dot-amber:  #c08000;
+  --dot-crimson:var(--crimson-500);
+  --dot-green:  #23a55a;
+
+  --grade-a:      #ffc53d; --grade-a-ink: #1c1917;
+  --grade-b:      #2563eb; --grade-b-ink: #ffffff;
+  --grade-c:      #dc2626; --grade-c-ink: #ffffff;
+}
+
+/* ------------------------------------------------------- SEMANTIC · LIGHT (reference) */
+:root {
+  --background:    #fafaf9;
+  --surface:       #ffffff;
+  --surface-2:     #f5f5f4;
+  --surface-hover: #0000000a;
+
+  --text:          #1c1917;
+  --text-muted:    #78716c;
+  --text-subtle:   #a6a09b;
+  --text-onaccent: #fbf4ee;
+
+  --border:        #ecebe9;
+  --border-strong: #e0dedb;
+
+  --accent:        var(--crimson-500);
+  --accent-hover:  var(--crimson-600);
+  --accent-wash:   var(--crimson-12);
+  --ring:          var(--crimson-500);
+}
+
+/* -------------------------------------------------------- SEMANTIC · DARK (provisional) */
+.dark {
+  --background:    #0c0a09;
+  --surface:       #1c1917;
+  --surface-2:     #292524;
+  --surface-hover: #ffffff0f;
+
+  --text:          #fafaf9;
+  --text-muted:    #a8a29e;
+  --text-subtle:   #78716c;
+  --text-onaccent: #ffffff;
+
+  --border:        #292524;
+  --border-strong: #3a3532;
+
+  --accent:        #ce4155;
+  --accent-hover:  #d95568;
+  --accent-wash:   #ce415522;
+  --ring:          #ce4155;
+}
+
+/* ----------------------------------------------------------- TAILWIND v4 MAP */
+@theme inline {
+  --color-background:    var(--background);
+  --color-surface:       var(--surface);
+  --color-surface-2:     var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-text:          var(--text);
+  --color-text-muted:    var(--text-muted);
+  --color-text-subtle:   var(--text-subtle);
+  --color-text-onaccent: var(--text-onaccent);
+
+  --color-border:        var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent:        var(--accent);
+  --color-accent-hover:  var(--accent-hover);
+  --color-accent-wash:   var(--accent-wash);
+  --color-ring:          var(--ring);
+
+  --color-maroon-900:    var(--maroon-900);
+  --color-bronze:        var(--bronze-500);
+  --color-bronze-bg:     var(--bronze-12);
+
+  --color-green:  var(--green-500);  --color-green-bg:  var(--green-bg);
+  --color-blue:   var(--blue-500);   --color-blue-bg:   var(--blue-bg);
+  --color-violet: var(--violet-500); --color-violet-bg: var(--violet-bg);
+  --color-amber:  var(--amber-500);  --color-amber-bg:  var(--amber-bg);
+  --color-red:    var(--red-500);    --color-red-bg:    var(--red-bg);
+
+  --color-dot-blue:    var(--dot-blue);
+  --color-dot-teal:    var(--dot-teal);
+  --color-dot-violet:  var(--dot-violet);
+  --color-dot-amber:   var(--dot-amber);
+  --color-dot-crimson: var(--dot-crimson);
+  --color-dot-green:   var(--dot-green);
+
+  --color-grade-a: var(--grade-a); --color-grade-a-ink: var(--grade-a-ink);
+  --color-grade-b: var(--grade-b); --color-grade-b-ink: var(--grade-b-ink);
+  --color-grade-c: var(--grade-c); --color-grade-c-ink: var(--grade-c-ink);
+
+  --font-sans: var(--font-anuphan), "Thonburi", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --text-display: 1.5rem;    --text-display--line-height: 2rem;    --text-display--letter-spacing: -0.02em;  --text-display--font-weight: 600;
+  --text-h1: 1.1875rem;      --text-h1--line-height: 1.6rem;       --text-h1--letter-spacing: -0.018em;      --text-h1--font-weight: 600;
+  --text-h2: 1rem;           --text-h2--line-height: 1.45rem;      --text-h2--letter-spacing: -0.012em;      --text-h2--font-weight: 600;
+  --text-h3: 0.875rem;       --text-h3--line-height: 1.3rem;       --text-h3--letter-spacing: -0.006em;      --text-h3--font-weight: 600;
+  --text-body: 0.8125rem;    --text-body--line-height: 1.35rem;    --text-body--letter-spacing: -0.003em;
+  --text-small: 0.75rem;     --text-small--line-height: 1.15rem;
+  --text-label: 0.6875rem;   --text-label--line-height: 1rem;      --text-label--letter-spacing: 0.03em;     --text-label--font-weight: 600;
+
+  --radius-sm: 7px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-pop:  0 8px 24px rgba(0,0,0,.10);
+}
+
+/* ---------------------------------------------------------------- BASE */
+* { box-sizing: border-box; }
+html, body { padding: 0; margin: 0; }
+body {
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.35rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numerals signature */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* thin scrollbar for panels */
+.scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
