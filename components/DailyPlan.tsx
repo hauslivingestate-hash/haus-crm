@@ -39,7 +39,7 @@ import {
   saveQuickActions,
   type QuickAction,
 } from "@/lib/quickAdd";
-import { formatThaiDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import {
   listTasks,
   getTarget,
@@ -280,7 +280,7 @@ export function DailyPlan({ agent }: { agent: string }) {
           >
             <div className="min-w-0 text-left">
               <div className="text-label text-text-subtle">แผนประจำวัน{rel ? ` · ${rel}` : ""}</div>
-              <div className="text-h3 num">{formatThaiDate(date)}</div>
+              <div className="text-h3 num">{formatDate(date)}</div>
             </div>
             <ChevronDown
               size={15}

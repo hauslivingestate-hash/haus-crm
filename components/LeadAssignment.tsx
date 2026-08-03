@@ -17,7 +17,7 @@ import { StatusBadge, Dot } from "@/components/ui/Dot";
 import { assignableAgents, defaultAssignee, sourceLabel } from "@/lib/leads";
 import { useNewLeads } from "@/components/NewLeadsProvider";
 import { useRbac } from "@/components/RbacProvider";
-import { formatBaht, formatThaiDate } from "@/lib/format";
+import { formatBaht, formatDate } from "@/lib/format";
 import { leadStatusDot } from "@/lib/status";
 import { STAGES, stageMeta } from "@/lib/pipeline";
 import { compareValues, orderIndex, type SortDir } from "@/lib/sort";
@@ -339,7 +339,7 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
                             )}
                           </div>
                         </TD>
-                        <TD className="text-right text-small text-text-muted num">{formatThaiDate(r.date)}</TD>
+                        <TD className="text-right text-small text-text-muted num">{formatDate(r.date)}</TD>
                       </TR>
                     );
                   })}

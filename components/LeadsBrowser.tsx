@@ -17,7 +17,7 @@ import { STAGES, stageMeta } from "@/lib/pipeline";
 import { findTag, TAG_TONE_CLASS, type LeadTag } from "@/lib/tags";
 import { useMasterData } from "@/components/MasterDataProvider";
 import { useNewLeads } from "@/components/NewLeadsProvider";
-import { formatBaht, formatThaiDate } from "@/lib/format";
+import { formatBaht, formatDate } from "@/lib/format";
 import { leadStatusDot } from "@/lib/status";
 import { compareValues, orderIndex } from "@/lib/sort";
 import { cn } from "@/lib/cn";
@@ -252,7 +252,7 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
       case "commission":
         return <TD key={colId} className="text-right num text-green">{c.commission ? formatBaht(c.commission) : "—"}</TD>;
       case "follow":
-        return <TD key={colId} className="text-right text-small text-text-muted num">{formatThaiDate(c.last_follow_date)}</TD>;
+        return <TD key={colId} className="text-right text-small text-text-muted num">{formatDate(c.last_follow_date)}</TD>;
     }
   };
 

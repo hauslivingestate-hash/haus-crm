@@ -14,7 +14,7 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { Input } from "@/components/ui/Input";
 import { useRbac } from "@/components/RbacProvider";
-import { formatThaiDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { listZones } from "@/lib/zones";
 import {
   employeeFullName,
@@ -337,7 +337,7 @@ export function EmployeeRecord({
               <Input value={f.nationality} onChange={(e) => set("nationality", e.target.value)} />
             </F>
           </Two>
-          <F label="วันเกิด" view={f.birthday ? formatThaiDate(f.birthday) : ""} edit={editing}>
+          <F label="วันเกิด" view={f.birthday ? formatDate(f.birthday) : ""} edit={editing}>
             <input type="date" value={f.birthday} onChange={(e) => set("birthday", e.target.value)} className={cn(field, "w-auto")} />
           </F>
         </Section>
@@ -365,7 +365,7 @@ export function EmployeeRecord({
 
         {/* Employment */}
         <Section title="การจ้างงาน">
-          <F label="วันเริ่มงาน" view={f.startDate ? formatThaiDate(f.startDate) : ""} edit={editing}>
+          <F label="วันเริ่มงาน" view={f.startDate ? formatDate(f.startDate) : ""} edit={editing}>
             <input type="date" value={f.startDate} onChange={(e) => set("startDate", e.target.value)} className={cn(field, "w-auto")} />
           </F>
           <F label="ลิงก์ชีทงานขาย" view={f.salesSheetUrl} edit={editing} link>

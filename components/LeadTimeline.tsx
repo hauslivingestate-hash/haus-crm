@@ -8,7 +8,7 @@ import { useNewLeads } from "@/components/NewLeadsProvider";
 import { useRbac } from "@/components/RbacProvider";
 import { assignableAgents, defaultAssignee } from "@/lib/leads";
 import { sampleTimeline, type TimelineEvent, type TimelineKind } from "@/lib/leadTimeline";
-import { formatThaiDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 const KIND_ICON: Record<TimelineKind, React.ElementType> = {
@@ -109,7 +109,7 @@ export function LeadTimeline({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-body">{e.text}</div>
-                  <div className="text-label text-text-subtle mt-0.5 num">{e.by} · {formatThaiDate(e.at)}</div>
+                  <div className="text-label text-text-subtle mt-0.5 num">{e.by} · {formatDate(e.at)}</div>
                 </div>
               </li>
             );

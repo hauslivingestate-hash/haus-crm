@@ -6,7 +6,7 @@ import { X, Check, CalendarOff } from "lucide-react";
 import { useLeave } from "@/components/LeaveProvider";
 import { LEAVE_TYPES, leaveDays } from "@/lib/leave";
 import { TODAY } from "@/lib/momentum";
-import { formatThaiDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 // ขอลา — filed from แผนวันนี้, because that is where people already plan their days.
@@ -117,8 +117,8 @@ export function LeaveRequestSheet({
               <Check size={14} strokeWidth={2} /> ส่งใบลาแล้ว · รออนุมัติ
             </div>
             <p className="text-small text-text-muted">
-              {formatThaiDate(start)}
-              {end !== start && ` – ${formatThaiDate(end)}`} · {type} ·{" "}
+              {formatDate(start)}
+              {end !== start && ` – ${formatDate(end)}`} · {type} ·{" "}
               <span className="num">{days}</span> วัน
             </p>
             <button

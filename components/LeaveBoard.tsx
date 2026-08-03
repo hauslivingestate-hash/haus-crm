@@ -21,7 +21,7 @@ import {
   type LeaveStatus,
 } from "@/lib/leave";
 import { TODAY } from "@/lib/momentum";
-import { formatThaiDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 // วันลา — the HR side. Two audiences on one page:
@@ -162,7 +162,7 @@ export function LeaveBoard() {
           <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
             <CalendarOff size={15} strokeWidth={1.75} className="text-accent" />
             <span className="text-h3">ลาวันนี้</span>
-            <span className="text-label text-text-subtle">{formatThaiDate(TODAY)}</span>
+            <span className="text-label text-text-subtle">{formatDate(TODAY)}</span>
           </div>
           <CardContent className="flex flex-wrap gap-2">
             {awayToday.map((r) => (
@@ -247,8 +247,8 @@ export function LeaveBoard() {
                         </TD>
                       )}
                       <TD className="num text-small whitespace-nowrap">
-                        {formatThaiDate(r.startDate)}
-                        {r.endDate !== r.startDate && ` – ${formatThaiDate(r.endDate)}`}
+                        {formatDate(r.startDate)}
+                        {r.endDate !== r.startDate && ` – ${formatDate(r.endDate)}`}
                       </TD>
                       <TD className="num text-right">{leaveDays(r)}</TD>
                       <TD className="text-small whitespace-nowrap">{r.type}</TD>
@@ -256,7 +256,7 @@ export function LeaveBoard() {
                         <span className="line-clamp-1">{r.remark ?? "—"}</span>
                       </TD>
                       <TD className="num text-small text-text-subtle whitespace-nowrap">
-                        {formatThaiDate(r.submittedAt)}
+                        {formatDate(r.submittedAt)}
                       </TD>
                       <TD>
                         <Pill tone={LEAVE_STATUS_TONE[r.status]}>{LEAVE_STATUS_LABEL[r.status]}</Pill>

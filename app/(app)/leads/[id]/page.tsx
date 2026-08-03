@@ -12,7 +12,7 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { GradeChip } from "@/components/ui/GradeChip";
 import { getLead } from "@/lib/queries";
-import { formatBaht, formatThaiDate } from "@/lib/format";
+import { formatBaht, formatDate } from "@/lib/format";
 import { leadStatusDot } from "@/lib/status";
 import { stageMeta } from "@/lib/pipeline";
 
@@ -107,7 +107,7 @@ export default async function LeadDetailPage({
                     )}
                   </Row>
                   <Row label="วันที่ปิด">
-                    <span className="num">{formatThaiDate(lead.closing_date)}</span>
+                    <span className="num">{formatDate(lead.closing_date)}</span>
                   </Row>
                 </CardContent>
               </Card>
@@ -164,10 +164,10 @@ export default async function LeadDetailPage({
                   )}
                 </Row>
                 <Row label="วันที่รับ">
-                  <span className="num text-text-muted">{formatThaiDate(lead.date_received)}</span>
+                  <span className="num text-text-muted">{formatDate(lead.date_received)}</span>
                 </Row>
                 <Row label="ติดตามล่าสุด">
-                  <span className="num text-text-muted">{formatThaiDate(lead.last_follow_date)}</span>
+                  <span className="num text-text-muted">{formatDate(lead.last_follow_date)}</span>
                 </Row>
               </CardContent>
             </Card>

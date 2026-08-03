@@ -37,7 +37,7 @@ import {
   formatBaht,
   formatRent,
   formatNumber,
-  formatThaiDate,
+  formatDate,
   formatLandArea,
   daysOnMarketLabel,
   dealType,
@@ -290,7 +290,7 @@ export default async function ListingDetailPage({
                       </div>
                       <div className="text-right shrink-0">
                         <div className="num text-label text-text-subtle whitespace-nowrap">
-                          {formatThaiDate(a.date)}
+                          {formatDate(a.date)}
                         </div>
                         <div className="num text-label text-text-subtle">{a.created_by}</div>
                       </div>
@@ -350,7 +350,7 @@ export default async function ListingDetailPage({
                   <span className="num">{daysOnMarketLabel(listing.days_on_market)}</span>
                 </Row>
                 <Row label="วันที่สร้าง">
-                  <span className="num">{formatThaiDate(listing.date_created)}</span>
+                  <span className="num">{formatDate(listing.date_created)}</span>
                 </Row>
                 {/* created_by is exposed by the view but NULL in the live rows — fall back to
                     the seeded managing agent until the import backfills it. */}
@@ -453,7 +453,7 @@ export default async function ListingDetailPage({
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-accent hover:underline shrink-0"
                         >
-                          {date ? <span className="num text-label">{formatThaiDate(date)}</span> : "ดูประกาศ"}
+                          {date ? <span className="num text-label">{formatDate(date)}</span> : "ดูประกาศ"}
                           <ExternalLink size={11} strokeWidth={1.75} />
                         </a>
                       ) : (

@@ -7,7 +7,7 @@ import { rankedNewSales, daysBetween } from "@/components/NewSalesBoard";
 import { currentRankName, WINDOW_LABEL } from "@/lib/probation";
 import { useActivities } from "@/components/ActivityProvider";
 import { TODAY } from "@/lib/momentum";
-import { formatThaiDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
@@ -71,7 +71,7 @@ export function NewSalesDetail({ employeeId }: { employeeId: string }) {
             </div>
             <div className="text-small text-text-muted inline-flex items-center gap-1 mt-0.5">
               <CalendarDays size={12} strokeWidth={1.75} />
-              เริ่มโปรแกรม {formatThaiDate(e.probationStart)} · <span className="num">{days}</span> วัน
+              เริ่มโปรแกรม {formatDate(e.probationStart)} · <span className="num">{days}</span> วัน
             </div>
           </div>
           <div className="text-right">
@@ -162,7 +162,7 @@ export function NewSalesDetail({ employeeId }: { employeeId: string }) {
                     {a.remark && <p className="text-small text-text-muted mt-0.5 line-clamp-1">{a.remark}</p>}
                   </div>
                   <span className="num text-label text-text-subtle whitespace-nowrap shrink-0">
-                    {formatThaiDate(a.date)}
+                    {formatDate(a.date)}
                   </span>
                 </div>
               ))}

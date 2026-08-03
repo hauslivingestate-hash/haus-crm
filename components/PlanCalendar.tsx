@@ -23,7 +23,9 @@ function addMonth(ym: string, n: number): string {
 
 function monthLabel(ym: string): string {
   const [y, m] = ym.split("-").map(Number);
-  return `${TH_MONTHS[m - 1]} ${y + 543}`; // Buddhist-era, matching formatThaiDate
+  // Christian era, matching formatDate. A month heading keeps the Thai month NAME
+  // ("ส.ค. 2026") — "08/2026" would read as a truncated date, not a heading.
+  return `${TH_MONTHS[m - 1]} ${y}`;
 }
 
 type DayStatus = "full" | "partial" | "none";

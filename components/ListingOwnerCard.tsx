@@ -7,7 +7,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Pill } from "@/components/ui/Pill";
 import { useRbac } from "@/components/RbacProvider";
 import { listingAgent } from "@/lib/listings";
-import { formatThaiDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 // Owner contact is PRIVATE. A sale sees the owner's name/phone only for listings they manage,
 // or if they hold `contacts.view_all` (Listing Support / leadership — owners are contacts).
@@ -78,7 +78,7 @@ export function ListingOwnerCard({
                     <span className="text-text-subtle inline-flex items-center gap-1">
                       <CalendarClock size={12} strokeWidth={1.75} /> คุยกับเจ้าของล่าสุด
                     </span>
-                    <span className="num text-text-muted">{formatThaiDate(ownerTalkLastDate)}</span>
+                    <span className="num text-text-muted">{formatDate(ownerTalkLastDate)}</span>
                   </div>
                 )}
                 {activityComment && (

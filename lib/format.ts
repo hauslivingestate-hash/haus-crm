@@ -44,15 +44,25 @@ export function formatNumber(value: number | null | undefined): string {
   return value.toLocaleString("en-US");
 }
 
-// Buddhist-era Thai date: "2026-07-06" -> "6 ก.ค. 2569"
-export function formatThaiDate(input: string | Date | null | undefined): string {
+// Dates render as DD/MM/YYYY in the CHRISTIAN era: "2026-07-06" -> "06/07/2026".
+//
+// Changed from the Buddhist-era long form ("6 ก.ค. 2569") on 2026-08-03 (Ben). Two reasons
+// to prefer this: it is what the team's own source sheets use (HR Day off is "03/04/2026"),
+// so nobody has to convert in their head when comparing the CRM to the sheet; and a numeric
+// form sorts and scans faster in a table.
+//
+// ⚠️ Christian era, NOT Buddhist. 2026 here is 2569 พ.ศ. — if the team wants พ.ศ. on screen,
+// add 543 to `y` below and nothing else changes; every date in the app runs through here.
+//
+// Storage is untouched: Postgres keeps `date` as YYYY-MM-DD. This is display only.
+export function formatDate(input: string | Date | null | undefined): string {
   if (!input) return "—";
   const d = typeof input === "string" ? new Date(input + "T00:00:00") : input;
   if (isNaN(d.getTime())) return "—";
-  const day = d.getDate();
-  const month = TH_MONTHS[d.getMonth()];
-  const year = d.getFullYear() + 543;
-  return `${day} ${month} ${year}`;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const y = d.getFullYear();
+  return `${dd}/${mm}/${y}`;
 }
 
 export function daysOnMarketLabel(n: number | null | undefined): string {

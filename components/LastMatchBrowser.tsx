@@ -19,7 +19,7 @@ import { Pill } from "@/components/ui/Pill";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { SortHeader, useSort } from "@/components/ui/SortHeader";
 import { compareValues, orderIndex } from "@/lib/sort";
-import { formatBaht, formatThaiDate } from "@/lib/format";
+import { formatBaht, formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 const CLOSE_TYPES: CloseType[] = [
@@ -163,7 +163,7 @@ export function LastMatchBrowser({ matches: all }: { matches: LastMatch[] }) {
               {list.map((m) => (
                 <TR key={m.last_match_id}>
                   <TD className="num text-small text-text-muted whitespace-nowrap">
-                    {formatThaiDate(m.date_created)}
+                    {formatDate(m.date_created)}
                   </TD>
                   <TD>
                     <div className="font-medium">{m.project_name ?? "—"}</div>
