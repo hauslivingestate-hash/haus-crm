@@ -1,8 +1,6 @@
 import { Topbar } from "@/components/Topbar";
 import { NewSalesBoard } from "@/components/NewSalesBoard";
 
-export const revalidate = 30;
-
 // เซลล์ใหม่ (probation) overview — CEO/Sales Leader only (nav gated performance.view_team).
 // Ladder governance lives in Settings → Rank เซลล์ใหม่; this page is the read side.
 export default function NewSalesPage() {

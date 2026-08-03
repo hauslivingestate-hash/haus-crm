@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAuthContext } from "@/lib/auth";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -53,6 +54,12 @@ export interface ListingRow {
   /** Managing agent. Present in the view but NULL in the live rows — until the import
    *  backfills it, `lib/listings.ts` seeds a stand-in. Delete that seed once populated. */
   created_by: string | null;
+
+  /** Who manages this listing. `sale_id` is what the row states; `effective_sale_id` falls
+   *  back to the zone's primary agent when it is blank, and is the one to scope "mine" by —
+   *  a listing with no agent still belongs to whoever owns the zone. */
+  sale_id: string | null;
+  effective_sale_id: string | null;
 
   // Location
   project_id: string | null;
@@ -115,6 +122,7 @@ export interface ListingRow {
 const LISTING_COLUMNS = [
   "listing_id", "listing_name", "listing_status", "potential", "listing_type", "owner_focus",
   "date_created", "created_at", "updated_at", "days_on_market", "created_by",
+  "sale_id", "effective_sale_id",
   "project_id", "project_name_eng", "zone", "zone_name_thai", "zone_name_eng",
   "in_out_project", "road_soi", "link_location",
   "property_type", "unit_no", "bed", "bath", "area_rai", "area_ngan", "area_wa", "area_sqm",
@@ -159,6 +167,26 @@ export async function getListings(): Promise<ListingRow[]> {
     .select(LISTING_COLUMNS)
     .order("listing_id");
   return (data as unknown as ListingRow[]) ?? [];
+}
+
+/**
+ * The listings this person manages — what the "ทรัพย์" page shows.
+ *
+ * Scoping lives here, not in RLS: the company-listings page reads the same table and must
+ * still see every row (that page exists so agents can find a co-agent). What RLS does
+ * enforce is the part that actually leaks — owner phone/line come back NULL for listings
+ * you don't manage unless you hold `contacts.view_all`.
+ *
+ * Back-office roles (marketing, admin, HR) manage no listings, so this is empty for them by
+ * design; ทรัพย์ทั้งบริษัท is their surface.
+ */
+export async function getMyListings(): Promise<ListingRow[]> {
+  const auth = await getAuthContext();
+  const all = await getListings();
+  // No session (AUTH_ENFORCED off) → keep the design-phase behaviour of showing everything,
+  // otherwise the page reads as broken rather than as scoped.
+  if (!auth?.employeeCode) return all;
+  return all.filter((l) => l.effective_sale_id === auth.employeeCode);
 }
 
 export async function getLead(id: string): Promise<CrmRow | null> {

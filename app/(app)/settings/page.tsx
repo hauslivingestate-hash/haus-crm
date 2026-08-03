@@ -3,8 +3,6 @@ import { SettingsView } from "@/components/SettingsView";
 import { listZones } from "@/lib/zones";
 import { getListings } from "@/lib/queries";
 
-export const revalidate = 30;
-
 export default async function SettingsPage() {
   const zones = listZones();
 

@@ -2,8 +2,6 @@ import { Topbar } from "@/components/Topbar";
 import { LastMatchBrowser } from "@/components/LastMatchBrowser";
 import { listMatches } from "@/lib/lastMatch";
 
-export const revalidate = 30;
-
 export default function LastMatchPage() {
   const matches = listMatches();
 

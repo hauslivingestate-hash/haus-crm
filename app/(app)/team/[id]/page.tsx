@@ -5,8 +5,6 @@ import { Topbar } from "@/components/Topbar";
 import { EmployeeRecord } from "@/components/EmployeeRecord";
 import { getEmployee } from "@/lib/team";
 
-export const revalidate = 30;
-
 export default async function EmployeeDetailPage({
   params,
   searchParams,

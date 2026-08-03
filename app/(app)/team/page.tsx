@@ -1,8 +1,6 @@
 import { Topbar } from "@/components/Topbar";
 import { TeamTable } from "@/components/TeamTable";
 
-export const revalidate = 30;
-
 export default function TeamPage() {
   return (
     <>

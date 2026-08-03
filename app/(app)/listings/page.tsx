@@ -1,16 +1,16 @@
 import { Topbar } from "@/components/Topbar";
 import { ListingsBrowser } from "@/components/ListingsBrowser";
 import { ListingIntakeButton } from "@/components/ListingIntakeButton";
-import { getListings } from "@/lib/queries";
+import { getMyListings } from "@/lib/queries";
 
-export const revalidate = 30;
-
+// This page reads the session, so it renders per request. `revalidate` is gone rather than
+// ignored: a cached copy of one agent's inventory served to another is exactly the bug.
 export default async function ListingsPage() {
-  const listings = await getListings();
+  const listings = await getMyListings();
 
   return (
     <>
-      <Topbar title="ทรัพย์" subtitle={`ประกาศทั้งหมด · ${listings.length} รายการ`} actions={<ListingIntakeButton />} />
+      <Topbar title="ทรัพย์" subtitle={`ทรัพย์ที่ฉันดูแล · ${listings.length} รายการ`} actions={<ListingIntakeButton />} />
       <div className="p-4 lg:p-6">
         <ListingsBrowser listings={listings} />
       </div>

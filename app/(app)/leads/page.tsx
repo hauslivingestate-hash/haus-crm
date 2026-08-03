@@ -2,8 +2,6 @@ import { Topbar } from "@/components/Topbar";
 import { LeadsBrowser } from "@/components/LeadsBrowser";
 import { getCrm } from "@/lib/queries";
 
-export const revalidate = 30;
-
 export default async function LeadsPage() {
   const crm = await getCrm();
 

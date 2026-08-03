@@ -1,8 +1,6 @@
 import { LayoutDashboard } from "lucide-react";
 import { Topbar } from "@/components/Topbar";
 
-export const revalidate = 30;
-
 // TEMPORARY: the analytics dashboard (components/dashboard/Dashboard, ported from the
 // HAUS V2 sales dashboard) is hidden behind this coming-soon placeholder while it's
 // being reworked. To restore: render <Dashboard /> here again (see git history of this

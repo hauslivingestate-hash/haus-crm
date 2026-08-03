@@ -45,8 +45,6 @@ import {
 import { listingStatusDot, potentialTone } from "@/lib/status";
 import { cn } from "@/lib/cn";
 
-export const revalidate = 30;
-
 const DEAL_LABEL: Record<string, string> = {
   sale: "ขาย",
   rent: "เช่า",

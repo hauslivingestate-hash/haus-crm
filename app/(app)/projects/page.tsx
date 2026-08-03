@@ -2,8 +2,6 @@ import { Topbar } from "@/components/Topbar";
 import { ProjectsBrowser } from "@/components/ProjectsBrowser";
 import { listProjects } from "@/lib/projects";
 
-export const revalidate = 30;
-
 export default function ProjectsPage() {
   const projects = listProjects();
 

@@ -3,8 +3,6 @@ import { ArrowLeft } from "lucide-react";
 import { Topbar } from "@/components/Topbar";
 import { EmployeeRecord } from "@/components/EmployeeRecord";
 
-export const revalidate = 30;
-
 export default function NewEmployeePage() {
   return (
     <>

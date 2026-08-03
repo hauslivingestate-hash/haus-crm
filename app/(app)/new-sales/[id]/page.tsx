@@ -5,8 +5,6 @@ import { Topbar } from "@/components/Topbar";
 import { NewSalesDetail } from "@/components/NewSalesDetail";
 import { getEmployee } from "@/lib/team";
 
-export const revalidate = 30;
-
 // One new sale's probation stats — click-through from the เซลล์ใหม่ leaderboard.
 export default async function NewSalesDetailPage({
   params,
