@@ -10,16 +10,35 @@ import { NewLeadsProvider } from "@/components/NewLeadsProvider";
 import { ActivityProvider } from "@/components/ActivityProvider";
 import { LeaveProvider } from "@/components/LeaveProvider";
 import { LeadIntakeFab } from "@/components/LeadIntakeFab";
+import { redirect } from "next/navigation";
+import { getAuthContext } from "@/lib/auth";
+import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
 
 // The SIGNED-IN application shell. Everything inside this route group gets the sidebar, the
 // FAB and the in-memory stores; `/login` sits outside it and gets none of them.
 //
-// Wire: this is the natural auth boundary — check the session here and redirect to /login
-// when absent, so no app state is ever built for a signed-out visitor. RbacProvider's
-// "view as" switcher is then replaced by the real session identity.
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+// This is the auth boundary. The middleware redirects first, but this check is what makes it
+// true for direct/server renders — and it is where the session's real permissions enter the
+// React tree, replacing the seeded "view as" identity.
+//
+// While AUTH_ENFORCED is off (no accounts exist yet) `session` is null and RbacProvider
+// falls back to the seeded org, exactly as in the design phase.
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const auth = AUTH_ENFORCED ? await getAuthContext() : null;
+  if (AUTH_ENFORCED && !auth) redirect("/login");
+
   return (
-    <RbacProvider>
+    <RbacProvider
+      session={
+        auth
+          ? {
+              employeeCode: auth.employeeCode,
+              name: auth.nickname ?? auth.email ?? "ผู้ใช้",
+              permissions: auth.permissions,
+            }
+          : null
+      }
+    >
       {/* Inside RbacProvider — feeds/leads are scoped to the current viewer. */}
       <MasterDataProvider>
         <ChecklistProvider>

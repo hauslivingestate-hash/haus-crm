@@ -1,26 +1,20 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabaseConfig";
 
 // Lazy singleton: only instantiate on first real use (request time), not at
 // module import. This keeps `next build` (page-data collection) from crashing
 // when env vars aren't present during the build step.
 let client: SupabaseClient | null = null;
 
-// Public Supabase config. The publishable (anon) key is designed to be exposed
-// client-side and is protected by RLS, so shipping it as a fallback is safe and
-// keeps the app working even when env vars aren't configured on the host.
-// Env vars, if set (e.g. Vercel → Settings → Environment Variables), take priority.
-const DEFAULT_SUPABASE_URL = "https://jpufhxzvqfrdcblfmrmu.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_MXdGWde2_RvLAWQrJ0ORWw_K18B0rvc";
-
+// ⚠️ SESSIONLESS anon client — `auth.uid()` is NULL for every query it makes, so it can
+// only ever read what the `demo_read_all` policy exposes. Page data queries
+// (`lib/queries.ts`) still use it; they must move to `lib/supabase/server.ts` when real RLS
+// lands (Phase 4), or every scoped surface will come back empty.
 function getClient(): SupabaseClient {
   if (client) return client;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
-
   // Read-only anon client. Used from server components; RLS demo_read_all allows select.
-  client = createClient(url, anonKey, {
+  client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false },
   });
   return client;

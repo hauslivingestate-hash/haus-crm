@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Search, Eye, Check, ChevronsUpDown } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Search, Eye, Check, ChevronsUpDown, LogOut, UserCheck } from "lucide-react";
 import { NAV } from "@/lib/nav";
 import { cn } from "@/lib/cn";
 import { useMobileNav } from "@/components/MobileNav";
-import { useRbac } from "@/components/RbacProvider";
+import { useRbac, SELF_ID } from "@/components/RbacProvider";
 import { Avatar } from "@/components/ui/Avatar";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 /** Desktop: static rail in the layout grid. Mobile: off-canvas drawer overlay. */
 export function Sidebar() {
@@ -115,13 +116,47 @@ function SidebarBody() {
 }
 
 function ViewAsSwitcher() {
-  const { users, roles, viewerId, setViewerId, currentUser } = useRbac();
+  const { users, roles, viewerId, setViewerId, currentUser, isAuthenticated, canViewAs } =
+    useRbac();
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
 
   const roleNames = (roleIds: string[]) =>
     roleIds.length
       ? roleIds.map((id) => roles.find((r) => r.id === id)?.name ?? id).join(" · ")
       : "ไม่มีบทบาท";
+
+  async function signOut() {
+    setSigningOut(true);
+    await supabaseBrowser().auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  }
+
+  // Signed in without impersonation rights → just show who you are + a way out.
+  if (isAuthenticated && !canViewAs) {
+    return (
+      <div className="px-3 py-3 border-t border-border flex items-center gap-2">
+        <Avatar name={currentUser.name} tone="crimson" />
+        <span className="leading-tight min-w-0 flex-1">
+          <span className="block text-small text-text truncate">{currentUser.name}</span>
+          <span className="block text-label text-text-subtle truncate">
+            {roleNames(currentUser.roleIds)}
+          </span>
+        </span>
+        <button
+          onClick={signOut}
+          disabled={signingOut}
+          aria-label="ออกจากระบบ"
+          title="ออกจากระบบ"
+          className="size-7 grid place-items-center rounded-md text-text-subtle hover:bg-surface-hover hover:text-text transition-colors shrink-0 disabled:opacity-50"
+        >
+          <LogOut size={14} strokeWidth={1.75} />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative px-3 py-3 border-t border-border">
@@ -146,6 +181,35 @@ function ViewAsSwitcher() {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute z-50 bottom-[calc(100%-4px)] left-3 right-3 mb-1 rounded-lg border border-border bg-surface shadow-pop overflow-hidden max-h-[60vh] overflow-y-auto">
+            {/* Signed-in admins get a way back to their own identity, and a way out. */}
+            {isAuthenticated && (
+              <>
+                <button
+                  onClick={() => {
+                    setViewerId(SELF_ID);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-2.5 py-2 text-left transition-colors",
+                    viewerId === SELF_ID ? "bg-accent-wash" : "hover:bg-surface-hover"
+                  )}
+                >
+                  <UserCheck size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
+                  <span className="text-small text-text flex-1">กลับเป็นตัวเอง</span>
+                  {viewerId === SELF_ID && (
+                    <Check size={14} strokeWidth={2.5} className="text-accent shrink-0" />
+                  )}
+                </button>
+                <button
+                  onClick={signOut}
+                  disabled={signingOut}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-hover transition-colors border-b border-border disabled:opacity-50"
+                >
+                  <LogOut size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
+                  <span className="text-small text-text">ออกจากระบบ</span>
+                </button>
+              </>
+            )}
             {users.map((u) => {
               const on = u.id === viewerId;
               return (

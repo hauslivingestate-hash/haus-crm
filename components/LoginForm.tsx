@@ -1,24 +1,31 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
 
-// DESIGN-FIRST login. Submit does NOT authenticate — it simulates a round-trip and routes to
-// the dashboard, so the screen can be reviewed and handed over. Every state a real login
-// needs is built (idle / submitting / error / disabled) so wiring is a swap, not a redesign.
+// Real sign-in against Supabase Auth (wired 2026-08-03).
 //
-// Wire = `supabase.auth.signInWithPassword({ email, password })`, then redirect. Keep the
-// error copy generic ("อีเมลหรือรหัสผ่านไม่ถูกต้อง") — never reveal whether the account
-// exists, or you hand out a user-enumeration oracle.
+// The error copy stays generic ("อีเมลหรือรหัสผ่านไม่ถูกต้อง") on purpose — distinguishing
+// "no such account" from "wrong password" hands out a user-enumeration oracle.
+//
+// Accounts are issued by the company (personal email as the login; an admin sets the
+// password), so there is no sign-up path and no self-service reset here.
+//
+// ⚠️ There are no accounts yet — `auth.users` is empty until the HR sheet is imported. Until
+// then AUTH_ENFORCED is off: sign-in works if you have an account, but nothing forces one,
+// and the seeded "view as" demo keeps running. See lib/supabaseConfig.ts.
 
 const field =
   "w-full h-10 px-3 rounded-md border border-border-strong bg-surface text-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [show, setShow] = React.useState(false);
@@ -27,18 +34,33 @@ export function LoginForm() {
 
   const canSubmit = email.trim().length > 0 && password.length > 0 && !busy;
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
     setError(null);
     setBusy(true);
-    // STUB: no auth provider. Simulates latency so the submitting state is reviewable.
-    window.setTimeout(() => {
+
+    const { error: authError } = await supabaseBrowser().auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (authError) {
       setBusy(false);
-      // eslint-disable-next-line no-console
-      console.log("[stub] sign in (no auth wired):", { email });
-      router.push("/");
-    }, 700);
+      setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+      return;
+    }
+
+    // Only accept a same-site path from ?next — an absolute URL here would be an open
+    // redirect (attacker sends /login?next=https://evil.example and we bounce the user there
+    // right after they type their password).
+    const next = searchParams.get("next");
+    const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+
+    // refresh() so server components re-render with the new session cookie; without it the
+    // shell would still be rendered for a signed-out visitor.
+    router.replace(target);
+    router.refresh();
   }
 
   return (
@@ -120,14 +142,21 @@ export function LoginForm() {
             </p>
           </form>
 
-          {/* Design-mode notice — remove when auth is wired. */}
-          <div className="mt-8 rounded-md border border-border bg-surface-2 px-3 py-2.5 flex items-start gap-2">
-            <ShieldCheck size={14} strokeWidth={1.75} className="text-text-subtle mt-0.5 shrink-0" />
-            <p className="text-label text-text-subtle">
-              <span className="text-text-muted font-medium">โหมดออกแบบ</span> — ยังไม่ได้เชื่อมระบบ
-              ยืนยันตัวตนจริง กดเข้าสู่ระบบเพื่อดูตัวอย่างหน้าถัดไป
-            </p>
-          </div>
+          {/* Shown only while the kill-switch is off, i.e. before any account exists. */}
+          {!AUTH_ENFORCED && (
+            <div className="mt-8 rounded-md border border-border bg-surface-2 px-3 py-2.5 flex items-start gap-2">
+              <ShieldCheck
+                size={14}
+                strokeWidth={1.75}
+                className="text-text-subtle mt-0.5 shrink-0"
+              />
+              <p className="text-label text-text-subtle">
+                <span className="text-text-muted font-medium">โหมดเดโม</span> —
+                ต่อระบบยืนยันตัวตนแล้ว แต่ยังไม่ได้สร้างบัญชีพนักงาน (รอ import ข้อมูล HR)
+                ระหว่างนี้ยังเข้าใช้งานได้โดยไม่ต้องล็อกอิน
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
