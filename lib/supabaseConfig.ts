@@ -11,17 +11,22 @@ export const SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   "sb_publishable_MXdGWde2_RvLAWQrJ0ORWw_K18B0rvc";
 
-// AUTH KILL-SWITCH.
+// AUTH KILL-SWITCH — ON as of 2026-08-03.
 //
-// Off (default): the app behaves exactly as it did in the design phase — no session is
-// required, RbacProvider falls back to the seeded org + the "view as" switcher. The CEO's
-// demo keeps working.
+// On (default): middleware redirects signed-out visitors to /login, and permissions come
+// from the signed-in user's roles in the database.
 //
-// On (`NEXT_PUBLIC_AUTH_ENFORCED=1`): middleware redirects signed-out visitors to /login and
-// permissions come from the signed-in user's DB roles.
+// Off (`NEXT_PUBLIC_AUTH_ENFORCED=0`): the design-phase behaviour — no session required,
+// RbacProvider falls back to the seeded org and the "view as" switcher. Kept as an escape
+// hatch, not a mode to ship in.
 //
-// It is OFF because there are literally zero accounts yet (`auth.users` is empty) and
-// `user_roles` is empty until the HR sheet is imported — flipping it now would lock everyone
-// out of an app nobody can sign in to. Turn it on right after: import main_1_hr → create the
-// accounts → fill `main_1_hr.auth_user_id` → assign `user_roles`.
-export const AUTH_ENFORCED = process.env.NEXT_PUBLIC_AUTH_ENFORCED === "1";
+// It defaulted OFF while `auth.users` was empty; enforcing then would have locked everyone
+// out of an app nobody could sign into. The nine accounts now exist and every employee row
+// is linked, so the default flips. Deliberately defaulted in code rather than set in Vercel:
+// NEXT_PUBLIC_* is inlined at build time, so a dashboard change needs a redeploy anyway, and
+// this project has been bitten before by env vars going missing on the host.
+//
+// ⚠️ Signing in is NOT what protects the data. The anon key ships in the page, so anything
+// still covered only by the `demo_read_all` policy is readable without ever logging in.
+// Real protection is per-table RLS (Phase 4); done so far: main_1_hr's salary/PII columns.
+export const AUTH_ENFORCED = process.env.NEXT_PUBLIC_AUTH_ENFORCED !== "0";

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Eye, Check, ChevronsUpDown, LogOut, UserCheck } from "lucide-react";
+import { Search, Eye, Check, ChevronsUpDown, LogOut, UserCheck, KeyRound } from "lucide-react";
 import { NAV } from "@/lib/nav";
 import { cn } from "@/lib/cn";
 import { useMobileNav } from "@/components/MobileNav";
@@ -134,17 +134,23 @@ function ViewAsSwitcher() {
     router.refresh();
   }
 
-  // Signed in without impersonation rights → just show who you are + a way out.
+  // Signed in without impersonation rights → who you are, plus the two things you can do
+  // with your own account.
   if (isAuthenticated && !canViewAs) {
     return (
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
-        <Avatar name={currentUser.name} tone="crimson" />
-        <span className="leading-tight min-w-0 flex-1">
-          <span className="block text-small text-text truncate">{currentUser.name}</span>
-          <span className="block text-label text-text-subtle truncate">
-            {roleNames(currentUser.roleIds)}
+        <Link
+          href="/account"
+          className="flex items-center gap-2 min-w-0 flex-1 rounded-md p-1.5 -m-1.5 hover:bg-surface-hover transition-colors"
+        >
+          <Avatar name={currentUser.name} tone="crimson" />
+          <span className="leading-tight min-w-0 flex-1">
+            <span className="block text-small text-text truncate">{currentUser.name}</span>
+            <span className="block text-label text-text-subtle truncate">
+              {roleNames(currentUser.roleIds)}
+            </span>
           </span>
-        </span>
+        </Link>
         <button
           onClick={signOut}
           disabled={signingOut}
@@ -184,6 +190,14 @@ function ViewAsSwitcher() {
             {/* Signed-in admins get a way back to their own identity, and a way out. */}
             {isAuthenticated && (
               <>
+                <Link
+                  href="/account"
+                  onClick={() => setOpen(false)}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-hover transition-colors"
+                >
+                  <KeyRound size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
+                  <span className="text-small text-text">บัญชีของฉัน</span>
+                </Link>
                 <button
                   onClick={() => {
                     setViewerId(SELF_ID);
