@@ -26,7 +26,8 @@ export const SUPABASE_ANON_KEY =
 // NEXT_PUBLIC_* is inlined at build time, so a dashboard change needs a redeploy anyway, and
 // this project has been bitten before by env vars going missing on the host.
 //
-// ⚠️ Signing in is NOT what protects the data. The anon key ships in the page, so anything
-// still covered only by the `demo_read_all` policy is readable without ever logging in.
-// Real protection is per-table RLS (Phase 4); done so far: main_1_hr's salary/PII columns.
+// Signing in is not by itself what protects the data — the anon key ships in the page. What
+// protects it is per-table RLS, live since 2026-08-03 (db/rls_policies.sql): the anon role
+// holds no grant on any table, view or helper, so this key alone now reads nothing at all.
+// Turning the switch off leaves the middleware open but the database still shut.
 export const AUTH_ENFORCED = process.env.NEXT_PUBLIC_AUTH_ENFORCED !== "0";
