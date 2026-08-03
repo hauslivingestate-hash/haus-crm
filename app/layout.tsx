@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
-import { Anuphan, IBM_Plex_Mono } from "next/font/google";
+import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
 
-const anuphan = Anuphan({
+// ROOT layout — html/body/fonts only, deliberately NO app chrome and NO providers.
+//
+// The signed-in application lives in the `(app)` route group, whose layout carries the
+// Sidebar, the FAB and every in-memory store. `/login` sits outside that group, so a
+// signed-out visitor gets none of it: no nav (which would leak the whole surface map) and
+// no app state instantiated at all.
+//
+// Route groups don't affect URLs — `app/(app)/leads` is still `/leads`.
+
+const plexSansThai = IBM_Plex_Sans_Thai({
   subsets: ["thai", "latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-anuphan",
+  variable: "--font-plex-thai",
   display: "swap",
 });
 
@@ -24,13 +32,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="th" className={`${anuphan.variable} ${plexMono.variable}`}>
-      <body>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 min-w-0 flex flex-col">{children}</main>
-        </div>
-      </body>
+    <html lang="th" className={`${plexSansThai.variable} ${plexMono.variable}`}>
+      <body>{children}</body>
     </html>
   );
 }

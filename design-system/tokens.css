@@ -1,0 +1,193 @@
+/* =========================================================================
+   HAUS CRM — DESIGN TOKENS  (single source of truth)
+   Aesthetic: Linear/Attio minimalism, warm HAUS crimson as the one accent.
+   Stack target: Next.js + Tailwind v4. Drop this in as `app/globals.css`.
+
+   Two tiers:
+     1. PRIMITIVES  — raw palette, theme-invariant (a color is a color)
+     2. SEMANTIC    — roles (background/surface/text/border/accent…), swap per theme
+   COMPONENTS USE ONLY SEMANTIC TOKENS. Never hard-code a hex in a component.
+
+   Light is the designed reference. The .dark block is provisional (derived,
+   not yet visually reviewed) — keep the architecture, re-tune before shipping.
+   ========================================================================= */
+
+@import "tailwindcss";
+
+/* Class-based dark mode: <html class="dark"> (e.g. via next-themes) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------- PRIMITIVES */
+:root {
+  /* Brand — deep maroon is the LOGO value only. The app ACCENT is a brighter
+     step of the same hue so it pops on neutral surfaces without going pink. */
+  --maroon-900: #631222;   /* logo / brand anchor — do NOT use as UI accent */
+  --crimson-500: #a32638;  /* app accent (sales unit) */
+  --crimson-600: #8e1d36;  /* accent hover / pressed */
+  --crimson-12:  #a326381f;
+  --crimson-8:   #a3263814;
+
+  /* Rent unit accent (parallel to sales crimson) */
+  --bronze-500: #8a5a32;
+  --bronze-12:  #8a5a321f;
+
+  /* Status hues — TEXT-SAFE (darker): pass 4.5:1 as small text/icons.
+     Use these for status text, deltas, semantic buttons. */
+  --green-500: #237a46; --green-bg: #237a461f;
+  --blue-500:  #2f6fa8; --blue-bg:  #2f6fa81f;
+  --violet-500:#9057a8; --violet-bg:#9057a81f;
+  --amber-500: #95660a; --amber-bg: #c9930026;
+  --red-500:   #c4491f; --red-bg:   #c4491f1f;   /* danger — vermilion, kept clear of the crimson accent */
+
+  /* Vivid stage/mark hues — DOTS & MARKS ONLY (fail as small text).
+     Fixed pipeline order; CVD-validated as a set. Never recolor by rank. */
+  --dot-blue:   #2a6dfb;   /* New        / ใหม่ */
+  --dot-teal:   #00a0a0;   /* Contacted  / ติดต่อแล้ว */
+  --dot-violet: #7c5cff;   /* Qualified  / คัดกรองแล้ว */
+  --dot-amber:  #c08000;   /* Viewing    / นัดชม */
+  --dot-crimson:var(--crimson-500); /* Negotiation / เจรจาต่อรอง — the money stage wears the brand */
+  --dot-green:  #23a55a;   /* Won        / ปิดการขาย */
+
+  /* Grade chips — solid vivid fill + bold letter (Linear-priority style).
+     A gets a DARK letter (white on yellow is unreadable). */
+  --grade-a:      #ffc53d; --grade-a-ink: #1c1917;
+  --grade-b:      #2563eb; --grade-b-ink: #ffffff;
+  --grade-c:      #dc2626; --grade-c-ink: #ffffff;
+}
+
+/* ------------------------------------------------------- SEMANTIC · LIGHT (reference) */
+:root {
+  --background:    #fafaf9;   /* app canvas (warm stone, not clinical grey) */
+  --surface:       #ffffff;   /* cards, panels, tables, inputs */
+  --surface-2:     #f5f5f4;   /* recessed fills, wells, segmented track */
+  --surface-hover: #0000000a; /* row / item hover */
+
+  --text:          #1c1917;   /* primary */
+  --text-muted:    #78716c;   /* secondary */
+  --text-subtle:   #a6a09b;   /* tertiary, placeholders, captions */
+  --text-onaccent: #fbf4ee;   /* text on crimson */
+
+  --border:        #ecebe9;   /* hairline — structure is drawn with these, not shadows */
+  --border-strong: #e0dedb;   /* emphasized / interactive borders */
+
+  --accent:        var(--crimson-500);
+  --accent-hover:  var(--crimson-600);
+  --accent-wash:   var(--crimson-12);   /* active nav bg, selected states */
+  --ring:          var(--crimson-500);  /* focus ring */
+
+  /* Rent-unit remap: set `--accent`/`--accent-hover`/`--accent-wash` to bronze
+     on the /rent route to re-skin the whole shell in one place. */
+}
+
+/* -------------------------------------------------------- SEMANTIC · DARK (provisional) */
+.dark {
+  --background:    #0c0a09;
+  --surface:       #1c1917;
+  --surface-2:     #292524;
+  --surface-hover: #ffffff0f;
+
+  --text:          #fafaf9;
+  --text-muted:    #a8a29e;
+  --text-subtle:   #78716c;
+  --text-onaccent: #ffffff;
+
+  --border:        #292524;
+  --border-strong: #3a3532;
+
+  --accent:        #ce4155;   /* crimson lifted for contrast on dark surfaces */
+  --accent-hover:  #d95568;
+  --accent-wash:   #ce415522;
+  --ring:          #ce4155;
+}
+
+/* ----------------------------------------------------------- TAILWIND v4 MAP
+   `inline` => utilities emit var() refs, so they re-resolve per theme.
+   This makes every token a utility: bg-surface, text-text-muted,
+   border-border, bg-accent, text-accent, bg-green-bg text-green, etc.        */
+@theme inline {
+  --color-background:    var(--background);
+  --color-surface:       var(--surface);
+  --color-surface-2:     var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-text:          var(--text);
+  --color-text-muted:    var(--text-muted);
+  --color-text-subtle:   var(--text-subtle);
+  --color-text-onaccent: var(--text-onaccent);
+
+  --color-border:        var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent:        var(--accent);
+  --color-accent-hover:  var(--accent-hover);
+  --color-accent-wash:   var(--accent-wash);
+  --color-ring:          var(--ring);
+
+  --color-maroon-900:    var(--maroon-900);
+  --color-bronze:        var(--bronze-500);
+  --color-bronze-bg:     var(--bronze-12);
+
+  --color-green:  var(--green-500);  --color-green-bg:  var(--green-bg);
+  --color-blue:   var(--blue-500);   --color-blue-bg:   var(--blue-bg);
+  --color-violet: var(--violet-500); --color-violet-bg: var(--violet-bg);
+  --color-amber:  var(--amber-500);  --color-amber-bg:  var(--amber-bg);
+  --color-red:    var(--red-500);    --color-red-bg:    var(--red-bg);
+
+  --color-dot-blue:    var(--dot-blue);
+  --color-dot-teal:    var(--dot-teal);
+  --color-dot-violet:  var(--dot-violet);
+  --color-dot-amber:   var(--dot-amber);
+  --color-dot-crimson: var(--dot-crimson);
+  --color-dot-green:   var(--dot-green);
+
+  --color-grade-a: var(--grade-a); --color-grade-a-ink: var(--grade-a-ink);
+  --color-grade-b: var(--grade-b); --color-grade-b-ink: var(--grade-b-ink);
+  --color-grade-c: var(--grade-c); --color-grade-c-ink: var(--grade-c-ink);
+
+  /* typography — wire the actual faces via next/font in layout.tsx:
+     Anuphan (UI, Thai+Latin) -> --font-anuphan
+     IBM Plex Mono (numerals) -> --font-plex-mono */
+  --font-sans: var(--font-anuphan), "Thonburi", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* type scale — Linear/Attio density; line-heights nudged up for Thai stacked marks */
+  --text-display: 1.5rem;    --text-display--line-height: 2rem;    --text-display--letter-spacing: -0.02em;  --text-display--font-weight: 600;
+  --text-h1: 1.1875rem;      --text-h1--line-height: 1.6rem;       --text-h1--letter-spacing: -0.018em;      --text-h1--font-weight: 600;
+  --text-h2: 1rem;           --text-h2--line-height: 1.45rem;      --text-h2--letter-spacing: -0.012em;      --text-h2--font-weight: 600;
+  --text-h3: 0.875rem;       --text-h3--line-height: 1.3rem;       --text-h3--letter-spacing: -0.006em;      --text-h3--font-weight: 600;
+  --text-body: 0.8125rem;    --text-body--line-height: 1.35rem;    --text-body--letter-spacing: -0.003em;    /* 13px, Thai-safe leading */
+  --text-small: 0.75rem;     --text-small--line-height: 1.15rem;
+  --text-label: 0.6875rem;   --text-label--line-height: 1rem;      --text-label--letter-spacing: 0.03em;     --text-label--font-weight: 600;
+
+  /* radii */
+  --radius-sm: 7px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+
+  /* elevation — borders do the structural work; shadows are for popovers/menus */
+  --shadow-card: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-pop:  0 8px 24px rgba(0,0,0,.10);
+}
+
+/* ---------------------------------------------------------------- BASE */
+* { box-sizing: border-box; }
+body {
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.35rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numerals signature: prices, counts, dates, phone, times get .num
+   => IBM Plex Mono, tabular, tight. A defining trait of the look. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

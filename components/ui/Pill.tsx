@@ -7,7 +7,7 @@ export function Pill({
   children,
 }: {
   className?: string;
-  tone?: "neutral" | "accent" | "green" | "amber" | "blue" | "red";
+  tone?: "neutral" | "accent" | "green" | "amber" | "blue" | "violet" | "red";
   children: React.ReactNode;
 }) {
   const tones: Record<string, string> = {
@@ -16,6 +16,7 @@ export function Pill({
     green: "bg-green-bg text-green",
     amber: "bg-amber-bg text-amber",
     blue: "bg-blue-bg text-blue",
+    violet: "bg-violet-bg text-violet",
     red: "bg-red-bg text-red",
   };
   return (

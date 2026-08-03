@@ -1,0 +1,39 @@
+import { Topbar } from "@/components/Topbar";
+import { Skeleton } from "@/components/ui/Skeleton";
+
+export default function LeadDetailLoading() {
+  return (
+    <>
+      <Topbar title="Lead" actions={false} />
+      <div className="p-4 lg:p-6 space-y-4">
+        <Skeleton className="h-3.5 w-24" />
+        {/* Identity header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-2.5 w-16" />
+              <Skeleton className="h-6 w-44" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <Skeleton className="h-7 w-14" />
+            <Skeleton className="h-7 w-20" />
+            <Skeleton className="h-7 w-16" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 items-start">
+          <div className="flex flex-col gap-4">
+            <Skeleton className="h-40 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+          </div>
+          <div className="flex flex-col gap-4">
+            <Skeleton className="h-64 w-full rounded-lg" />
+            <Skeleton className="h-32 w-full rounded-lg" />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

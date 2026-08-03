@@ -1,98 +1,179 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Search, Eye, Check, ChevronsUpDown } from "lucide-react";
 import { NAV } from "@/lib/nav";
 import { cn } from "@/lib/cn";
+import { useMobileNav } from "@/components/MobileNav";
+import { useRbac } from "@/components/RbacProvider";
+import { Avatar } from "@/components/ui/Avatar";
 
+/** Desktop: static rail in the layout grid. Mobile: off-canvas drawer overlay. */
 export function Sidebar() {
-  const pathname = usePathname();
+  const { open, setOpen } = useMobileNav();
   return (
-    <aside className="w-[228px] shrink-0 h-screen sticky top-0 bg-surface border-r border-border flex flex-col">
+    <>
+      {/* Desktop rail */}
+      <aside className="hidden lg:flex w-[228px] shrink-0 h-screen sticky top-0 bg-surface border-r border-border flex-col">
+        <SidebarBody />
+      </aside>
+
+      {/* Mobile drawer */}
+      <div
+        className={cn("lg:hidden fixed inset-0 z-40", open ? "" : "pointer-events-none")}
+        aria-hidden={!open}
+      >
+        <div
+          onClick={() => setOpen(false)}
+          className={cn(
+            "absolute inset-0 bg-black/40 transition-opacity",
+            open ? "opacity-100" : "opacity-0"
+          )}
+        />
+        <aside
+          className={cn(
+            "absolute left-0 top-0 h-full w-[270px] max-w-[82%] flex flex-col bg-surface border-r border-border shadow-pop transition-transform duration-200",
+            open ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          <SidebarBody />
+        </aside>
+      </div>
+    </>
+  );
+}
+
+function SidebarBody() {
+  const pathname = usePathname();
+  const { can } = useRbac();
+
+  return (
+    <>
       {/* Brand */}
       <div className="h-14 flex items-center px-4 border-b border-border">
         <div className="leading-none">
-          <div
-            className="text-h1 font-bold tracking-tight"
-            style={{ color: "var(--maroon-900)" }}
-          >
+          <div className="text-h1 font-bold tracking-tight" style={{ color: "var(--maroon-900)" }}>
             HAUS
           </div>
           <div className="text-label uppercase text-text-subtle mt-0.5">Living Estate</div>
         </div>
       </div>
 
-      {/* Unit switcher */}
-      <div className="px-3 pt-3">
-        <div className="inline-flex w-full items-center gap-0.5 bg-surface-2 rounded-md p-0.5">
-          <span className="flex-1 text-center h-7 leading-7 rounded-[7px] bg-surface shadow-card text-small text-accent font-medium">
-            ขาย
-          </span>
-          <span className="flex-1 text-center h-7 leading-7 rounded-[7px] text-small text-text-muted">
-            เช่า
-          </span>
-        </div>
-      </div>
-
       {/* Search */}
       <div className="px-3 pt-3">
         <div className="flex items-center gap-2 h-8 px-2.5 rounded-md border border-border bg-surface-2 text-text-subtle text-small">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4.3-4.3" />
-          </svg>
+          <Search size={14} strokeWidth={1.75} />
           <span className="flex-1">ค้นหา…</span>
           <kbd className="num text-label border border-border rounded px-1 bg-surface">⌘K</kbd>
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="px-2 pt-4 flex-1">
-        <div className="px-2 text-label uppercase text-text-subtle mb-1">เมนู</div>
-        {NAV.map((item) => {
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+      {/* Nav — items filtered by the viewer's permissions */}
+      <nav className="px-2 pt-3 pb-2 flex-1 flex flex-col overflow-y-auto">
+        {NAV.map((group) => {
+          const items = group.items.filter((i) => can(i.perm));
+          if (items.length === 0) return null;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2.5 h-9 px-2 rounded-md text-body transition-colors",
-                active
-                  ? "bg-accent-wash text-text font-medium"
-                  : "text-text-muted hover:bg-surface-hover hover:text-text"
-              )}
+            <div
+              key={group.title || group.items[0]?.href}
+              className={cn("mb-3", group.bottom ? "mt-auto mb-0" : "last:mb-0")}
             >
-              <svg
-                width="17"
-                height="17"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={active ? "text-accent" : ""}
-              >
-                <path d={item.icon} />
-              </svg>
-              {item.label}
-            </Link>
+              {group.title && (
+                <div className="px-2 text-label uppercase text-text-subtle mb-1">{group.title}</div>
+              )}
+              {items.map((item) => {
+                const active =
+                  item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-2.5 h-9 px-2 rounded-md text-body transition-colors",
+                      active
+                        ? "bg-accent-wash text-text font-medium"
+                        : "text-text-muted hover:bg-surface-hover hover:text-text"
+                    )}
+                  >
+                    <Icon size={17} strokeWidth={1.75} className={active ? "text-accent" : ""} />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
           );
         })}
       </nav>
 
-      {/* Footer user */}
-      <div className="px-3 py-3 border-t border-border">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent-wash text-accent text-label">
-            HB
-          </span>
-          <div className="leading-tight">
-            <div className="text-small text-text">Haus Boss</div>
-            <div className="text-label text-text-subtle">CEO</div>
-          </div>
-        </div>
+      {/* View-as switcher (design tool — stands in for the auth session) */}
+      <ViewAsSwitcher />
+    </>
+  );
+}
+
+function ViewAsSwitcher() {
+  const { users, roles, viewerId, setViewerId, currentUser } = useRbac();
+  const [open, setOpen] = React.useState(false);
+
+  const roleNames = (roleIds: string[]) =>
+    roleIds.length
+      ? roleIds.map((id) => roles.find((r) => r.id === id)?.name ?? id).join(" · ")
+      : "ไม่มีบทบาท";
+
+  return (
+    <div className="relative px-3 py-3 border-t border-border">
+      <div className="text-label uppercase text-text-subtle mb-1.5 flex items-center gap-1">
+        <Eye size={11} strokeWidth={2} /> ดูในมุมมอง
       </div>
-    </aside>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 rounded-md p-1.5 -m-1.5 hover:bg-surface-hover transition-colors"
+      >
+        <Avatar name={currentUser.name} tone="crimson" />
+        <span className="leading-tight min-w-0 flex-1 text-left">
+          <span className="block text-small text-text truncate">{currentUser.name}</span>
+          <span className="block text-label text-text-subtle truncate">
+            {roleNames(currentUser.roleIds)}
+          </span>
+        </span>
+        <ChevronsUpDown size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 bottom-[calc(100%-4px)] left-3 right-3 mb-1 rounded-lg border border-border bg-surface shadow-pop overflow-hidden max-h-[60vh] overflow-y-auto">
+            {users.map((u) => {
+              const on = u.id === viewerId;
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => {
+                    setViewerId(u.id);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-2.5 py-2 text-left transition-colors",
+                    on ? "bg-accent-wash" : "hover:bg-surface-hover"
+                  )}
+                >
+                  <Avatar name={u.name} tone={on ? "crimson" : "neutral"} />
+                  <span className="leading-tight min-w-0 flex-1">
+                    <span className="block text-small text-text truncate">{u.name}</span>
+                    <span className="block text-label text-text-subtle truncate">
+                      {roleNames(u.roleIds)}
+                    </span>
+                  </span>
+                  {on && <Check size={14} strokeWidth={2.5} className="text-accent shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

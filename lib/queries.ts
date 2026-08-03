@@ -4,6 +4,7 @@ export interface CrmRow {
   lead_id: string;
   lead_name: string | null;
   phone: string | null;
+  line_id?: string | null;
   potential: string | null;
   lead_status: string | null;
   pipeline_stage: string | null;
@@ -17,25 +18,102 @@ export interface CrmRow {
   date_received: string | null;
 }
 
+// Mirrors `v_main_listing` in full — all 55 exposed columns. Types were probed against the
+// live schema (not inferred from sample rows, which are mostly null): `floor` and `unit_no`
+// really are TEXT; `parking` is an integer; sign/vdo/owner_focus are booleans; the three
+// *_date columns are dates. Keep this in sync with LISTING_COLUMNS below.
+//
+// NOT here because the view doesn't expose them yet (15 sheet columns — Hook, ส่วนกลาง,
+// อายุ, Photo Album, Link, Last Match Price/Remark/Type, New Photo, Facebook Ad, DD Boost,
+// LV Boost, FB Repost, Marketing Report). See CEO_FEEDBACK_R1.md §2.3.
 export interface ListingRow {
+  // Identity & status
   listing_id: string;
   listing_name: string | null;
-  project_name_eng: string | null;
-  zone: string | null;
-  zone_name_thai: string | null;
   listing_status: string | null;
   potential: string | null;
   listing_type: string | null;
+  owner_focus: boolean | null;
+  date_created: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  days_on_market: number | null;
+  /** Managing agent. Present in the view but NULL in the live rows — until the import
+   *  backfills it, `lib/listings.ts` seeds a stand-in. Delete that seed once populated. */
+  created_by: string | null;
+
+  // Location
+  project_id: string | null;
+  project_name_eng: string | null;
+  zone: string | null;
+  zone_name_thai: string | null;
+  zone_name_eng: string | null;
+  in_out_project: string | null;
+  road_soi: string | null;
+  link_location: string | null;
+
+  // Specs
   property_type: string | null;
+  unit_no: string | null;
   bed: number | null;
   bath: number | null;
+  area_rai: number | null;
+  area_ngan: number | null;
+  area_wa: number | null;
   area_sqm: number | null;
+  floor: string | null;
+  building: string | null;
+  direction: string | null;
+  view_type: string | null;
+  unit_position: string | null;
+  parking: number | null;
+  unit_condition: string | null;
+
+  // Pricing
   asking_price: number | null;
   rental_price: number | null;
+  old_price: number | null;
+  new_price: number | null;
+  update_remark: string | null;
+  price_remark: string | null;
+
+  // Owner
+  owner_id: number | null;
   owner_name: string | null;
   owner_phone: string | null;
-  days_on_market: number | null;
+  owner_line: string | null;
+  owner_talk_last_date: string | null;
+  activity_comment: string | null;
+
+  // Marketing / portals
+  sign: boolean | null;
+  vdo: boolean | null;
+  ddproperty_link: string | null;
+  livinginsider_link: string | null;
+  livinginsider_date: string | null;
+  propertyhub_link: string | null;
+  shorts_reels_link: string | null;
+  hometour_link: string | null;
+
+  // Misc
+  remark: string | null;
 }
+
+/** Every column of `v_main_listing`, in the ListingRow order. Single source for both queries. */
+const LISTING_COLUMNS = [
+  "listing_id", "listing_name", "listing_status", "potential", "listing_type", "owner_focus",
+  "date_created", "created_at", "updated_at", "days_on_market", "created_by",
+  "project_id", "project_name_eng", "zone", "zone_name_thai", "zone_name_eng",
+  "in_out_project", "road_soi", "link_location",
+  "property_type", "unit_no", "bed", "bath", "area_rai", "area_ngan", "area_wa", "area_sqm",
+  "floor", "building", "direction", "view_type", "unit_position", "parking", "unit_condition",
+  "asking_price", "rental_price", "old_price", "new_price", "update_remark", "price_remark",
+  "owner_id", "owner_name", "owner_phone", "owner_line", "owner_talk_last_date",
+  "activity_comment",
+  "sign", "vdo", "ddproperty_link", "livinginsider_link", "livinginsider_date",
+  "propertyhub_link", "shorts_reels_link", "hometour_link",
+  "remark",
+].join(",");
 
 export interface SaleStatusRow {
   employee_code: string;
@@ -64,11 +142,29 @@ export async function getCrm(): Promise<CrmRow[]> {
 export async function getListings(): Promise<ListingRow[]> {
   const { data } = await supabase
     .from("v_main_listing")
-    .select(
-      "listing_id,listing_name,project_name_eng,zone,zone_name_thai,listing_status,potential,listing_type,property_type,bed,bath,area_sqm,asking_price,rental_price,owner_name,owner_phone,days_on_market"
-    )
+    .select(LISTING_COLUMNS)
     .order("listing_id");
-  return (data as ListingRow[]) ?? [];
+  return (data as unknown as ListingRow[]) ?? [];
+}
+
+export async function getLead(id: string): Promise<CrmRow | null> {
+  const { data } = await supabase
+    .from("main_6_buyer_crm")
+    .select(
+      "lead_id,lead_name,phone,line_id,potential,lead_status,pipeline_stage,lead_type,sale_id,listing_code,budget,commission,last_follow_date,closing_date,date_received"
+    )
+    .eq("lead_id", id)
+    .maybeSingle();
+  return (data as CrmRow | null) ?? null;
+}
+
+export async function getListing(id: string): Promise<ListingRow | null> {
+  const { data } = await supabase
+    .from("v_main_listing")
+    .select(LISTING_COLUMNS)
+    .eq("listing_id", id)
+    .maybeSingle();
+  return (data as unknown as ListingRow | null) ?? null;
 }
 
 export async function getSaleStatus(): Promise<SaleStatusRow[]> {

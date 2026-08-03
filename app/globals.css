@@ -121,7 +121,7 @@
   --color-grade-b: var(--grade-b); --color-grade-b-ink: var(--grade-b-ink);
   --color-grade-c: var(--grade-c); --color-grade-c-ink: var(--grade-c-ink);
 
-  --font-sans: var(--font-anuphan), "Thonburi", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-plex-thai), "Thonburi", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
 
   --text-display: 1.5rem;    --text-display--line-height: 2rem;    --text-display--letter-spacing: -0.02em;  --text-display--font-weight: 600;
@@ -166,4 +166,49 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+}
+
+/* Dashboard editorial section title — responsive (mobile 36px → desktop 52px). */
+.dash-title { font-size: 2.25rem; }
+@media (min-width: 768px) { .dash-title { font-size: 3.25rem; } }
+
+/* Dashboard responsive grids (inline styles can't do media queries). */
+.dash-two-col { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.dash-grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.dash-narrow-wide { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 1024px) {
+  .dash-two-col { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+  .dash-grid-2 { grid-template-columns: 1fr 1fr; }
+  .dash-narrow-wide { grid-template-columns: 1fr 2fr; }
+}
+
+@media (min-width: 1024px) { .dash-body { padding-left: 32px; padding-right: 32px; } }
+
+/* -------------------------------------- แผนวันนี้ · Solo Gang "Momentum" palette (scoped) */
+/* The Today page adopts Solo Gang's palette — emerald accent, indigo (พื้นฐาน), rose (ส่วนตัว)
+   on a cool-grey canvas — instead of the CRM crimson. Scoped to .plan-theme so the rest of the
+   app is untouched (same approach as the dashboard's burgundy theme). Overrides the base tokens;
+   the @theme map (--color-accent: var(--accent), etc.) picks them up automatically. */
+.plan-theme {
+  --background:   #f7f8fa;
+  --accent:       #10b981;
+  --accent-hover: #059669;
+  --accent-wash:  #ecfdf5;
+  --ring:         #10b981;
+  --blue-500:     #818cf8;  --blue-bg:   #818cf81f;   /* พื้นฐาน (working) → indigo */
+  --violet-500:   #f472b6;  --violet-bg: #f472b61f;   /* ส่วนตัว (personal) → rose  */
+  /* Brighter amber than the base #95660a (which is tuned for text and reads muddy-brown as a
+     small dot). Amber is only used here for the calendar's "partial day" status dot. */
+  --amber-500:    #f59e0b;  --amber-bg:  #f59e0b1f;
+  background: var(--color-background);
+}
+.dark .plan-theme {
+  --background:   #0e1621;
+  --accent:       #34d399;
+  --accent-hover: #6ee7b7;
+  --accent-wash:  #0e2a20;
+  --ring:         #34d399;
+  --blue-500:     #a5b4fc;  --blue-bg:   #a5b4fc26;
+  --violet-500:   #f9a8d4;  --violet-bg: #f9a8d426;
+  --amber-500:    #fbbf24;  --amber-bg:  #fbbf2426;
 }
