@@ -1,4 +1,16 @@
-import { supabase } from "./supabase";
+import { createClient } from "@/lib/supabase/server";
+
+// Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
+// (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
+// `current_employee_code()` / `has_perm()`, which are NULL/false without a session, so any
+// query made through it would silently return zero rows now that `demo_read_all` is gone.
+//
+// Consequence, and it is the correct one: reading cookies makes these pages dynamic, so the
+// 30s ISR window is gone. A page cached for one user must never be served to another now that
+// two users legitimately see different rows.
+//
+// Server-only by construction: `cookies()` throws outside a request, so importing this from a
+// client component is a build error rather than a silent leak.
 
 export interface CrmRow {
   lead_id: string;
@@ -130,6 +142,7 @@ export interface SaleStatusRow {
 }
 
 export async function getCrm(): Promise<CrmRow[]> {
+  const supabase = await createClient();
   const { data } = await supabase
     .from("main_6_buyer_crm")
     .select(
@@ -140,6 +153,7 @@ export async function getCrm(): Promise<CrmRow[]> {
 }
 
 export async function getListings(): Promise<ListingRow[]> {
+  const supabase = await createClient();
   const { data } = await supabase
     .from("v_main_listing")
     .select(LISTING_COLUMNS)
@@ -148,6 +162,7 @@ export async function getListings(): Promise<ListingRow[]> {
 }
 
 export async function getLead(id: string): Promise<CrmRow | null> {
+  const supabase = await createClient();
   const { data } = await supabase
     .from("main_6_buyer_crm")
     .select(
@@ -159,6 +174,7 @@ export async function getLead(id: string): Promise<CrmRow | null> {
 }
 
 export async function getListing(id: string): Promise<ListingRow | null> {
+  const supabase = await createClient();
   const { data } = await supabase
     .from("v_main_listing")
     .select(LISTING_COLUMNS)
@@ -168,6 +184,7 @@ export async function getListing(id: string): Promise<ListingRow | null> {
 }
 
 export async function getSaleStatus(): Promise<SaleStatusRow[]> {
+  const supabase = await createClient();
   const { data } = await supabase
     .from("v_sale_status")
     .select(
@@ -179,6 +196,7 @@ export async function getSaleStatus(): Promise<SaleStatusRow[]> {
 }
 
 export async function getPotentialCount(): Promise<number> {
+  const supabase = await createClient();
   const { count } = await supabase
     .from("main_10_potential_listing")
     .select("*", { count: "exact", head: true });

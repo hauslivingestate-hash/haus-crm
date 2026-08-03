@@ -5,10 +5,9 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabaseConfig";
 // SESSION-AWARE server client — reads the auth cookies, so `auth.uid()` is set inside
 // Postgres and RLS policies actually apply to the query.
 //
-// Not the same thing as `lib/supabase.ts`: that one is a plain anon client with no session,
-// used by the page data queries (`lib/queries.ts`). Those still work today because every
-// table carries the `demo_read_all` policy. ⚠️ When real RLS lands (Phase 4) they must move
-// onto THIS client, which also makes those pages dynamic instead of ISR-cached — a page
+// The only server-side client there is, as of Phase 4. The sessionless anon client this file
+// used to warn about is gone: with `demo_read_all` dropped, a query without a session sees
+// nothing. Reading cookies makes every page that calls this dynamic — correct, since a page
 // cached for one user must never be served to another once rows are scoped.
 export async function createClient() {
   const cookieStore = await cookies();
