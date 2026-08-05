@@ -124,7 +124,7 @@ function ViewAsSwitcher() {
 
   const roleNames = (roleIds: string[]) =>
     roleIds.length
-      ? roleIds.map((id) => roles.find((r) => r.id === id)?.name ?? id).join(" · ")
+      ? roleIds.map((id) => roles.find((r) => r?.id === id)?.name ?? id).join(" · ")
       : "ไม่มีบทบาท";
 
   async function signOut() {

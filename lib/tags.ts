@@ -66,7 +66,7 @@ export function seedTagForLead(leadId: string, tags: LeadTag[] = SEED_LEAD_TAGS)
   if (tags.length === 0) return null;
   const h = hash(leadId);
   if (h % 10 < 2) return null;
-  return tags[(h >> 3) % tags.length].id;
+  return tags[(h >>> 3) % tags.length].id;
 }
 
 /** Build the initial lead → tagId map from a set of lead ids. */
