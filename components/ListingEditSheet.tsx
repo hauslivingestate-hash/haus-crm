@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { X, Check, Lock } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { X, Check, Lock, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { useRbac } from "@/components/RbacProvider";
@@ -11,6 +12,7 @@ import { POTENTIALS } from "@/lib/masterdata";
 import { listZones } from "@/lib/zones";
 import { NEW_LISTING_STATUSES } from "@/lib/newListing";
 import type { ListingRow } from "@/lib/queries";
+import { updateListing } from "@/lib/mutations/listings";
 import { cn } from "@/lib/cn";
 
 // Full listing edit — the แก้ไข button on listing detail, which was disabled until now.
@@ -20,13 +22,17 @@ import { cn } from "@/lib/cn";
 // form (`ListingForm`) stays deliberately short — it captures what a sale knows at sourcing;
 // the long tail belongs here.
 //
-// ⚠️ SAVE IS A STUB. The app reads the READ-ONLY view `v_main_listing`, so there is nothing
-// to write to yet — submit logs the patch and closes. Wire = an update on the base listing
-// table, then re-fetch (the detail page is server-rendered, so edits won't survive a reload
-// until then). Same posture as ListingForm's create stub.
+// Save writes through `updateListing` (lib/mutations/listings.ts) — the base table
+// `main_4_listing_database`, not the read-only view this form loads from. That action is also
+// the permission boundary (which fields a marketing-only vs listings.edit caller may touch),
+// not just the `disabled` props below — never trust the client for that.
 //
 // Read-only fields (id, days on market, created/updated timestamps, zone display names,
 // project/owner FK ids) are shown but not editable — they're derived or joined.
+//
+// `project_name_eng` is also read-only here on purpose: it lives on main_3_property_detail,
+// shared by every listing in the project, so editing it from one listing would rename the
+// project for all of them. Edit it from the project itself instead (not built yet).
 
 const field =
   "w-full h-9 px-3 rounded-md border border-border-strong bg-surface text-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
@@ -98,17 +104,26 @@ export function ListingEditSheet({
   const { can } = useRbac();
   const { propertyTypes } = useMasterData();
   const zones = listZones();
+  const router = useRouter();
   const [f, setF] = React.useState<Draft>(() => toDraft(listing));
   const [done, setDone] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
+  // Reset the draft when the sheet OPENS — not on every `listing` prop update while it's
+  // already open. A successful save calls router.refresh(), which flows a fresh `listing`
+  // back down; keying this on the object itself would immediately wipe the "บันทึกแล้ว"
+  // state (and any in-progress edit) the moment that fresher prop arrives.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (open) {
       setF(toDraft(listing));
       setDone(false);
+      setError(null);
     }
-  }, [open, listing]);
+  }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -132,15 +147,25 @@ export function ListingEditSheet({
   // listings.view still SEES them on the detail page — this only gates editing.
   const canMarketing = can("listings.marketing");
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    // Only send what actually changed — mirrors the shape of the eventual UPDATE.
+    // Only send what actually changed — the server re-diffs against the live row anyway, this
+    // just keeps the payload small.
     const original = toDraft(listing);
     const patch: Draft = {};
     for (const k of Object.keys(f)) if (f[k] !== original[k]) patch[k] = f[k];
-    // eslint-disable-next-line no-console
-    console.log("[stub] update listing (no write):", listing.listing_id, patch);
+
+    setBusy(true);
+    setError(null);
+    const result = await updateListing(listing.listing_id, patch);
+    setBusy(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     setDone(true);
+    router.refresh();
   }
 
   return createPortal(
@@ -195,7 +220,10 @@ export function ListingEditSheet({
 
           <Section title="ทำเล">
             <Field label="โครงการ">
-              <Input value={S("project_name_eng")} onChange={(e) => set({ project_name_eng: e.target.value })} />
+              <Input value={S("project_name_eng")} disabled className="opacity-60" />
+              <span className="text-label text-text-subtle inline-flex items-center gap-1 mt-0.5">
+                <Lock size={11} strokeWidth={1.75} /> ใช้ร่วมกับทรัพย์อื่นในโครงการเดียวกัน แก้ไม่ได้ตรงนี้
+              </span>
             </Field>
             <Field label="โซน">
               {/* Union the stored value in: a zone code the master list no longer carries
@@ -288,7 +316,14 @@ export function ListingEditSheet({
             </Field>
           </Section>
 
-          <Section title="เจ้าของ">
+          <Section
+            title="เจ้าของ"
+            note={
+              listing.owner_id == null ? (
+                <span className="text-label text-text-subtle">ยังไม่มีเจ้าของผูกไว้ — กรอกแล้วบันทึกเพื่อสร้างใหม่</span>
+              ) : undefined
+            }
+          >
             <Field label="ชื่อเจ้าของ">
               <Input value={S("owner_name")} onChange={(e) => set({ owner_name: e.target.value })} />
             </Field>
@@ -361,20 +396,26 @@ export function ListingEditSheet({
 
         {/* Footer */}
         <div className="flex items-center gap-2 p-4 border-t border-border shrink-0">
-          {done ? (
+          {error ? (
+            <div className="flex-1 rounded-md px-3 py-2 text-small border bg-red-bg text-red border-red/30 inline-flex items-center gap-1.5">
+              <AlertCircle size={14} strokeWidth={2} /> {error}
+            </div>
+          ) : done ? (
             <div className="flex-1 rounded-md px-3 py-2 text-small border bg-green-bg text-green border-green/30 inline-flex items-center gap-1.5">
-              <Check size={14} strokeWidth={2} /> บันทึกแล้ว (ตัวอย่าง — ยังไม่เขียนจริง)
+              <Check size={14} strokeWidth={2} /> บันทึกแล้ว
             </div>
           ) : (
-            <p className="flex-1 text-label text-text-subtle">
-              โหมดออกแบบ — การบันทึกยังไม่เขียนลงฐานข้อมูล
-            </p>
+            <span className="flex-1" />
           )}
           <button type="button" onClick={onClose} className="h-9 px-4 rounded-md border border-border-strong text-text-muted hover:bg-surface-2 transition-colors">
             ปิด
           </button>
-          <button type="submit" className="h-9 px-4 rounded-md bg-accent text-text-onaccent font-medium hover:bg-accent-hover transition-colors">
-            บันทึก
+          <button
+            type="submit"
+            disabled={busy}
+            className="h-9 px-4 rounded-md bg-accent text-text-onaccent font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:pointer-events-none"
+          >
+            {busy ? "กำลังบันทึก…" : "บันทึก"}
           </button>
         </div>
       </form>
