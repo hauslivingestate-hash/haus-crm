@@ -116,11 +116,15 @@ function SidebarBody() {
 }
 
 function ViewAsSwitcher() {
-  const { users, roles, viewerId, setViewerId, currentUser, isAuthenticated, canViewAs } =
+  const { users, roles, viewerId, setViewerId, currentUser, isAuthenticated, canViewAs, can } =
     useRbac();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [signingOut, setSigningOut] = React.useState(false);
+  // Self-service password change is now CEO/HR/system_admin only (Ben, 2026-08-08) —
+  // everyone else asks one of them via Settings → บัญชีผู้ใช้. Sign-out below is unaffected,
+  // it's a separate control either way.
+  const canManageOwnAccount = can("people.manage_accounts");
 
   const roleNames = (roleIds: string[]) =>
     roleIds.length
@@ -137,20 +141,29 @@ function ViewAsSwitcher() {
   // Signed in without impersonation rights → who you are, plus the two things you can do
   // with your own account.
   if (isAuthenticated && !canViewAs) {
+    const identity = (
+      <>
+        <Avatar name={currentUser.name} tone="crimson" />
+        <span className="leading-tight min-w-0 flex-1">
+          <span className="block text-small text-text truncate">{currentUser.name}</span>
+          <span className="block text-label text-text-subtle truncate">
+            {roleNames(currentUser.roleIds)}
+          </span>
+        </span>
+      </>
+    );
     return (
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
-        <Link
-          href="/account"
-          className="flex items-center gap-2 min-w-0 flex-1 rounded-md p-1.5 -m-1.5 hover:bg-surface-hover transition-colors"
-        >
-          <Avatar name={currentUser.name} tone="crimson" />
-          <span className="leading-tight min-w-0 flex-1">
-            <span className="block text-small text-text truncate">{currentUser.name}</span>
-            <span className="block text-label text-text-subtle truncate">
-              {roleNames(currentUser.roleIds)}
-            </span>
-          </span>
-        </Link>
+        {canManageOwnAccount ? (
+          <Link
+            href="/account"
+            className="flex items-center gap-2 min-w-0 flex-1 rounded-md p-1.5 -m-1.5 hover:bg-surface-hover transition-colors"
+          >
+            {identity}
+          </Link>
+        ) : (
+          <div className="flex items-center gap-2 min-w-0 flex-1 p-1.5 -m-1.5">{identity}</div>
+        )}
         <button
           onClick={signOut}
           disabled={signingOut}
@@ -190,14 +203,16 @@ function ViewAsSwitcher() {
             {/* Signed-in admins get a way back to their own identity, and a way out. */}
             {isAuthenticated && (
               <>
-                <Link
-                  href="/account"
-                  onClick={() => setOpen(false)}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-hover transition-colors"
-                >
-                  <KeyRound size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
-                  <span className="text-small text-text">บัญชีของฉัน</span>
-                </Link>
+                {canManageOwnAccount && (
+                  <Link
+                    href="/account"
+                    onClick={() => setOpen(false)}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-hover transition-colors"
+                  >
+                    <KeyRound size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
+                    <span className="text-small text-text">บัญชีของฉัน</span>
+                  </Link>
+                )}
                 <button
                   onClick={() => {
                     setViewerId(SELF_ID);
