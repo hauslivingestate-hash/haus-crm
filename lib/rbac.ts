@@ -133,6 +133,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         label: "อนุมัติ / จัดการวันลา",
         hint: "ดูใบลาทุกคนและอนุมัติ — CEO / HR",
       },
+      {
+        key: "people.manage_accounts",
+        label: "จัดการบัญชีผู้ใช้ (สร้าง/ตั้งรหัสผ่าน)",
+        hint: "สร้างบัญชี login ใหม่ + รีเซ็ตรหัสผ่าน — เข้าถึงบัญชี auth โดยตรง CEO / HR เท่านั้น",
+      },
     ],
   },
   {
@@ -359,6 +364,7 @@ export const SEED_ROLES: Role[] = [
       "performance.view_team",
       "leave.request",
       "leave.manage", // HR owns the approval queue
+      "people.manage_accounts", // create/reset logins — CEO/HR only (Ben, 2026-08-08)
     ],
   },
 ];

@@ -109,7 +109,12 @@ export const NAV: NavGroup[] = [
     admin: true,
     bottom: true,
     items: [
-      { href: "/settings", label: "ตั้งค่า", icon: Settings, perm: ["roles.manage", "masterdata.govern", "reference.manage", "teams.manage"] },
+      {
+        href: "/settings",
+        label: "ตั้งค่า",
+        icon: Settings,
+        perm: ["roles.manage", "masterdata.govern", "reference.manage", "teams.manage", "people.manage_accounts"],
+      },
     ],
   },
 ];

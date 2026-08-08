@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ShieldCheck, Users, Map, Home, ListChecks, Activity, Target, Info, Lock, ClipboardList, Megaphone, Medal, Tags, CalendarOff } from "lucide-react";
+import { ShieldCheck, Users, Map, Home, ListChecks, Activity, Target, Info, Lock, ClipboardList, Megaphone, Medal, Tags, CalendarOff, KeyRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { type Zone } from "@/lib/zones";
 import { RolesManager } from "@/components/RolesManager";
@@ -18,11 +18,13 @@ import { ChecklistTemplatesManager } from "@/components/ChecklistTemplatesManage
 import { CopyTemplateEditor } from "@/components/CopyTemplateEditor";
 import { SalesRankManager } from "@/components/SalesRankManager";
 import { LeaveAllowanceManager } from "@/components/LeaveAllowanceManager";
+import { AccountsManager } from "@/components/AccountsManager";
+import type { AccountRow } from "@/lib/accounts";
 import { useRbac } from "@/components/RbacProvider";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 
-type SectionKey = "roles" | "teams" | "zones" | "property_types" | "lead_fields" | "lead_tags" | "action_types" | "kpi" | "ranks" | "checklists" | "copy" | "leave";
+type SectionKey = "roles" | "teams" | "zones" | "property_types" | "lead_fields" | "lead_tags" | "action_types" | "kpi" | "ranks" | "checklists" | "copy" | "leave" | "accounts";
 // Each section is gated to a permission — the sub-nav only shows what the viewer can govern,
 // so Listing Support (reference.manage) sees the reference lists but not roles/zones/KPI.
 type Section = { key: SectionKey; label: string; icon: LucideIcon; perm: string };
@@ -46,15 +48,19 @@ const SECTIONS: Section[] = [
   // Leave quota — gated leave.manage (CEO/HR), NOT masterdata.govern: it is an HR policy
   // number, not part of the CRM vocabulary.
   { key: "leave", label: "โควตาวันลา", icon: CalendarOff, perm: "leave.manage" },
+  // Reaches auth.users directly via service_role — CEO / HR / system_admin only.
+  { key: "accounts", label: "บัญชีผู้ใช้", icon: KeyRound, perm: "people.manage_accounts" },
 ];
 
 export function SettingsView({
   zones,
   propertyTypeUsage,
+  accounts,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
   propertyTypeUsage?: Record<string, number>;
+  accounts: AccountRow[];
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
@@ -209,6 +215,19 @@ export function SettingsView({
               <span className="text-text">โหมดออกแบบ: การเปลี่ยนแปลงยังไม่ถูกบันทึก</span>
             </Note>
             <SalesRankManager />
+          </>
+        )}
+        {section === "accounts" && (
+          <>
+            <SectionHeader
+              title="บัญชีผู้ใช้"
+              desc="สร้างบัญชี login ใหม่ให้พนักงาน หรือรีเซ็ตรหัสผ่านให้คนที่ล็อกอินไม่ได้ · CEO / HR เท่านั้น"
+            />
+            <Note>
+              การเปลี่ยนแปลงตรงนี้เขียนลง <span className="text-text">auth.users</span> จริงทันที
+              — บอกพนักงานให้เปลี่ยนรหัสผ่านเองที่หน้า “บัญชีของฉัน” หลัง login ครั้งแรก
+            </Note>
+            <AccountsManager accounts={accounts} />
           </>
         )}
       </div>
