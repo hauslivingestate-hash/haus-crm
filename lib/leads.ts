@@ -124,7 +124,10 @@ export interface LeadProcess {
   updatedBy?: string;
   updatedAt?: string;
 }
-export const COMPLAINT_STATUSES = ["เปิด", "กำลังแก้ไข", "ปิด"];
+// Matches the `complain_status` lookup table exactly (FK, on update cascade) — same
+// convention as lead_status/potential elsewhere in the app: shown as the raw DB value,
+// no separate Thai translation layer.
+export const COMPLAINT_STATUSES = ["Open", "In Progress", "Resolved", "Closed"];
 
 // Derived: has the assigned sale contacted the customer? True once the lead moves past the
 // "Lead" stage (Call / Follow / Appoint / Show / Nego / Close / Win).

@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { X, Check } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { X, Check, AlertCircle } from "lucide-react";
 import type { CrmRow } from "@/lib/queries";
 import { Input } from "@/components/ui/Input";
 import { STAGES } from "@/lib/pipeline";
 import { LEAD_POTENTIALS } from "@/lib/leads";
+import { updateLead } from "@/lib/mutations/leads";
 import { cn } from "@/lib/cn";
 
 const LEAD_TYPES = ["Buyer - Buy", "Buyer - Rent", "Co-Agent"];
@@ -13,19 +15,28 @@ const LEAD_STATUSES = ["Active", "Win", "Lose", "Reject"];
 const field =
   "w-full h-9 px-3 rounded-md border border-border-strong bg-surface text-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
-// Edit an existing lead's core fields. Design-first: Save is a STUB (console.log) — leads are
-// read-only Supabase in this build; wire to an update on main_6_buyer_crm. Follows the app's
-// bottom-sheet form pattern.
+// Edit an existing lead's core fields. Follows the app's bottom-sheet form pattern — same
+// busy/error/done shape as ListingEditSheet.tsx.
 export function LeadEditSheet({ open, lead, onClose }: { open: boolean; lead: CrmRow; onClose: () => void }) {
+  const router = useRouter();
   const [f, setF] = React.useState(() => draftOf(lead));
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const [done, setDone] = React.useState(false);
 
+  // Reset on OPEN only, not on every `lead` prop update while already open — router.refresh()
+  // after a successful save flows a fresher `lead` back down, and keying this on the object
+  // itself would wipe the just-set "บันทึกแล้ว" state (see ListingEditSheet.tsx for the bug
+  // this avoids).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (open) {
       setF(draftOf(lead));
+      setBusy(false);
+      setError(null);
       setDone(false);
     }
-  }, [open, lead]);
+  }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -42,12 +53,28 @@ export function LeadEditSheet({ open, lead, onClose }: { open: boolean; lead: Cr
   if (!open) return null;
   const set = (patch: Partial<ReturnType<typeof draftOf>>) => setF((x) => ({ ...x, ...patch }));
 
-  const submit = (e: React.FormEvent) => {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    // eslint-disable-next-line no-console
-    console.log("[stub] update lead (no write):", { lead_id: lead.lead_id, ...f });
+    const original = draftOf(lead);
+    const patch: Record<string, string> = {};
+    for (const k of Object.keys(f)) {
+      if (f[k as keyof typeof f] !== original[k as keyof typeof original]) {
+        patch[k] = f[k as keyof typeof f];
+      }
+    }
+
+    setBusy(true);
+    setError(null);
+    const result = await updateLead(lead.lead_id, patch);
+    setBusy(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     setDone(true);
-  };
+    router.refresh();
+  }
 
   return (
     <div onClick={onClose} className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">
@@ -99,14 +126,22 @@ export function LeadEditSheet({ open, lead, onClose }: { open: boolean; lead: Cr
           </Field>
         </div>
 
-        {done && (
-          <div className="rounded-md px-3 py-2 text-small border bg-green-bg text-green border-green/30 inline-flex items-center gap-1.5">
-            <Check size={14} strokeWidth={2} /> บันทึกแล้ว (ตัวอย่าง — ยังไม่เชื่อมฐานข้อมูล)
+        {error ? (
+          <div className="rounded-md px-3 py-2 text-small border bg-red-bg text-red border-red/30 inline-flex items-center gap-1.5">
+            <AlertCircle size={14} strokeWidth={2} /> {error}
           </div>
-        )}
+        ) : done ? (
+          <div className="rounded-md px-3 py-2 text-small border bg-green-bg text-green border-green/30 inline-flex items-center gap-1.5">
+            <Check size={14} strokeWidth={2} /> บันทึกแล้ว
+          </div>
+        ) : null}
 
-        <button type="submit" className="h-10 rounded-md bg-accent text-text-onaccent font-medium hover:bg-accent-hover transition-colors mt-1">
-          บันทึก
+        <button
+          type="submit"
+          disabled={busy}
+          className="h-10 rounded-md bg-accent text-text-onaccent font-medium hover:bg-accent-hover transition-colors mt-1 disabled:opacity-50 disabled:pointer-events-none"
+        >
+          {busy ? "กำลังบันทึก…" : "บันทึก"}
         </button>
       </form>
     </div>

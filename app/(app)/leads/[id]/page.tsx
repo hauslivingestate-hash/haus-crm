@@ -115,7 +115,13 @@ export default async function LeadDetailPage({
           {/* Sidebar (real data) */}
           <div className="flex flex-col gap-4">
             {/* Admin follow-up (recheck + complaint) — only shows for admin/leadership */}
-            <LeadAdminPanel leadId={lead.lead_id} stage={lead.pipeline_stage} />
+            <LeadAdminPanel
+              leadId={lead.lead_id}
+              stage={lead.pipeline_stage}
+              customerComplain={lead.customer_complain}
+              complainStatus={lead.complain_status}
+              complainRemark={lead.complain_remark}
+            />
 
             <Card>
               <CardHeader>
@@ -149,7 +155,7 @@ export default async function LeadDetailPage({
                 {/* Group tag — CEO-governed, one per lead. Shares the same store as the
                     leads table, so editing in either place stays in sync. */}
                 <Row label="แท็ก">
-                  <LeadTagRow leadId={lead.lead_id} />
+                  <LeadTagRow leadId={lead.lead_id} tagId={lead.tag_id} />
                 </Row>
                 <Row label="ผู้ดูแล">
                   {lead.sale_id ? (

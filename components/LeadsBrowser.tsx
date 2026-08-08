@@ -16,7 +16,7 @@ import { GradeChip } from "@/components/ui/GradeChip";
 import { STAGES, stageMeta } from "@/lib/pipeline";
 import { findTag, TAG_TONE_CLASS, type LeadTag } from "@/lib/tags";
 import { useMasterData } from "@/components/MasterDataProvider";
-import { useNewLeads } from "@/components/NewLeadsProvider";
+import { setLeadTag } from "@/lib/mutations/leads";
 import { formatBaht, formatDate } from "@/lib/format";
 import { leadStatusDot } from "@/lib/status";
 import { compareValues, orderIndex } from "@/lib/sort";
@@ -118,15 +118,29 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
   }, []);
 
   // Lead group tag — ONE per lead (CEO: "ติดได้คนเดียว"), chosen from the CEO-governed list
-  // in Settings → แท็ก Lead. Sales cannot create tags. Assignments live in the shared
-  // per-lead store so this table and the lead DETAIL page always agree.
+  // in Settings → แท็ก Lead. Sales cannot create tags. `tag_id` comes from the server-fetched
+  // `crm` prop (main_6_buyer_crm.tag_id) — `tagOverride` is a local optimistic layer only,
+  // reconciled by router.refresh() after every pick, so a picked tag shows instantly without
+  // waiting on the round trip, and the table + lead detail page never disagree for long.
   const { leadTags } = useMasterData();
-  const { tagOf: tagIdOf, setTag } = useNewLeads();
+  const [tagOverride, setTagOverride] = React.useState<Record<string, string | null>>({});
   const [openLead, setOpenLead] = React.useState<{ id: string; rect: DOMRect } | null>(null);
+
+  const effectiveTagId = (c: CrmRow): string | null =>
+    c.lead_id in tagOverride ? tagOverride[c.lead_id] : c.tag_id;
 
   /** The lead's tag, resolved against the LIVE governed list. A tag deleted in Settings
    *  resolves to null here, so the table never shows a tag that no longer exists. */
-  const tagOf = (id: string): LeadTag | null => findTag(leadTags, tagIdOf(id));
+  const tagOf = (c: CrmRow): LeadTag | null => findTag(leadTags, effectiveTagId(c));
+
+  async function pickTag(leadId: string, tagId: string | null) {
+    setOpenLead(null);
+    const prev = effectiveTagId(crm.find((c) => c.lead_id === leadId) ?? { lead_id: leadId, tag_id: null } as CrmRow);
+    setTagOverride((m) => ({ ...m, [leadId]: tagId }));
+    const result = await setLeadTag(leadId, tagId);
+    if (!result.ok) setTagOverride((m) => ({ ...m, [leadId]: prev }));
+    router.refresh();
+  }
 
   const stageOptions = [
     { key: "all", label: "ทั้งหมด", count: crm.length },
@@ -144,7 +158,7 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
       (c) =>
         !query ||
         [c.lead_name, c.phone, c.lead_id].some((v) => v?.toLowerCase().includes(query)) ||
-        (tagOf(c.lead_id)?.label.toLowerCase().includes(query) ?? false)
+        (tagOf(c)?.label.toLowerCase().includes(query) ?? false)
     );
 
   const sortFn = SORT_VALUE[sort.key];
@@ -158,7 +172,7 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
     const byTag = new Map<string, CrmRow[]>();
     const untagged: CrmRow[] = [];
     for (const c of rows) {
-      const t = tagOf(c.lead_id);
+      const t = tagOf(c);
       if (!t) untagged.push(c);
       else byTag.set(t.id, [...(byTag.get(t.id) ?? []), c]);
     }
@@ -170,7 +184,7 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
     if (untagged.length) out.push({ tag: null, rows: untagged });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupBy, rows, tagIdOf, leadTags]);
+  }, [groupBy, rows, tagOverride, leadTags]);
 
   // ── header + cell renderers keyed by column id ──────────────────────────────
   const headerFor = (colId: ColId) => {
@@ -219,7 +233,7 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
       case "tags": {
         // One tag max — so the cell is a single chip (tap to change) or an empty picker
         // button, never a growing chip list.
-        const tag = tagOf(c.lead_id);
+        const tag = tagOf(c);
         return (
           <TD key={colId} onClick={(e) => e.stopPropagation()} className="cursor-default">
             <button
@@ -320,8 +334,8 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
         <TagPopover
           rect={openLead.rect}
           tags={leadTags}
-          selected={tagIdOf(openLead.id)}
-          onPick={(t) => setTag(openLead.id, t)}
+          selected={effectiveTagId(crm.find((c) => c.lead_id === openLead.id) ?? ({ lead_id: openLead.id, tag_id: null } as CrmRow))}
+          onPick={(t) => pickTag(openLead.id, t)}
           onClose={() => setOpenLead(null)}
         />
       )}
