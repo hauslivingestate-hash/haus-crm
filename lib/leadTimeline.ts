@@ -46,8 +46,12 @@ export function sampleTimeline(leadId: string, sale: string, dateReceived: strin
   ];
   let day = 1;
   for (let i = 0; i < count; i++) {
-    const s = SCRIPT[(h >> (i + 1)) % SCRIPT.length];
-    day += 1 + ((h >> (i * 2)) % 3);
+    // UNSIGNED shifts (>>>). `hash` returns a full unsigned 32-bit value, so a signed `>>`
+    // keeps the sign bit for any hash >= 2^31 — the index then goes negative, SCRIPT[-n] is
+    // undefined, and reading `.kind` off it crashed the lead page for ~half of all leads.
+    // Same bug, same cause as lib/tags.ts:69 (fixed 2026-08-05); this copy was missed then.
+    const s = SCRIPT[(h >>> (i + 1)) % SCRIPT.length];
+    day += 1 + ((h >>> (i * 2)) % 3);
     events.push({ id: `${leadId}-a${i}`, kind: s.kind, at: addDays(base, day), by: sale || "—", text: s.text });
   }
   return events;
