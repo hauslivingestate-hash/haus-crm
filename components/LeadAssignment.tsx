@@ -14,7 +14,7 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { StatusBadge, Dot } from "@/components/ui/Dot";
-import { assignableAgents, defaultAssignee, sourceLabel } from "@/lib/leads";
+import { assignableAgents, defaultAssignee } from "@/lib/leads";
 import { useNewLeads } from "@/components/NewLeadsProvider";
 import { useRbac } from "@/components/RbacProvider";
 import { formatBaht, formatDate } from "@/lib/format";
@@ -56,7 +56,7 @@ type FilterCol = "type" | "source" | "stage" | "status" | "assigned";
 export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
   const router = useRouter();
   const agents = assignableAgents();
-  const { newLeads, assignments, assign } = useNewLeads();
+  const { assignments, assign } = useNewLeads();
   const { currentUser } = useRbac();
   const [q, setQ] = React.useState("");
   const [quick, setQuick] = React.useState<"all" | "unassigned">("all");
@@ -66,20 +66,6 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
   const [page, setPage] = React.useState(1);
 
   const rows: Row[] = React.useMemo(() => {
-    const fromNew: Row[] = newLeads.map((l) => ({
-      lead_id: l.lead_id,
-      lead_name: l.lead_name,
-      phone: l.phone,
-      type: l.role === "owner" ? "เจ้าของ" : "ผู้ซื้อ/เช่า",
-      source: sourceLabel(l.source),
-      listing_code: l.listing_code || null,
-      budgetBaht: l.budget ?? null,
-      stage: "Lead",
-      status: "Active",
-      originalSale: l.sale_id ?? "",
-      date: l.date_received,
-      isNew: true,
-    }));
     const fromReal: Row[] = leads.map((l) => ({
       lead_id: l.lead_id,
       lead_name: l.lead_name ?? l.lead_id,
@@ -94,8 +80,8 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
       date: l.date_received,
       isNew: false,
     }));
-    return [...fromNew, ...fromReal];
-  }, [newLeads, leads]);
+    return fromReal;
+  }, [leads]);
 
   const effectiveSale = React.useCallback(
     (r: Row) => assignments[r.lead_id] ?? r.originalSale,

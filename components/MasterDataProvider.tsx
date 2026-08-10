@@ -40,27 +40,65 @@ interface MasterDataValue {
    *  so it is a LeadTag list rather than a plain RefItem list. */
   leadTags: LeadTag[];
   setLeadTags: React.Dispatch<React.SetStateAction<LeadTag[]>>;
+  /** DB-only vocabularies the intake form writes as FKs. No Settings manager yet, so these
+   *  are read-only — an empty list means the lookups weren't loaded (design mode). */
+  leadTypes: RefItem[];
+  purposes: RefItem[];
+  sellReasons: RefItem[];
+  zones: RefItem[];
 }
 
 const Ctx = React.createContext<MasterDataValue | null>(null);
 
-export function MasterDataProvider({ children }: { children: React.ReactNode }) {
+/** Server-loaded vocabularies (lib/lookups.ts). Anything omitted falls back to the seed. */
+export interface MasterDataInitial {
+  propertyTypes?: RefItem[];
+  sources?: RefItem[];
+  contactBys?: RefItem[];
+  genders?: RefItem[];
+  nationalities?: RefItem[];
+  leadTypes?: RefItem[];
+  purposes?: RefItem[];
+  sellReasons?: RefItem[];
+  zones?: RefItem[];
+}
+
+export function MasterDataProvider({
+  children,
+  initial,
+}: {
+  children: React.ReactNode;
+  initial?: MasterDataInitial;
+}) {
+  // Prefer the real lookup rows; the seeds remain only as a fallback for the (design-mode)
+  // case where nothing was passed in. The seeds are NOT interchangeable with the DB values —
+  // their slug ids would fail the FK on write — so a non-empty server list always wins.
+  const seeded = <T,>(fromDb: T[] | undefined, fallback: () => T[]) =>
+    fromDb && fromDb.length ? fromDb : fallback();
+
   const [propertyTypes, setPropertyTypes] = React.useState<RefItem[]>(() =>
-    PROPERTY_TYPES.map((s) => ({ id: s, label: s }))
+    seeded(initial?.propertyTypes, () => PROPERTY_TYPES.map((s) => ({ id: s, label: s })))
   );
   const [sources, setSources] = React.useState<RefItem[]>(() =>
-    LEAD_SOURCES.map((s) => ({ id: s.id, label: s.label }))
+    seeded(initial?.sources, () => LEAD_SOURCES.map((s) => ({ id: s.id, label: s.label })))
   );
   const [contactBys, setContactBys] = React.useState<RefItem[]>(() =>
-    CONTACT_BYS.map((c) => ({ id: c.id, label: c.label }))
+    seeded(initial?.contactBys, () => CONTACT_BYS.map((c) => ({ id: c.id, label: c.label })))
   );
   const [genders, setGenders] = React.useState<RefItem[]>(() =>
-    GENDERS.map((g) => ({ id: g.id, label: g.label }))
+    seeded(initial?.genders, () => GENDERS.map((g) => ({ id: g.id, label: g.label })))
   );
   const [nationalities, setNationalities] = React.useState<RefItem[]>(() =>
-    NATIONALITIES.map((n) => ({ id: n, label: n }))
+    seeded(initial?.nationalities, () => NATIONALITIES.map((n) => ({ id: n, label: n })))
   );
   const [leadTags, setLeadTags] = React.useState<LeadTag[]>(() => [...SEED_LEAD_TAGS]);
+
+  // Read-only here: these three exist purely so the intake form can offer DB-valid options.
+  // No Settings manager edits them yet, so they need no setter.
+  const leadTypes = initial?.leadTypes ?? [];
+  const purposes = initial?.purposes ?? [];
+  const sellReasons = initial?.sellReasons ?? [];
+  const zones = initial?.zones ?? [];
 
   const value: MasterDataValue = {
     propertyTypes,
@@ -75,6 +113,10 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
     setNationalities,
     leadTags,
     setLeadTags,
+    leadTypes,
+    purposes,
+    sellReasons,
+    zones,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

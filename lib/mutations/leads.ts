@@ -186,3 +186,67 @@ export async function setLeadComplaint(
   revalidateLead(leadId);
   return { ok: true };
 }
+
+// ── Intake (Phase 5 #3) ──────────────────────────────────────────────────────
+
+/** What the intake form collects. Values are already DB vocabulary, not the old seed slugs. */
+export interface LeadDraftInput {
+  lead_name: string;
+  phone: string;
+  line_id?: string;
+  lead_type?: string;
+  marketing_channel?: string;
+  contact_by?: string;
+  gender?: string;
+  nationality?: string;
+  contact_date?: string;
+  contact_time?: string;
+  listing_code?: string;
+  budget?: string;
+  sale_id?: string;
+  interest_zone?: string;
+  interest_property_type?: string;
+  purpose?: string;
+  sell_reason?: string;
+  remark?: string;
+}
+
+export async function createLead(
+  draft: LeadDraftInput
+): Promise<{ ok: true; leadId: string } | { ok: false; error: string }> {
+  const auth = await requireAuth();
+  if (!auth) return { ok: false, error: "ไม่พบสิทธิ์ผู้ใช้ กรุณาเข้าสู่ระบบใหม่" };
+  const perms = new Set(auth.permissions);
+  if (!(perms.has("leads.create") || perms.has("roles.manage"))) {
+    return { ok: false, error: "ไม่มีสิทธิ์เพิ่มลีด" };
+  }
+  if (!draft.lead_name?.trim()) return { ok: false, error: "กรุณากรอกชื่อลูกค้า" };
+
+  // Only whoever may assign gets to file a lead under someone else's name; for everyone
+  // else it lands on themselves regardless of what the client sent.
+  const canAssign = perms.has("leads.assign") || perms.has("roles.manage");
+  const saleId = canAssign ? draft.sale_id ?? "" : auth.employeeCode;
+
+  const supabase = await createClient();
+  // create_lead writes main_5 (whose trigger mints the id) and main_6 in one transaction and
+  // hands back the id — a plain insert can't, because RETURNING is checked against a SELECT
+  // policy that hides rows assigned to other people. See db/rls_policies.sql §13.
+  const { data: leadId, error } = await supabase.rpc("create_lead", {
+    p: { ...draft, sale_id: saleId },
+  });
+  if (error || !leadId) {
+    return { ok: false, error: error?.message ?? "เพิ่มลีดไม่สำเร็จ" };
+  }
+
+  await writeAudit(supabase, auth.employeeCode, leadId as string, "create", {}, {
+    lead_name: draft.lead_name.trim(),
+    phone: draft.phone ?? null,
+    lead_type: draft.lead_type ?? null,
+    sale_id: saleId || null,
+    listing_code: draft.listing_code || null,
+  });
+
+  revalidatePath("/leads");
+  revalidatePath("/assign");
+  return { ok: true, leadId: leadId as string };
+}

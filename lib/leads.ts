@@ -9,7 +9,13 @@
 
 import { listEmployees, type Employee } from "@/lib/team";
 
-/** Stubbed intake date (design-stable). Swap for a real clock at wiring. */
+/** Today, as YYYY-MM-DD in local time — the default intake date. */
+export function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Design-phase constant, still used by the in-memory assignment history (Phase 5 #4). */
 export const INTAKE_TODAY = "2026-07-20";
 
 // ── Marketing Channel (where the lead came from) — matches the real "Lead Submission" form's
@@ -90,9 +96,12 @@ export interface OwnerRequirements {
 }
 export type Requirements = BuyerRequirements & OwnerRequirements;
 
+// The intake form's working draft. Every vocabulary field below holds the DB's own value
+// (an FK target), NOT a slug — see lib/lookups.ts.
 export interface NewLead {
   lead_id: string;
-  role: LeadRole; // buyer | owner (drives lead_type at wiring)
+  role: LeadRole; // buyer | owner — a UI axis that filters lead_type + swaps the requirements
+  lead_type?: string; // 'Buyer - Buy' | 'Owner - Sale' | … (lead_type lookup)
   lead_name: string;
   phone: string;
   lineId?: string; // LINE ID — a core contact field in the Lead Submission form
@@ -105,7 +114,8 @@ export interface NewLead {
   listing_code?: string; // interested / related listing
   budget?: number; // buyer budget or owner asking price (฿)
   potential?: string; // A / B / C / New Lead
-  sale_id?: string; // assigned sales (nickname); "" = unassigned
+  /** Assigned sales — an EMPLOYEE CODE (S-004), not a nickname; "" = unassigned. */
+  sale_id?: string;
   requirements: Requirements;
   remark?: string;
   // provenance
@@ -171,26 +181,27 @@ export function assignableAgents(): Employee[] {
     .sort((a, b) => SELLING_NICKNAMES.indexOf(a.nickname) - SELLING_NICKNAMES.indexOf(b.nickname));
 }
 
-// Client-only id generator for optimistic new leads (design build — real id comes from DB).
-let _seq = 0;
-export function nextLeadId(): string {
-  _seq += 1;
-  return `NEW-${String(_seq).padStart(3, "0")}`;
-}
-
-/** Blank draft for a fresh intake. */
+/**
+ * Blank draft for a fresh intake.
+ *
+ * The vocabulary fields start EMPTY rather than pre-picked: their values come from the DB
+ * lookups at render time, and guessing a default here is how the old seed slugs
+ * ("ddproperty", "line_oa", "ไทย") ended up in a form that could never write them.
+ */
 export function emptyLead(createdBy: string, role: LeadRole = "buyer"): NewLead {
+  const today = todayISO();
   return {
     lead_id: "",
     role,
+    lead_type: "",
     lead_name: "",
     phone: "",
     lineId: "",
-    source: "ddproperty",
-    contactBy: "line_oa",
+    source: "",
+    contactBy: "",
     gender: "",
-    nationality: "ไทย",
-    contactDate: INTAKE_TODAY,
+    nationality: "",
+    contactDate: today,
     contactTime: "",
     listing_code: "",
     budget: undefined,
@@ -199,7 +210,7 @@ export function emptyLead(createdBy: string, role: LeadRole = "buyer"): NewLead 
     requirements: {},
     remark: "",
     created_by: createdBy,
-    date_received: INTAKE_TODAY,
-    intake_at: `${INTAKE_TODAY}T00:00:00+07:00`,
+    date_received: today,
+    intake_at: `${today}T00:00:00+07:00`,
   };
 }

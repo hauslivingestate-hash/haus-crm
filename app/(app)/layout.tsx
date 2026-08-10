@@ -12,6 +12,7 @@ import { LeaveProvider } from "@/components/LeaveProvider";
 import { LeadIntakeFab } from "@/components/LeadIntakeFab";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth";
+import { getLookups, getAssignableAgents } from "@/lib/lookups";
 import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
 
 // The SIGNED-IN application shell. Everything inside this route group gets the sidebar, the
@@ -27,6 +28,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const auth = AUTH_ENFORCED ? await getAuthContext() : null;
   if (AUTH_ENFORCED && !auth) redirect("/login");
 
+  // Reference vocabularies + assignable agents come from the DB so the intake form writes
+  // FK-valid values. Without a session RLS returns nothing, so the providers keep their
+  // seeds — which is right for design mode, where nothing is written anyway.
+  const [lookups, agents] = auth
+    ? await Promise.all([getLookups(), getAssignableAgents()])
+    : [undefined, []];
+
   return (
     <RbacProvider
       session={
@@ -40,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       }
     >
       {/* Inside RbacProvider — feeds/leads are scoped to the current viewer. */}
-      <MasterDataProvider>
+      <MasterDataProvider initial={lookups}>
         <ChecklistProvider>
           <CopyTemplatesProvider>
             <ProbationProvider>
@@ -59,7 +67,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                       </div>
                       {/* Lead intake FAB — gated to leads.create (admin/back-office). The
                           only remaining FAB (CEO: "FAB เหลือแค่เพิ่มลีด"). */}
-                      <LeadIntakeFab />
+                      <LeadIntakeFab agents={agents} />
                     </MobileNavProvider>
                     </LeaveProvider>
                   </ActivityProvider>

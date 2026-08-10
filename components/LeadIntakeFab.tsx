@@ -3,8 +3,7 @@
 import * as React from "react";
 import { UserPlus } from "lucide-react";
 import { useRbac } from "@/components/RbacProvider";
-import { useNewLeads } from "@/components/NewLeadsProvider";
-import { LeadForm } from "@/components/LeadForm";
+import { LeadForm, type AgentOption } from "@/components/LeadForm";
 import { cn } from "@/lib/cn";
 
 // Lead-intake FAB — for whoever receives leads across channels and logs them. Gated to
@@ -13,9 +12,8 @@ import { cn } from "@/lib/cn";
 // This is now the ONLY FAB (CEO feedback R1: "FAB เหลือแค่เพิ่มลีด"). The activity-logger
 // FAB it used to stack above was deleted; activity is recorded by completing a Daily-Plan
 // task instead. Hence the fixed bottom-5 — there is nothing left to avoid overlapping.
-export function LeadIntakeFab() {
+export function LeadIntakeFab({ agents }: { agents: AgentOption[] }) {
   const { can, currentUser } = useRbac();
-  const { addLead } = useNewLeads();
   const [open, setOpen] = React.useState(false);
 
   if (!can("leads.create")) return null;
@@ -32,7 +30,7 @@ export function LeadIntakeFab() {
       >
         <UserPlus size={18} strokeWidth={2.25} /> เพิ่มลีด
       </button>
-      <LeadForm open={open} mode={mode} createdBy={currentUser.name} onClose={() => setOpen(false)} onCreated={addLead} />
+      <LeadForm open={open} mode={mode} createdBy={currentUser.name} agents={agents} onClose={() => setOpen(false)} />
     </>
   );
 }
