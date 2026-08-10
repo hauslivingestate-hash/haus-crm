@@ -12,6 +12,8 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { GradeChip } from "@/components/ui/GradeChip";
 import { getLead } from "@/lib/queries";
+import { getAssignableAgents } from "@/lib/lookups";
+import { getAssignHistory } from "@/lib/leadHistory";
 import { formatBaht, formatDate } from "@/lib/format";
 import { leadStatusDot } from "@/lib/status";
 import { stageMeta } from "@/lib/pipeline";
@@ -24,6 +26,12 @@ export default async function LeadDetailPage({
   const { id } = await params;
   const lead = await getLead(id);
   if (!lead) notFound();
+
+  const [agents, assignHistory] = await Promise.all([getAssignableAgents(), getAssignHistory(id)]);
+  // sale_id is an employee code; people read names.
+  const saleNickname = lead.sale_id
+    ? agents.find((a) => a.employeeCode === lead.sale_id)?.nickname ?? lead.sale_id
+    : "";
 
   const stg = stageMeta(lead.pipeline_stage);
   const showClosing =
@@ -52,7 +60,8 @@ export default async function LeadDetailPage({
               leadId={lead.lead_id}
               sale={lead.sale_id ?? ""}
               dateReceived={lead.date_received}
-              listingCode={lead.listing_code}
+              agents={agents}
+              assignHistory={assignHistory.entries}
             />
 
             {/* Interested listing (real) */}
@@ -160,8 +169,8 @@ export default async function LeadDetailPage({
                 <Row label="ผู้ดูแล">
                   {lead.sale_id ? (
                     <span className="inline-flex items-center gap-2">
-                      <Avatar name={lead.sale_id} tone="crimson" className="h-5 w-5" />
-                      <span className="num text-text-muted">{lead.sale_id}</span>
+                      <Avatar name={saleNickname} tone="crimson" className="h-5 w-5" />
+                      <span className="text-text-muted">{saleNickname}</span>
                     </span>
                   ) : (
                     <span className="text-text-subtle">—</span>

@@ -14,8 +14,8 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { StatusBadge, Dot } from "@/components/ui/Dot";
-import { assignableAgents, defaultAssignee } from "@/lib/leads";
-import { useNewLeads } from "@/components/NewLeadsProvider";
+import { assignLead } from "@/lib/mutations/leads";
+import type { AgentOption } from "@/components/LeadForm";
 import { useRbac } from "@/components/RbacProvider";
 import { formatBaht, formatDate } from "@/lib/format";
 import { leadStatusDot } from "@/lib/status";
@@ -24,21 +24,19 @@ import { compareValues, orderIndex, type SortDir } from "@/lib/sort";
 import { useSort } from "@/components/ui/SortHeader";
 import { cn } from "@/lib/cn";
 
-// Unified row for the admin management table — real leads (main_6_buyer_crm) + optimistic
-// new leads from the intake FAB, sharing the provider's assignment overrides + audit trail.
+// Row for the admin management table, straight from main_6_buyer_crm.
 interface Row {
   lead_id: string;
   lead_name: string;
   phone: string | null;
   type: string; // ประเภท label
-  source: string | null; // ช่องทาง label
+  source: string | null; // ช่องทาง (marketing_channel)
   listing_code: string | null;
   budgetBaht: number | null;
   stage: string | null;
   status: string | null;
-  originalSale: string; // pre-override owner
+  originalSale: string; // employee_code as stored
   date: string | null;
-  isNew: boolean;
 }
 
 const STAGE_KEYS: string[] = STAGES.map((s) => s.key);
@@ -53,11 +51,31 @@ type FilterCol = "type" | "source" | "stage" | "status" | "assigned";
 // (design build reads main_6_buyer_crm read-only + merges optimistic new leads). At real scale
 // (600 leads/mo → 10k+/yr) move these to the query: Supabase .ilike()/.eq() filters, .order()
 // sort, .range() pagination, count:"exact" for the total. The UI/controls stay identical.
-export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
+export function LeadAssignment({ leads, agents }: { leads: CrmRow[]; agents: AgentOption[] }) {
   const router = useRouter();
-  const agents = assignableAgents();
-  const { assignments, assign } = useNewLeads();
-  const { currentUser } = useRbac();
+  const { can } = useRbac();
+  const canAssign = can("leads.assign");
+  // Optimistic layer over the server rows so the select reflects the pick immediately;
+  // router.refresh() reconciles, and a failed write rolls the row back.
+  const [assignments, setAssignments] = React.useState<Record<string, string>>({});
+  const [assignError, setAssignError] = React.useState<string | null>(null);
+
+  const nicknameOf = React.useCallback(
+    (code: string) => agents.find((a) => a.employeeCode === code)?.nickname ?? code,
+    [agents]
+  );
+
+  async function onAssign(leadId: string, next: string, prev: string) {
+    if (next === prev) return;
+    setAssignError(null);
+    setAssignments((m) => ({ ...m, [leadId]: next }));
+    const result = await assignLead(leadId, next);
+    if (!result.ok) {
+      setAssignments((m) => ({ ...m, [leadId]: prev }));
+      setAssignError(result.error);
+    }
+    router.refresh();
+  }
   const [q, setQ] = React.useState("");
   const [quick, setQuick] = React.useState<"all" | "unassigned">("all");
   const [colFilters, setColFilters] = React.useState<Partial<Record<FilterCol, string[]>>>({});
@@ -65,23 +83,23 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
   const [pageSize, setPageSize] = React.useState(50);
   const [page, setPage] = React.useState(1);
 
-  const rows: Row[] = React.useMemo(() => {
-    const fromReal: Row[] = leads.map((l) => ({
-      lead_id: l.lead_id,
-      lead_name: l.lead_name ?? l.lead_id,
-      phone: l.phone,
-      type: l.lead_type ?? "—",
-      source: null, // main_6_buyer_crm has no source column yet
-      listing_code: l.listing_code,
-      budgetBaht: l.budget ?? null, // main_6_buyer_crm.budget is already in baht (matches /leads)
-      stage: l.pipeline_stage,
-      status: l.lead_status,
-      originalSale: l.sale_id ?? "",
-      date: l.date_received,
-      isNew: false,
-    }));
-    return fromReal;
-  }, [leads]);
+  const rows: Row[] = React.useMemo(
+    () =>
+      leads.map((l) => ({
+        lead_id: l.lead_id,
+        lead_name: l.lead_name ?? l.lead_id,
+        phone: l.phone,
+        type: l.lead_type ?? "—",
+        source: l.marketing_channel,
+        listing_code: l.listing_code,
+        budgetBaht: l.budget ?? null, // main_6_buyer_crm.budget is already in baht (matches /leads)
+        stage: l.pipeline_stage,
+        status: l.lead_status,
+        originalSale: l.sale_id ?? "",
+        date: l.date_received,
+      })),
+    [leads]
+  );
 
   const effectiveSale = React.useCallback(
     (r: Row) => assignments[r.lead_id] ?? r.originalSale,
@@ -138,12 +156,17 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
         const v = valueOf(r, col);
         counts.set(v, (counts.get(v) ?? 0) + 1);
       }
-      const items = [...counts.entries()].map(([value, count]) => ({ value, label: labelFor(col, value), count }));
+      // The assigned column's values are employee codes; show people by name.
+      const items = [...counts.entries()].map(([value, count]) => ({
+        value,
+        label: col === "assigned" && value ? nicknameOf(value) : labelFor(col, value),
+        count,
+      }));
       if (col === "stage") return items.sort((a, b) => (STAGE_KEYS.indexOf(a.value) + 1 || 99) - (STAGE_KEYS.indexOf(b.value) + 1 || 99));
       if (col === "status") return items.sort((a, b) => (STATUS_ORDER.indexOf(a.value) + 1 || 99) - (STATUS_ORDER.indexOf(b.value) + 1 || 99));
       return items.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "th"));
     },
-    [base, valueOf]
+    [base, valueOf, nicknameOf]
   );
 
   // Reset to page 1 whenever the result set changes shape.
@@ -171,7 +194,8 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
     const headers = ["Lead ID", "ลูกค้า", "เบอร์", "ประเภท", "ช่องทาง", "ทรัพย์ที่สนใจ", "งบ (฿)", "สเตจ", "สถานะ", "มอบหมายให้", "วันที่รับ"];
     const lines = [headers.map(cell).join(",")];
     for (const r of list) {
-      lines.push([r.lead_id, r.lead_name, r.phone, r.type, r.source, r.listing_code, r.budgetBaht, r.stage, r.status, effectiveSale(r), r.date].map(cell).join(","));
+      const sale = effectiveSale(r);
+      lines.push([r.lead_id, r.lead_name, r.phone, r.type, r.source, r.listing_code, r.budgetBaht, r.stage, r.status, sale ? nicknameOf(sale) : "", r.date].map(cell).join(","));
     }
     // BOM so Excel reads the Thai UTF-8 correctly.
     const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -213,6 +237,12 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
         <Stat label="ยังไม่มอบหมาย" value={unassignedCount} delta={unassignedCount > 0 ? { value: "ต้องจัดการ", positive: false } : undefined} />
         <Stat label="ปิดได้ (Win)" value={winCount} />
       </div>
+
+      {assignError && (
+        <div className="rounded-md px-3 py-2 text-small border bg-red-bg text-red border-red/30 inline-flex items-start gap-1.5">
+          <X size={14} strokeWidth={2} className="mt-0.5 shrink-0" /> มอบหมายไม่สำเร็จ: {assignError}
+        </div>
+      )}
 
       <Card>
         <div className="flex items-center gap-2.5 p-3 border-b border-border flex-wrap">
@@ -275,24 +305,18 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
                 <TBody>
                   {pageRows.map((r) => {
                     const cur = effectiveSale(r);
-                    const isOwnerSale = !!r.listing_code && cur && cur === defaultAssignee(r.listing_code);
                     const stg = stageMeta(r.stage);
                     return (
                       <TR
                         key={r.lead_id}
-                        className={cn(!r.isNew && "cursor-pointer")}
-                        onClick={r.isNew ? undefined : () => router.push(`/leads/${r.lead_id}`)}
+                        className="cursor-pointer"
+                        onClick={() => router.push(`/leads/${r.lead_id}`)}
                       >
                         <TD>
                           <div className="flex items-center gap-2.5">
                             <Avatar name={r.lead_name} tone="crimson" />
                             <div className="min-w-0">
-                              <div className="font-medium truncate inline-flex items-center gap-1.5">
-                                {r.lead_name}
-                                {r.isNew && (
-                                  <span className="inline-flex items-center gap-0.5 text-label text-accent bg-accent-wash rounded px-1"><Sparkles size={9} strokeWidth={2} /> ใหม่</span>
-                                )}
-                              </div>
+                              <div className="font-medium truncate">{r.lead_name}</div>
                               <div className="text-label text-text-subtle num">{r.phone ?? "—"}</div>
                             </div>
                           </div>
@@ -309,20 +333,21 @@ export function LeadAssignment({ leads }: { leads: CrmRow[] }) {
                           <div className="flex items-center gap-1.5">
                             <select
                               value={cur}
-                              onChange={(e) => assign(r.lead_id, e.target.value, currentUser.name, cur)}
-                              className="h-8 px-2 rounded-md border border-border-strong bg-surface text-small focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                              disabled={!canAssign}
+                              onChange={(e) => onAssign(r.lead_id, e.target.value, cur)}
+                              className="h-8 px-2 rounded-md border border-border-strong bg-surface text-small focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60"
                             >
                               <option value="">— ยังไม่มอบหมาย —</option>
-                              {cur && !agents.some((a) => a.nickname === cur) && <option value={cur}>{cur}</option>}
+                              {/* Values are employee codes; a code with no matching active
+                                  agent (someone who left) stays selectable so reassigning
+                                  never silently blanks it. */}
+                              {cur && !agents.some((a) => a.employeeCode === cur) && (
+                                <option value={cur}>{cur}</option>
+                              )}
                               {agents.map((a) => (
-                                <option key={a.id} value={a.nickname}>{a.nickname}</option>
+                                <option key={a.employeeCode} value={a.employeeCode}>{a.nickname}</option>
                               ))}
                             </select>
-                            {isOwnerSale && (
-                              <span className="text-label text-green inline-flex items-center gap-0.5 shrink-0" title="เจ้าของทรัพย์ที่ลูกค้าสนใจ">
-                                <Check size={12} strokeWidth={2.5} /> เจ้าของ
-                              </span>
-                            )}
                           </div>
                         </TD>
                         <TD className="text-right text-small text-text-muted num">{formatDate(r.date)}</TD>

@@ -29,6 +29,8 @@ export interface CrmRow {
   last_follow_date: string | null;
   closing_date: string | null;
   date_received: string | null;
+  /** Where the lead came from — main_6_buyer_crm.marketing_channel. */
+  marketing_channel: string | null;
   /** Group tag — main_6_buyer_crm.tag_id, FK to lead_tags_ref(id). */
   tag_id: string | null;
   /** Complaint tracking — all three null together = no open complaint. */
@@ -38,7 +40,7 @@ export interface CrmRow {
 }
 
 const CRM_COLUMNS =
-  "lead_id,lead_name,phone,line_id,potential,lead_status,pipeline_stage,lead_type,sale_id,listing_code,budget,commission,last_follow_date,closing_date,date_received,tag_id,customer_complain,complain_status,complain_remark";
+  "lead_id,lead_name,phone,line_id,potential,lead_status,pipeline_stage,lead_type,sale_id,listing_code,budget,commission,last_follow_date,closing_date,date_received,marketing_channel,tag_id,customer_complain,complain_status,complain_remark";
 
 // Mirrors `v_main_listing` in full — all 55 exposed columns. Types were probed against the
 // live schema (not inferred from sample rows, which are mostly null): `floor` and `unit_no`

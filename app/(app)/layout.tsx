@@ -6,7 +6,6 @@ import { ChecklistProvider } from "@/components/ChecklistProvider";
 import { CopyTemplatesProvider } from "@/components/CopyTemplatesProvider";
 import { ProbationProvider } from "@/components/ProbationProvider";
 import { NotificationsProvider } from "@/components/NotificationsProvider";
-import { NewLeadsProvider } from "@/components/NewLeadsProvider";
 import { ActivityProvider } from "@/components/ActivityProvider";
 import { LeaveProvider } from "@/components/LeaveProvider";
 import { LeadIntakeFab } from "@/components/LeadIntakeFab";
@@ -53,13 +52,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <CopyTemplatesProvider>
             <ProbationProvider>
               <NotificationsProvider>
-                <NewLeadsProvider>
-                  {/* Live activity log. Fed by Daily-Plan task completion — the +บันทึก FAB
-                      was removed per CEO feedback R1, so this is the only write path. */}
-                  <ActivityProvider>
-                    {/* Leave requests — filed from แผนวันนี้, decided on /วันลา. Shared so
-                        both sides see the same queue instantly. */}
-                    <LeaveProvider>
+                {/* Live activity log. Fed by Daily-Plan task completion — the +บันทึก FAB
+                    was removed per CEO feedback R1, so this is the only write path. */}
+                <ActivityProvider>
+                  {/* Leave requests — filed from แผนวันนี้, decided on /วันลา. Shared so
+                      both sides see the same queue instantly. */}
+                  <LeaveProvider>
                     <MobileNavProvider>
                       <div className="grid grid-cols-1 lg:grid-cols-[228px_1fr] min-h-screen">
                         <Sidebar />
@@ -69,9 +67,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                           only remaining FAB (CEO: "FAB เหลือแค่เพิ่มลีด"). */}
                       <LeadIntakeFab agents={agents} />
                     </MobileNavProvider>
-                    </LeaveProvider>
-                  </ActivityProvider>
-                </NewLeadsProvider>
+                  </LeaveProvider>
+                </ActivityProvider>
               </NotificationsProvider>
             </ProbationProvider>
           </CopyTemplatesProvider>

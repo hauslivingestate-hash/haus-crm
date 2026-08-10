@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { UserPlus, Phone, Repeat, CalendarCheck, StickyNote, ArrowRight, Share2, Check } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
-import { useNewLeads } from "@/components/NewLeadsProvider";
 import { useRbac } from "@/components/RbacProvider";
-import { assignableAgents, defaultAssignee } from "@/lib/leads";
+import { assignLead } from "@/lib/mutations/leads";
+import type { AgentOption } from "@/components/LeadForm";
+import type { AssignHistoryEntry } from "@/lib/leadHistory";
 import { sampleTimeline, type TimelineEvent, type TimelineKind } from "@/lib/leadTimeline";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -37,34 +39,60 @@ export function LeadTimeline({
   leadId,
   sale,
   dateReceived,
-  listingCode,
+  agents,
+  assignHistory,
 }: {
   leadId: string;
+  /** employee_code of the assigned agent, "" when unassigned. */
   sale: string;
   dateReceived: string | null;
-  listingCode: string | null;
+  agents: AgentOption[];
+  assignHistory: AssignHistoryEntry[];
 }) {
-  const { historyOf, assignments, assign } = useNewLeads();
-  const { can, currentUser } = useRbac();
+  const router = useRouter();
+  const { can } = useRbac();
   const canReassign = can("leads.assign");
-  const agents = assignableAgents();
+  const [current, setCurrent] = React.useState(sale);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const effective = assignments[leadId] ?? sale;
-  const reassigns = historyOf(leadId);
+  React.useEffect(() => setCurrent(sale), [sale]);
+
+  const nicknameOf = React.useCallback(
+    (code: string | null) => (code ? agents.find((a) => a.employeeCode === code)?.nickname ?? code : "ยังไม่มอบหมาย"),
+    [agents]
+  );
+
+  async function onAssign(next: string) {
+    const prev = current;
+    setError(null);
+    setCurrent(next);
+    const result = await assignLead(leadId, next);
+    if (!result.ok) {
+      setCurrent(prev);
+      setError(result.error);
+    }
+    router.refresh();
+  }
 
   const events: TimelineEvent[] = React.useMemo(() => {
-    const activity = sampleTimeline(leadId, sale, dateReceived);
-    const audits: TimelineEvent[] = reassigns.map((e, i) => ({
+    // Still sample activity (real activities land in Phase 6) — but feed it the agent's NAME,
+    // since `sale` is an employee code and it renders straight into the "by" line.
+    const activity = sampleTimeline(leadId, nicknameOf(sale), dateReceived);
+    // Real reassignments out of audit_log — these survive a refresh, unlike the in-memory
+    // trail this replaced.
+    const audits: TimelineEvent[] = assignHistory.map((e, i) => ({
       id: `${leadId}-assign-${i}`,
       kind: "assign",
       at: e.at.slice(0, 10),
-      by: e.by,
-      text: e.from ? `มอบหมายใหม่: ${e.from} → ${e.to}` : `มอบหมายให้ ${e.to}`,
+      by: nicknameOf(e.by),
+      text: e.from
+        ? `มอบหมายใหม่: ${nicknameOf(e.from)} → ${nicknameOf(e.to)}`
+        : `มอบหมายให้ ${nicknameOf(e.to)}`,
     }));
     return [...activity, ...audits].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  }, [leadId, sale, dateReceived, reassigns]);
+  }, [leadId, sale, dateReceived, assignHistory, nicknameOf]);
 
-  const isOwnerSale = !!listingCode && effective === defaultAssignee(listingCode) && !!effective;
+  const effective = current;
 
   return (
     <Card>
@@ -75,25 +103,28 @@ export function LeadTimeline({
             <span className="text-label text-text-subtle">มอบหมาย:</span>
             <select
               value={effective}
-              onChange={(e) => assign(leadId, e.target.value, currentUser.name, effective)}
+              onChange={(e) => onAssign(e.target.value)}
               className="h-7 px-2 rounded-md border border-border-strong bg-surface text-small focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <option value="">— ยังไม่มอบหมาย —</option>
-              {effective && !agents.some((a) => a.nickname === effective) && <option value={effective}>{effective}</option>}
+              {/* Values are employee codes; keep an unknown one (someone who left) selectable. */}
+              {effective && !agents.some((a) => a.employeeCode === effective) && (
+                <option value={effective}>{effective}</option>
+              )}
               {agents.map((a) => (
-                <option key={a.id} value={a.nickname}>{a.nickname}</option>
+                <option key={a.employeeCode} value={a.employeeCode}>{a.nickname}</option>
               ))}
             </select>
-            {isOwnerSale && (
-              <span className="text-label text-green inline-flex items-center gap-0.5 shrink-0" title="เจ้าของทรัพย์ที่ลูกค้าสนใจ">
-                <Check size={12} strokeWidth={2.5} /> เจ้าของ
+            {error && (
+              <span className="text-label text-red shrink-0" title={error}>
+                มอบหมายไม่สำเร็จ
               </span>
             )}
           </div>
         ) : (
           effective && (
             <span className="inline-flex items-center gap-1.5 text-small text-text-muted">
-              <Avatar name={effective} tone="crimson" className="h-5 w-5" /> {effective}
+              <Avatar name={nicknameOf(effective)} tone="crimson" className="h-5 w-5" /> {nicknameOf(effective)}
             </span>
           )
         )}

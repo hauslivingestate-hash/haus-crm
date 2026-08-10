@@ -187,6 +187,46 @@ export async function setLeadComplaint(
   return { ok: true };
 }
 
+/**
+ * Reassign a lead (Phase 5 #4). Pass "" to unassign.
+ *
+ * Assignment is normally automatic — create_lead resolves the "Sales Assigned" name to an
+ * employee_code on the way in. This exists for the cases that resolver deliberately refuses
+ * to guess at: a misspelled name, someone who left, a genuine change of hands.
+ */
+export async function assignLead(leadId: string, employeeCode: string): Promise<Result> {
+  const auth = await requireAuth();
+  if (!auth) return { ok: false, error: "ไม่พบสิทธิ์ผู้ใช้ กรุณาเข้าสู่ระบบใหม่" };
+  const perms = new Set(auth.permissions);
+  if (!(perms.has("leads.assign") || perms.has("roles.manage"))) {
+    return { ok: false, error: "ไม่มีสิทธิ์มอบหมายลีด" };
+  }
+
+  const next = employeeCode || null;
+  const supabase = await createClient();
+  const { data: current, error: fetchError } = await supabase
+    .from("main_6_buyer_crm")
+    .select("sale_id")
+    .eq("lead_id", leadId)
+    .maybeSingle();
+  if (fetchError || !current) return { ok: false, error: fetchError?.message ?? "ไม่พบ Lead นี้" };
+
+  const before = current.sale_id ?? null;
+  if (before === next) return { ok: true };
+
+  const { error: updateError } = await supabase
+    .from("main_6_buyer_crm")
+    .update({ sale_id: next })
+    .eq("lead_id", leadId);
+  if (updateError) return { ok: false, error: updateError.message };
+
+  await writeAudit(supabase, auth.employeeCode, leadId, "assign", { sale_id: before }, { sale_id: next });
+
+  revalidateLead(leadId);
+  revalidatePath("/assign");
+  return { ok: true };
+}
+
 // ── Intake (Phase 5 #3) ──────────────────────────────────────────────────────
 
 /** What the intake form collects. Values are already DB vocabulary, not the old seed slugs. */
