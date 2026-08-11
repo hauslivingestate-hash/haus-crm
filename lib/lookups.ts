@@ -20,6 +20,8 @@ export interface Lookups {
   leadTypes: RefItem[];
   purposes: RefItem[];
   sellReasons: RefItem[];
+  /** listing_potential — NOT the same vocabulary as a lead's `potential` (A/B/C/New Lead). */
+  listingPotentials: RefItem[];
   /** Zones are id + name (ASK · อโศก) rather than a bare name, unlike the other lookups. */
   zones: RefItem[];
 }
@@ -34,6 +36,7 @@ const NAME_TABLES = {
   leadTypes: "lead_type",
   purposes: "lead_purpose",
   sellReasons: "sell_reason",
+  listingPotentials: "listing_potential",
 } as const;
 
 export async function getLookups(): Promise<Lookups> {

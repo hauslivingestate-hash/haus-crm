@@ -13,11 +13,12 @@ import { getAuthContext } from "@/lib/auth";
 type FieldType = "text" | "integer" | "numeric" | "boolean" | "date";
 type FieldGroup = "core" | "marketing";
 
-// `project_name_eng` is deliberately absent: it lives on main_3_property_detail (shared by
-// every listing in the project), not on this row, so it is never writable from here regardless
-// of what a caller sends.
+// `listing_name` and `project_name_eng` are deliberately absent: NEITHER is a column on
+// main_4_listing_database. Both live on main_3_property_detail (shared by every listing in
+// the project) and reach the app only through v_main_listing —
+// `listing_name = main_3.project_name_thai`. Listing them here would send an UPDATE naming a
+// column that does not exist, which Postgres rejects outright.
 const LISTING_FIELDS: Record<string, { type: FieldType; group: FieldGroup }> = {
-  listing_name: { type: "text", group: "core" },
   listing_status: { type: "text", group: "core" },
   potential: { type: "text", group: "core" },
   listing_type: { type: "text", group: "core" },
@@ -235,4 +236,156 @@ export async function updateListing(
   revalidatePath("/company-listings");
 
   return { ok: true };
+}
+
+// ── Intake (Phase 5 #5) ──────────────────────────────────────────────────────
+
+export interface NewProjectInput {
+  nameThai: string;
+  nameEng?: string;
+  propertyType?: string | null;
+  zone?: string | null;
+}
+
+/**
+ * Create a project so a listing can point at one.
+ *
+ * Reachable by plain agents on purpose: main_3_property_detail's INSERT policy already reads
+ * `projects.edit OR listings.create OR roles.manage`, and an agent filing a listing for a
+ * village that isn't in the system yet has no other way forward.
+ *
+ * No RPC needed (unlike create_owner): the SELECT policy here is a flat `listings.view`
+ * check rather than a row-scoped one, so INSERT ... RETURNING passes.
+ */
+export async function createProject(
+  input: NewProjectInput
+): Promise<{ ok: true; projectId: string } | { ok: false; error: string }> {
+  const auth = await getAuthContext();
+  if (!auth?.employeeCode) return { ok: false, error: "ไม่พบสิทธิ์ผู้ใช้ กรุณาเข้าสู่ระบบใหม่" };
+  const perms = new Set(auth.permissions);
+  if (!(perms.has("listings.create") || perms.has("projects.edit") || perms.has("roles.manage"))) {
+    return { ok: false, error: "ไม่มีสิทธิ์สร้างโครงการ" };
+  }
+
+  const nameThai = input.nameThai.trim();
+  if (!nameThai) return { ok: false, error: "ต้องระบุชื่อโครงการ" };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("main_3_property_detail")
+    .insert({
+      project_name_thai: nameThai,
+      project_name_eng: input.nameEng?.trim() || null,
+      property_type: input.propertyType || null,
+      zone: input.zone || null,
+    })
+    .select("project_id")
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? "สร้างโครงการไม่สำเร็จ" };
+
+  await writeAudit(supabase, auth.employeeCode, "main_3_property_detail", data.project_id, "insert", null, {
+    project_name_thai: nameThai,
+  });
+
+  return { ok: true, projectId: data.project_id };
+}
+
+export interface NewListingInput {
+  project_id: string;
+  property_type: string;
+  zone: string;
+  listing_status: string;
+  potential: string;
+  sale_id: string;
+  unit_no: string;
+  bed: string;
+  bath: string;
+  area_sqm: string;
+  asking_price: string;
+  rental_price: string;
+  owner_name: string;
+  owner_phone: string;
+  remark: string;
+}
+
+export async function createListing(
+  input: NewListingInput
+): Promise<{ ok: true; listingId: string } | { ok: false; error: string }> {
+  const auth = await getAuthContext();
+  if (!auth?.employeeCode) return { ok: false, error: "ไม่พบสิทธิ์ผู้ใช้ กรุณาเข้าสู่ระบบใหม่" };
+  const perms = new Set(auth.permissions);
+  if (!(perms.has("listings.create") || perms.has("roles.manage"))) {
+    return { ok: false, error: "ไม่มีสิทธิ์เพิ่มทรัพย์" };
+  }
+
+  // The listing_id trigger builds the code from the property type's letter + the zone, and
+  // RAISES if either is missing. Catch it here so the user gets a sentence instead of a
+  // Postgres exception.
+  if (!input.property_type) return { ok: false, error: "ต้องเลือกประเภททรัพย์ (ใช้สร้างรหัสทรัพย์)" };
+  if (!input.zone) return { ok: false, error: "ต้องเลือกโซน (ใช้สร้างรหัสทรัพย์)" };
+
+  const supabase = await createClient();
+
+  // Owner first — the listing carries the FK, and create_owner exists because a fresh owner
+  // row isn't visible to its own creator under main_2_owner's SELECT policy (Phase 5 #1).
+  let ownerId: number | null = null;
+  const ownerName = input.owner_name.trim();
+  const ownerPhone = input.owner_phone.trim();
+  if (ownerName || ownerPhone) {
+    const { data: newOwnerId, error: ownerError } = await supabase.rpc("create_owner", {
+      p_name: ownerName || null,
+      p_phone: ownerPhone || null,
+      p_line: null,
+    });
+    if (ownerError || newOwnerId == null) {
+      return { ok: false, error: ownerError?.message ?? "สร้างเจ้าของไม่สำเร็จ" };
+    }
+    ownerId = newOwnerId as number;
+  }
+
+  const num = (v: string) => {
+    const n = Number(v);
+    return v.trim() !== "" && Number.isFinite(n) ? n : null;
+  };
+  const int = (v: string) => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const row = {
+    project_id: input.project_id || null,
+    property_type: input.property_type,
+    zone: input.zone,
+    listing_status: input.listing_status || null,
+    potential: input.potential || null,
+    sale_id: input.sale_id || null,
+    unit_no: input.unit_no.trim() || null,
+    bed: int(input.bed),
+    bath: num(input.bath),
+    area_sqm: num(input.area_sqm),
+    asking_price: num(input.asking_price),
+    rental_price: num(input.rental_price),
+    remark: input.remark.trim() || null,
+    owner_id: ownerId,
+  };
+
+  const { data, error } = await supabase
+    .from("main_4_listing_database")
+    .insert(row)
+    .select("listing_id")
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? "เพิ่มทรัพย์ไม่สำเร็จ" };
+
+  await writeAudit(supabase, auth.employeeCode, "main_4_listing_database", data.listing_id, "insert", null, row);
+  if (ownerId != null) {
+    await writeAudit(supabase, auth.employeeCode, "main_2_owner", String(ownerId), "insert", null, {
+      owner_name: ownerName || null,
+      owner_phone: ownerPhone || null,
+    });
+  }
+
+  revalidatePath("/listings");
+  revalidatePath("/company-listings");
+
+  return { ok: true, listingId: data.listing_id };
 }

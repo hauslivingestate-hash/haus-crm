@@ -194,7 +194,12 @@ export function ListingEditSheet({
         <div className="overflow-y-auto p-4 flex flex-col gap-5">
           <Section title="สถานะ">
             <Field label="ชื่อทรัพย์" wide>
-              <Input value={S("listing_name")} onChange={(e) => set({ listing_name: e.target.value })} />
+              {/* Read-only for the same reason as โครงการ below: this is the project's Thai
+                  name coming through the view, not a column on the listing. */}
+              <Input value={S("listing_name")} disabled className="opacity-60" />
+              <span className="text-label text-text-subtle inline-flex items-center gap-1 mt-0.5">
+                <Lock size={11} strokeWidth={1.75} /> ชื่อมาจากโครงการ — เปลี่ยนได้ที่โครงการ
+              </span>
             </Field>
             <Field label="สถานะประกาศ">
               <select value={S("listing_status")} onChange={(e) => set({ listing_status: e.target.value })} className={field}>

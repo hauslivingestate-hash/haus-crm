@@ -16,6 +16,47 @@ export interface ListingHit {
   sale: string | null;
 }
 
+export interface ProjectHit {
+  projectId: string;
+  label: string;
+}
+
+/**
+ * Project lookup for the listing intake form.
+ *
+ * This picker is not a convenience: `main_4_listing_database` has no `listing_name` column,
+ * and `v_main_listing.listing_name` is the joined `main_3_property_detail.project_name_thai`.
+ * The project a listing points at IS its displayed name everywhere, so a listing filed
+ * without one shows up blank on every screen.
+ */
+export async function searchProjects(query: string): Promise<ProjectHit[]> {
+  const q = query.trim();
+  const supabase = await createClient();
+
+  let req = supabase
+    .from("main_3_property_detail")
+    .select("project_id,project_name_thai,project_name_eng")
+    .order("project_name_thai")
+    .limit(8);
+
+  if (q) {
+    // Sheet data put Thai names in the English column often enough that searching only one
+    // would hide real projects — match either.
+    const safe = q.replace(/[(),]/g, " ");
+    req = req.or(`project_name_thai.ilike.%${safe}%,project_name_eng.ilike.%${safe}%`);
+  }
+
+  const { data } = await req;
+  return ((data ?? []) as {
+    project_id: string;
+    project_name_thai: string | null;
+    project_name_eng: string | null;
+  }[]).map((p) => ({
+    projectId: p.project_id,
+    label: p.project_name_thai || p.project_name_eng || p.project_id,
+  }));
+}
+
 export async function searchListings(query: string): Promise<ListingHit[]> {
   const q = query.trim();
   const supabase = await createClient();

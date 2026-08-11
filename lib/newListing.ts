@@ -1,13 +1,20 @@
-// Draft shape for the "Add Listing" intake form (design-first). Mirrors the create-side of
-// v_main_listing. Numeric fields are kept as strings for input ergonomics; they'd be coerced
-// at the wire-later write. Wire later = an insert into the base listing table (the app reads
-// the read-only v_main_listing view today, so creation is a STUB — see ListingForm).
+// Draft shape for the "Add Listing" intake form. Mirrors what main_4_listing_database
+// actually accepts — numeric fields stay strings for input ergonomics and are coerced in
+// lib/mutations/listings.ts.
+//
+// There is no `listing_name` here on purpose: main_4 has no such column. A listing's
+// displayed name is its project's Thai name, joined through v_main_listing, so `project_id`
+// is what gives a listing a name at all — a listing filed without one reads as blank on
+// every screen.
 
 export interface NewListing {
-  listing_name: string;
+  /** FK to main_3_property_detail. Empty = the listing would show with no name. */
+  project_id: string;
+  /** Label of the picked project, kept only so the combobox can render its own selection. */
+  project_label: string;
   property_type: string;
-  project_name: string;
   zone_id: string;
+  unit_no: string;
   bed: string;
   bath: string;
   area_sqm: string;
@@ -15,7 +22,8 @@ export interface NewListing {
   rental_price: string;
   potential: string;
   listing_status: string;
-  agent_id: string; // managing agent (rbac / employee id)
+  /** employee_code (main_1_hr), NOT a nickname — sale_id is a foreign key. */
+  agent_id: string;
   owner_name: string;
   owner_phone: string;
   remark: string;
@@ -23,14 +31,16 @@ export interface NewListing {
 
 // Statuses meaningful for a brand-new listing. The terminal states (Sold/Cancel + their
 // *Completed variants in lib/status) are reached later in the lifecycle, not set at intake.
+// All four exist in the `listing_status` lookup, which the column FKs to.
 export const NEW_LISTING_STATUSES = ["Ready to Post", "Posted", "Need Info", "Update"];
 
 export function emptyListing(): NewListing {
   return {
-    listing_name: "",
+    project_id: "",
+    project_label: "",
     property_type: "",
-    project_name: "",
     zone_id: "",
+    unit_no: "",
     bed: "",
     bath: "",
     area_sqm: "",

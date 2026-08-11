@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { LEAD_SOURCES, CONTACT_BYS, GENDERS, NATIONALITIES } from "@/lib/leads";
-import { PROPERTY_TYPES } from "@/lib/masterdata";
+import { PROPERTY_TYPES, POTENTIALS } from "@/lib/masterdata";
 import { SEED_LEAD_TAGS, type LeadTag } from "@/lib/tags";
 
 // Shared LIVE store for the governed reference vocabularies (property type, marketing
@@ -45,6 +45,7 @@ interface MasterDataValue {
   leadTypes: RefItem[];
   purposes: RefItem[];
   sellReasons: RefItem[];
+  listingPotentials: RefItem[];
   zones: RefItem[];
 }
 
@@ -60,6 +61,7 @@ export interface MasterDataInitial {
   leadTypes?: RefItem[];
   purposes?: RefItem[];
   sellReasons?: RefItem[];
+  listingPotentials?: RefItem[];
   zones?: RefItem[];
 }
 
@@ -98,6 +100,9 @@ export function MasterDataProvider({
   const leadTypes = initial?.leadTypes ?? [];
   const purposes = initial?.purposes ?? [];
   const sellReasons = initial?.sellReasons ?? [];
+  // Falls back to the seed so the form still offers something without a session; the DB list
+  // is the longer one (5 rows vs the seed 3).
+  const listingPotentials = seeded(initial?.listingPotentials, () => POTENTIALS.map((p) => ({ id: p, label: p })));
   const zones = initial?.zones ?? [];
 
   const value: MasterDataValue = {
@@ -116,6 +121,7 @@ export function MasterDataProvider({
     leadTypes,
     purposes,
     sellReasons,
+    listingPotentials,
     zones,
   };
 
