@@ -57,6 +57,43 @@ export async function searchProjects(query: string): Promise<ProjectHit[]> {
   }));
 }
 
+export interface LeadHit {
+  id: string;
+  label: string;
+}
+
+/**
+ * Lead lookup for the Daily Plan's "เชื่อมกับ CRM" picker.
+ *
+ * `tasks.related_lead_id` and `activities.related_lead_id` are both FKs to
+ * `main_6_buyer_crm`, so the design build's six hardcoded sample leads (L-0007, L-0011 …)
+ * would fail every insert. RLS scopes the result to the leads the caller may see, which for
+ * an agent is their own — exactly the set they can plan work against.
+ */
+export async function searchLeads(query: string): Promise<LeadHit[]> {
+  const q = query.trim();
+  const supabase = await createClient();
+
+  let req = supabase
+    .from("main_6_buyer_crm")
+    .select("lead_id,lead_name,phone")
+    .order("lead_id", { ascending: false })
+    .limit(8);
+
+  if (q) {
+    const safe = q.replace(/[(),]/g, " ");
+    req = req.or(`lead_id.ilike.%${safe}%,lead_name.ilike.%${safe}%,phone.ilike.%${safe}%`);
+  }
+
+  const { data } = await req;
+  return ((data ?? []) as { lead_id: string; lead_name: string | null; phone: string | null }[]).map(
+    (l) => ({
+      id: l.lead_id,
+      label: [l.lead_name || l.lead_id, l.phone].filter(Boolean).join(" · "),
+    })
+  );
+}
+
 export async function searchListings(query: string): Promise<ListingHit[]> {
   const q = query.trim();
   const supabase = await createClient();

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { X, Zap } from "lucide-react";
 import { Input } from "@/components/ui/Input";
-import { ACTION_GROUPS } from "@/lib/actions";
+import type { ActionGroupRow } from "@/lib/plan";
 import { type TargetKind } from "@/lib/momentum";
 import { cn } from "@/lib/cn";
 
@@ -29,10 +29,14 @@ const KINDS: { value: GoalDraft["kind"]; label: string }[] = [
 
 export function GoalDetailSheet({
   open,
+  actionGroups,
   onSubmit,
   onClose,
 }: {
   open: boolean;
+  /** The governed action vocabulary from `action_type` — `targets.activity_type` is an FK
+   *  to it, so an option that isn't in this list would fail the insert. */
+  actionGroups: ActionGroupRow[];
   onSubmit: (values: GoalDraft) => void;
   onClose: () => void;
 }) {
@@ -148,7 +152,7 @@ export function GoalDetailSheet({
               className={field}
             >
               <option value="">— นับเอง (+1) —</option>
-              {ACTION_GROUPS.map((g) => (
+              {actionGroups.map((g) => (
                 <optgroup key={g.group} label={g.group}>
                   {g.items.map((a) => (
                     <option key={a} value={a}>

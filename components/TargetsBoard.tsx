@@ -1,87 +1,137 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Zap } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Zap, Trash2 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { formatBaht } from "@/lib/format";
+import { formatBaht, TH_MONTHS } from "@/lib/format";
 import {
-  listTargets,
   targetProgress,
   isAutoTarget,
   isFocusWeek,
   currentWeekOfMonth,
+  type ActivityTotals,
   type Target,
 } from "@/lib/momentum";
 import { GoalDetailSheet, type GoalDraft } from "@/components/GoalDetailSheet";
-import { useActivities } from "@/components/ActivityProvider";
-import type { Activity } from "@/lib/actions";
+import { createTarget, bumpTarget, deleteTarget } from "@/lib/mutations/targets";
+import type { PlanData } from "@/lib/plan";
 import { cn } from "@/lib/cn";
 
-export function TargetsBoard({ agent, title = "เป้าหมายเดือนนี้" }: { agent: string; title?: string }) {
-  // Local copy so manual +1 and adding personal goals are interactive.
-  const [targets, setTargets] = React.useState<Target[]>(() => listTargets(agent));
-  const [addOpen, setAddOpen] = React.useState(false);
-  const nextId = React.useRef(0);
-  const week = currentWeekOfMonth();
-  // The live log — activity-source targets recompute as Daily-Plan tasks are ticked.
-  const { activities } = useActivities();
+// Monthly targets, read from and written to `targets` (Phase 5 #6).
+//
+// Progress comes from two places by design: an `activity`-source goal is summed from the
+// real `activities` table (so ticking a linked task moves it), while kpi/pipeline/manual
+// goals carry a stored number. Only `manual` gets the +1 button — bumping anything else by
+// hand would either be overwritten by the next recompute or double-counted.
 
-  const bump = (id: string) =>
-    setTargets((ts) =>
-      ts.map((t) => (t.id === id ? { ...t, manualCurrent: t.manualCurrent + 1 } : t))
-    );
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return `${TH_MONTHS[m - 1]} ${y}`;
+}
+
+export function TargetsBoard({
+  plan,
+  title = "เป้าหมายเดือนนี้",
+}: {
+  plan: PlanData;
+  title?: string;
+}) {
+  const router = useRouter();
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  // Stay busy until the refresh actually lands, not just until the write returns — a second
+  // +1 fired into that gap would act on the number the previous render showed.
+  const [refreshing, startRefresh] = React.useTransition();
+  const busy = saving || refreshing;
+  const week = currentWeekOfMonth(plan.today);
+
+  // try/catch because a server action can reject outright (dropped connection, aborted
+  // navigation) rather than return `{ok:false}` — swallowing that would leave the board
+  // showing a goal that was never written.
+  const run = async (fn: () => Promise<{ ok: true } | { ok: false; error: string } | { ok: true; id: number }>) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fn();
+      if (!res.ok) setError(res.error);
+      else startRefresh(() => router.refresh());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const addGoal = (d: GoalDraft) =>
-    setTargets((ts) => [
-      ...ts,
-      {
-        id: `g_new_${nextId.current++}`,
-        agent,
-        month: ts[0]?.month ?? "",
+    void run(() =>
+      createTarget({
+        month: plan.month,
         label: d.label,
         kind: d.kind,
         target: d.target,
-        manualCurrent: 0,
         source: d.source,
-        activityType: d.activityType,
+        activityType: d.activityType ?? null,
         owner: "stretch",
-      },
-    ]);
+      })
+    );
 
-  const official = targets.filter((t) => t.owner === "official");
-  const stretch = targets.filter((t) => t.owner === "stretch");
+  const official = plan.targets.filter((t) => t.owner === "official");
+  const stretch = plan.targets.filter((t) => t.owner === "stretch");
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <span className="text-label text-text-subtle">ก.ค. 2569</span>
+        <span className="text-label text-text-subtle num">{monthLabel(plan.month)}</span>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {error && (
+          <div className="rounded-md bg-red-bg/50 px-3 py-2 text-small text-red">{error}</div>
+        )}
+
         <Group
           label="ทางการ (ตั้งโดยหัวหน้า)"
           targets={official}
-          onBump={bump}
+          totals={plan.activityTotals}
           week={week}
-          activities={activities}
+          busy={busy}
           note={`โฟกัสสัปดาห์ที่ ${week}`}
+          emptyNote={
+            plan.canSetOfficial
+              ? "ยังไม่มีเป้าหมายทางการของเดือนนี้"
+              : "หัวหน้ายังไม่ได้ตั้งเป้าหมายของเดือนนี้"
+          }
+          onBump={(id) => void run(() => bumpTarget(id))}
+          onDelete={plan.canSetOfficial ? (id) => void run(() => deleteTarget(id)) : undefined}
         />
         <Group
           label="เป้าหมายส่วนตัว"
           targets={stretch}
-          onBump={bump}
+          totals={plan.activityTotals}
           week={week}
-          activities={activities}
+          busy={busy}
+          emptyNote="ยังไม่มีเป้าหมายส่วนตัว"
+          onBump={(id) => void run(() => bumpTarget(id))}
+          onDelete={plan.canStretch ? (id) => void run(() => deleteTarget(id)) : undefined}
           action={
-            <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)}>
-              <Plus size={13} strokeWidth={2} /> เพิ่ม
-            </Button>
+            plan.canStretch ? (
+              <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)} disabled={busy}>
+                <Plus size={13} strokeWidth={2} /> เพิ่ม
+              </Button>
+            ) : undefined
           }
         />
       </CardContent>
 
-      <GoalDetailSheet open={addOpen} onSubmit={addGoal} onClose={() => setAddOpen(false)} />
+      <GoalDetailSheet
+        open={addOpen}
+        actionGroups={plan.actionGroups}
+        onSubmit={addGoal}
+        onClose={() => setAddOpen(false)}
+      />
     </Card>
   );
 }
@@ -89,53 +139,76 @@ export function TargetsBoard({ agent, title = "เป้าหมายเดื
 function Group({
   label,
   targets,
-  onBump,
+  totals,
   week,
+  busy,
   action,
   note,
-  activities,
+  emptyNote,
+  onBump,
+  onDelete,
 }: {
   label: string;
   targets: Target[];
-  onBump: (id: string) => void;
+  totals: ActivityTotals;
   week: number;
+  busy: boolean;
   action?: React.ReactNode;
   note?: string;
-  activities: Activity[];
+  emptyNote: string;
+  onBump: (id: number) => void;
+  onDelete?: (id: number) => void;
 }) {
-  if (targets.length === 0 && !action) return null;
   return (
     <div>
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-baseline gap-2 min-w-0">
           <div className="text-label uppercase text-text-subtle">{label}</div>
-          {note && <div className="text-label text-text-subtle num shrink-0">· {note}</div>}
+          {note && targets.length > 0 && (
+            <div className="text-label text-text-subtle num shrink-0">· {note}</div>
+          )}
         </div>
         {action}
       </div>
-      <div className="flex flex-col gap-3">
-        {targets.map((t) => (
-          <TargetRow key={t.id} target={t} week={week} onBump={() => onBump(t.id)} activities={activities} />
-        ))}
-      </div>
+      {targets.length === 0 ? (
+        <p className="text-small text-text-subtle">{emptyNote}</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {targets.map((t) => (
+            <TargetRow
+              key={t.id}
+              target={t}
+              totals={totals}
+              week={week}
+              busy={busy}
+              onBump={() => onBump(t.id)}
+              onDelete={onDelete ? () => onDelete(t.id) : undefined}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function TargetRow({
   target: t,
+  totals,
   week,
+  busy,
   onBump,
-  activities,
+  onDelete,
 }: {
   target: Target;
+  /** This month's real activity totals — an activity-source goal moves the moment a linked
+   *  Daily-Plan task is ticked, because the tick writes the row these totals sum. */
+  totals: ActivityTotals;
   week: number;
+  busy: boolean;
   onBump: () => void;
-  /** LIVE log (ActivityProvider) — so an activity-source target moves the moment a
-   *  Daily-Plan task is ticked, instead of reading the frozen sample array. */
-  activities: Activity[];
+  onDelete?: () => void;
 }) {
-  const { current, denom, pct } = targetProgress(t, activities);
+  const { current, denom, pct } = targetProgress(t, totals);
   const auto = isAutoTarget(t);
   const focus = isFocusWeek(t, week);
   const fmt = (n: number) => (t.kind === "baht" ? formatBaht(n) : String(n));
@@ -146,7 +219,7 @@ function TargetRow({
   const sub = t.kind === "ratio" ? `${current} / ${denom}` : `/ ${fmt(t.target)}`;
 
   return (
-    <div className={cn(focus && "border-l-2 border-accent pl-2.5 -ml-2.5")}>
+    <div className={cn("group", focus && "border-l-2 border-accent pl-2.5 -ml-2.5")}>
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-body inline-flex items-center gap-1.5 min-w-0">
           {focus && <span className="size-1.5 rounded-full bg-accent shrink-0" />}
@@ -177,9 +250,20 @@ function TargetRow({
           {!auto && (
             <button
               onClick={onBump}
-              className="num text-label font-semibold text-accent border border-accent rounded px-1.5 h-6 hover:bg-accent-wash transition-colors"
+              disabled={busy}
+              className="num text-label font-semibold text-accent border border-accent rounded px-1.5 h-6 hover:bg-accent-wash transition-colors disabled:opacity-50"
             >
               +1
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              disabled={busy}
+              aria-label={`ลบเป้าหมาย ${t.label}`}
+              className="size-6 grid place-items-center rounded text-text-subtle opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-red-bg hover:text-red transition-all disabled:opacity-50"
+            >
+              <Trash2 size={13} strokeWidth={1.75} />
             </button>
           )}
         </div>

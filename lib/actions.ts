@@ -107,17 +107,9 @@ export function getActivitiesForLead(leadId: string | null | undefined): Activit
   return listActivities().filter((a) => a.related_lead_id === leadId);
 }
 
-// Sample attach options for the FAB dropdowns (design phase — real leads/listings
-// wired later). Kept small on purpose.
-export const SAMPLE_LEAD_OPTIONS = [
-  { id: "L-0007", label: "คุณมีน · Show · ชัยพฤกษ์" },
-  { id: "L-0011", label: "คุณเบิร์ด · Nego · พระราม 2" },
-  { id: "L-0014", label: "คุณเอส · Appoint · อโศก" },
-];
-
-export const SAMPLE_LISTING_OPTIONS = [
-  { id: "TCYP001", label: "TCYP001 · Chaiyaphruek Park" },
-  { id: "HRM2001", label: "HRM2001 · Rama 2 Grand Villa" },
-  { id: "CBGY001", label: "CBGY001 · The Nern by Sansiri" },
-  { id: "CASK001", label: "CASK001 · Asoke Sky Residence" },
-];
+// The design build's sample attach options (SAMPLE_LEAD_OPTIONS / SAMPLE_LISTING_OPTIONS)
+// were deleted in Phase 5 #6. Their ids ("L-0007", "TCYP001" …) exist in neither
+// main_6_buyer_crm nor main_4_listing_database, and both `tasks` and `activities` FK to
+// those tables — so every one of them would have failed the insert the moment the task
+// sheet started writing for real. The picker searches the live tables instead
+// (`searchLeads` / `searchListings` in lib/search.ts).

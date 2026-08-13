@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { X, Trash2, Clock, Repeat } from "lucide-react";
+import { X, Trash2, Clock, Repeat, Search } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import {
   TASK_TYPES,
@@ -10,32 +10,52 @@ import {
   RECUR_ORDER,
   WEEKDAY_LABELS,
   WEEKDAY_ORDER,
-  listTargets,
+  type Target,
   type Task,
   type TaskType,
   type RecurFreq,
 } from "@/lib/momentum";
-import { ACTION_GROUPS, SAMPLE_LEAD_OPTIONS, SAMPLE_LISTING_OPTIONS } from "@/lib/actions";
+import type { ActionGroupRow } from "@/lib/plan";
+import { searchLeads, searchListings, type LeadHit, type ListingHit } from "@/lib/search";
 import { cn } from "@/lib/cn";
 
 const field =
   "w-full h-9 px-3 rounded-md border border-border-strong bg-surface text-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
-export type TaskDraft = Omit<Task, "id" | "agent" | "date" | "done" | "order">;
+/** What the sheet returns — everything a task carries except the day it belongs to, which
+ *  the plan owns, and the id/done/order the DB owns. */
+export interface TaskDraft {
+  title: string;
+  type: TaskType;
+  notes: string | null;
+  targetId: number | null;
+  activityType: string | null;
+  relatedLeadId: string | null;
+  relatedListingId: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  repeatFreq: RecurFreq | null;
+  repeatWeekdays: number[] | null;
+  repeatDayOfMonth: number | null;
+}
 
 export function TaskDetailSheet({
   open,
   mode,
-  agent,
   initial,
+  targets,
+  actionGroups,
   onSubmit,
   onDelete,
   onClose,
 }: {
   open: boolean;
   mode: "add" | "edit";
-  agent: string;
   initial?: Task | null;
+  targets: Target[];
+  /** From `action_type`. `tasks.activity_type` is an FK to it — the design build's seed list
+   *  was a subset that silently hid three valid actions (Owner Talk, Update Price, เซ็นสัญญา). */
+  actionGroups: ActionGroupRow[];
   onSubmit: (values: TaskDraft) => void;
   onDelete?: () => void;
   onClose: () => void;
@@ -46,33 +66,44 @@ export function TaskDetailSheet({
   const [targetId, setTargetId] = React.useState("");
   const [activityType, setActivityType] = React.useState("");
   const [entityKind, setEntityKind] = React.useState<"none" | "lead" | "listing">("none");
-  const [leadId, setLeadId] = React.useState("");
-  const [listingId, setListingId] = React.useState("");
+  const [lead, setLead] = React.useState<{ id: string; label: string } | null>(null);
+  const [listing, setListing] = React.useState<{ id: string; label: string } | null>(null);
   const [startTime, setStartTime] = React.useState("");
   const [endTime, setEndTime] = React.useState("");
   const [freq, setFreq] = React.useState<RecurFreq>("none");
   const [weekdays, setWeekdays] = React.useState<number[]>([]);
   const [dom, setDom] = React.useState(1);
 
-  const targets = listTargets(agent);
-
-  // Re-seed each time the sheet opens.
+  // Re-seed each time the sheet opens. Keyed on `open` alone: a re-render from
+  // router.refresh() while the sheet is open must not wipe what is being typed.
   React.useEffect(() => {
     if (!open) return;
     setTitle(initial?.title ?? "");
     setNotes(initial?.notes ?? "");
     setType(initial?.type ?? "work");
-    setTargetId(initial?.targetId ?? "");
+    setTargetId(initial?.targetId != null ? String(initial.targetId) : "");
     setActivityType(initial?.activityType ?? "");
     setEntityKind(initial?.relatedLeadId ? "lead" : initial?.relatedListingId ? "listing" : "none");
-    setLeadId(initial?.relatedLeadId ?? "");
-    setListingId(initial?.relatedListingId ?? "");
+    setLead(
+      initial?.relatedLeadId
+        ? { id: initial.relatedLeadId, label: initial.relatedLeadName ?? initial.relatedLeadId }
+        : null
+    );
+    setListing(
+      initial?.relatedListingId
+        ? {
+            id: initial.relatedListingId,
+            label: initial.relatedListingName ?? initial.relatedListingId,
+          }
+        : null
+    );
     setStartTime(initial?.startTime ?? "");
     setEndTime(initial?.endTime ?? "");
     setFreq(initial?.repeat?.freq ?? "none");
     setWeekdays(initial?.repeat?.weekdays ?? []);
     setDom(initial?.repeat?.dayOfMonth ?? 1);
-  }, [open, initial]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -97,22 +128,19 @@ export function TaskDetailSheet({
 
   const submit = () => {
     if (!canSave) return;
-    const leadOpt = SAMPLE_LEAD_OPTIONS.find((o) => o.id === leadId);
-    const listingOpt = SAMPLE_LISTING_OPTIONS.find((o) => o.id === listingId);
     onSubmit({
       title: title.trim(),
-      notes: notes.trim() || undefined,
+      notes: notes.trim() || null,
       type,
-      targetId: targetId || undefined,
-      activityType: activityType || undefined,
-      relatedLeadId: entityKind === "lead" ? leadId || undefined : undefined,
-      relatedLeadName: entityKind === "lead" ? leadOpt?.label.split(" · ")[0] : undefined,
-      relatedListingId: entityKind === "listing" ? listingId || undefined : undefined,
-      relatedListingName:
-        entityKind === "listing" ? listingOpt?.label.split(" · ").slice(1).join(" · ") : undefined,
-      startTime: startTime || undefined,
-      endTime: endTime || undefined,
-      repeat: freq === "none" ? null : { freq, weekdays: freq === "weekly" ? weekdays : undefined, dayOfMonth: freq === "monthly" ? dom : undefined },
+      targetId: targetId ? Number(targetId) : null,
+      activityType: activityType || null,
+      relatedLeadId: entityKind === "lead" ? lead?.id ?? null : null,
+      relatedListingId: entityKind === "listing" ? listing?.id ?? null : null,
+      startTime: startTime || null,
+      endTime: endTime || null,
+      repeatFreq: freq === "none" ? null : freq,
+      repeatWeekdays: freq === "weekly" ? weekdays : null,
+      repeatDayOfMonth: freq === "monthly" ? dom : null,
     });
     onClose();
   };
@@ -172,6 +200,9 @@ export function TaskDetailSheet({
               </option>
             ))}
           </select>
+          {targets.length === 0 && (
+            <p className="text-label text-text-subtle mt-1.5">ยังไม่มีเป้าหมายของเดือนนี้</p>
+          )}
         </Field>
 
         {/* CRM link — HAUS extension: logging this activity feeds the auto-bridge */}
@@ -182,7 +213,7 @@ export function TaskDetailSheet({
             className={cn(field, "mb-2")}
           >
             <option value="">— ไม่มีกิจกรรม —</option>
-            {ACTION_GROUPS.map((g) => (
+            {actionGroups.map((g) => (
               <optgroup key={g.group} label={g.group}>
                 {g.items.map((a) => (
                   <option key={a} value={a}>
@@ -200,24 +231,22 @@ export function TaskDetailSheet({
             ))}
           </div>
           {entityKind === "lead" && (
-            <select value={leadId} onChange={(e) => setLeadId(e.target.value)} className={field}>
-              <option value="">— เลือกลูกค้า —</option>
-              {SAMPLE_LEAD_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <EntityPicker
+              placeholder="ค้นชื่อลูกค้า / เบอร์ / รหัสลีด…"
+              selected={lead}
+              onSelect={setLead}
+              search={async (q) => (await searchLeads(q)).map((r: LeadHit) => ({ id: r.id, label: r.label }))}
+            />
           )}
           {entityKind === "listing" && (
-            <select value={listingId} onChange={(e) => setListingId(e.target.value)} className={field}>
-              <option value="">— เลือกทรัพย์ —</option>
-              {SAMPLE_LISTING_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <EntityPicker
+              placeholder="ค้นรหัสทรัพย์ / ชื่อโครงการ…"
+              selected={listing}
+              onSelect={setListing}
+              search={async (q) =>
+                (await searchListings(q)).map((r: ListingHit) => ({ id: r.code, label: r.label }))
+              }
+            />
           )}
         </Field>
 
@@ -276,6 +305,11 @@ export function TaskDetailSheet({
               ของเดือน
             </div>
           )}
+          {freq !== "none" && (
+            <p className="text-label text-text-subtle mt-1.5">
+              บันทึกกฎการทำซ้ำไว้ แต่ระบบยังไม่สร้างงานของวันถัดไปให้อัตโนมัติ
+            </p>
+          )}
         </Field>
 
         <div className="flex items-center gap-2 mt-1">
@@ -300,6 +334,110 @@ export function TaskDetailSheet({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Debounced server-side search for the lead / listing link.
+ *
+ * A plain <select> was never viable once this wrote for real: `tasks.related_lead_id` and
+ * `related_listing_id` are FKs, and there are 953 leads and 511 listings — the six sample
+ * options the design build shipped exist in neither table.
+ */
+function EntityPicker({
+  placeholder,
+  selected,
+  onSelect,
+  search,
+}: {
+  placeholder: string;
+  selected: { id: string; label: string } | null;
+  onSelect: (v: { id: string; label: string } | null) => void;
+  search: (q: string) => Promise<{ id: string; label: string }[]>;
+}) {
+  const [q, setQ] = React.useState("");
+  const [hits, setHits] = React.useState<{ id: string; label: string }[]>([]);
+  const [openList, setOpenList] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!openList) return;
+    let cancelled = false;
+    setLoading(true);
+    const t = setTimeout(async () => {
+      const rows = await search(q);
+      if (!cancelled) {
+        setHits(rows);
+        setLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, openList]);
+
+  if (selected) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-border-strong px-3 h-9">
+        <span className="text-body flex-1 min-w-0 truncate">{selected.label}</span>
+        <button
+          type="button"
+          onClick={() => {
+            onSelect(null);
+            setQ("");
+            setOpenList(true);
+          }}
+          aria-label="ล้างการเลือก"
+          className="size-6 grid place-items-center rounded text-text-subtle hover:text-text shrink-0"
+        >
+          <X size={14} strokeWidth={1.75} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search
+          size={14}
+          strokeWidth={1.75}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle pointer-events-none"
+        />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onFocus={() => setOpenList(true)}
+          placeholder={placeholder}
+          className={cn(field, "pl-8")}
+        />
+      </div>
+      {openList && (
+        <div className="absolute z-10 top-[calc(100%+4px)] left-0 right-0 max-h-56 overflow-y-auto rounded-md border border-border bg-surface shadow-pop">
+          {loading && <div className="px-3 py-2 text-small text-text-subtle">กำลังค้นหา…</div>}
+          {!loading && hits.length === 0 && (
+            <div className="px-3 py-2 text-small text-text-subtle">ไม่พบข้อมูล</div>
+          )}
+          {!loading &&
+            hits.map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                onClick={() => {
+                  onSelect(h);
+                  setOpenList(false);
+                }}
+                className="w-full text-left px-3 py-2 text-body hover:bg-surface-hover transition-colors"
+              >
+                <span className="num text-text-subtle text-label mr-1.5">{h.id}</span>
+                {h.label}
+              </button>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

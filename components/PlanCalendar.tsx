@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { TH_MONTHS } from "@/lib/format";
-import { TODAY, type Task } from "@/lib/momentum";
+import { type Task } from "@/lib/momentum";
 import { cn } from "@/lib/cn";
 
 // Compact month picker for the Daily Plan date popover — adapted from Solo Gang's MiniCalendar.
@@ -37,10 +37,13 @@ function statusFor(tasks: Task[], date: string): DayStatus {
 
 export function MiniCalendar({
   selected,
+  today,
   tasks,
   onPick,
 }: {
   selected: string;
+  /** Passed in rather than read from a constant — the plan runs on the real clock now. */
+  today: string;
   tasks: Task[];
   onPick: (date: string) => void;
 }) {
@@ -89,7 +92,7 @@ export function MiniCalendar({
           const date = `${month}-${String(i + 1).padStart(2, "0")}`;
           const status = statusFor(tasks, date);
           const count = tasks.filter((t) => t.date === date).length;
-          const isToday = date === TODAY;
+          const isToday = date === today;
           const isSel = date === selected;
           return (
             <button

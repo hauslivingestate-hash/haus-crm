@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -26,54 +27,43 @@ import { Input } from "@/components/ui/Input";
 import { TaskDetailSheet, type TaskDraft } from "@/components/TaskDetailSheet";
 import { TaskCompleteSheet } from "@/components/TaskCompleteSheet";
 import { MiniCalendar } from "@/components/PlanCalendar";
-import { useActivities, taskActivityId } from "@/components/ActivityProvider";
-import { useRbac } from "@/components/RbacProvider";
 import { useLeave } from "@/components/LeaveProvider";
 import { LeaveRequestSheet } from "@/components/LeaveRequestSheet";
 import { coversDate } from "@/lib/leave";
 import { listEmployees } from "@/lib/team";
-import { ACTION_GROUPS } from "@/lib/actions";
-import {
-  DEFAULT_QUICK_ACTIONS,
-  loadQuickActions,
-  saveQuickActions,
-  type QuickAction,
-} from "@/lib/quickAdd";
+import { useRbac } from "@/components/RbacProvider";
+import { DEFAULT_QUICK_ACTIONS, type QuickAction } from "@/lib/quickAdd";
 import { formatDate } from "@/lib/format";
+import type { PlanData } from "@/lib/plan";
 import {
-  listTasks,
-  getTarget,
+  createTask,
+  updateTask,
+  deleteTask as deleteTaskAction,
+  setTaskDone,
+  fetchTasksInRange,
+  saveQuickActions,
+} from "@/lib/mutations/tasks";
+import {
+  addDays,
+  monthBounds,
+  monthOf,
   TASK_TYPES,
   TASK_TYPE_ORDER,
-  TODAY,
   type Task,
   type TaskType,
 } from "@/lib/momentum";
 import { cn } from "@/lib/cn";
 
-function addDays(iso: string, n: number): string {
-  // Parse + format in UTC so the date never shifts across timezones.
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-function relLabel(iso: string): string | null {
-  if (iso === TODAY) return "วันนี้";
-  if (iso === addDays(TODAY, 1)) return "พรุ่งนี้";
-  if (iso === addDays(TODAY, -1)) return "เมื่อวาน";
+function relLabel(iso: string, today: string): string | null {
+  if (iso === today) return "วันนี้";
+  if (iso === addDays(today, 1)) return "พรุ่งนี้";
+  if (iso === addDays(today, -1)) return "เมื่อวาน";
   return null;
 }
 
-// Monotonic id source. Deriving ids from `tasks.length` is unsafe: the array SHRINKS on
-// delete, so the next task can reuse a departed task's id — and since the logged activity's
-// id is derived from the task id (`taskActivityId`), two tasks would then fight over one
-// activity row. A counter never goes backwards. Wire = a DB-generated id.
-let taskSeq = 0;
-const newTaskId = () => `t_${++taskSeq}`;
-
-export function DailyPlan({ agent }: { agent: string }) {
-  const [tasks, setTasks] = React.useState<Task[]>(() => listTasks(agent));
-  const [date, setDate] = React.useState(TODAY);
+export function DailyPlan({ plan }: { plan: PlanData }) {
+  const router = useRouter();
+  const [date, setDate] = React.useState(plan.today);
   const [draft, setDraft] = React.useState("");
   const [draftType, setDraftType] = React.useState<TaskType>("work");
   const [sheet, setSheet] = React.useState<{ open: boolean; task: Task | null }>({
@@ -82,111 +72,166 @@ export function DailyPlan({ agent }: { agent: string }) {
   });
   const [calOpen, setCalOpen] = React.useState(false);
   const [completing, setCompleting] = React.useState<Task | null>(null);
-  const { logActivity, removeActivity } = useActivities();
+  const [quickEdit, setQuickEdit] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  // The write finishing is not the same as the screen being right again: router.refresh()
+  // lands later. Ticking a task in that gap acts on the PREVIOUS render — which is how a
+  // task that had just been linked to an action got ticked without the confirm sheet, and
+  // its count/remark were silently defaulted. Staying busy until the refresh lands closes it.
+  const [refreshing, startRefresh] = React.useTransition();
+  const busy = saving || refreshing;
 
-  // ⚠️ IDENTITY: this screen belongs to ONE person — the `agent` prop. Today `/today`
-  // passes `currentAgent()`, which is hardcoded to SAMPLE_AGENT ("Stone") because the seed
-  // tasks/targets only exist for them; it does NOT follow the view-as switcher.
+  // The page ships one month (± a day). Any other month the user browses to is fetched on
+  // demand and cached here; rows inside the shipped range are dropped from it so the server
+  // copy always wins and a deleted task can't linger in the overlap.
+  const [extra, setExtra] = React.useState<Record<string, Task[]>>({});
+  const serverRange = React.useMemo(() => {
+    const { from, to } = monthBounds(plan.month);
+    return { from: addDays(from, -1), to: addDays(to, 1) };
+  }, [plan.month]);
+
+  const viewMonth = monthOf(date);
+
+  React.useEffect(() => {
+    if (viewMonth === plan.month || extra[viewMonth]) return;
+    let cancelled = false;
+    const { from, to } = monthBounds(viewMonth);
+    fetchTasksInRange(from, to).then((rows) => {
+      if (!cancelled) setExtra((e) => ({ ...e, [viewMonth]: rows }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMonth, plan.month, extra]);
+
+  const tasks = React.useMemo(() => {
+    const outside = Object.values(extra)
+      .flat()
+      .filter((t) => t.date < serverRange.from || t.date > serverRange.to);
+    return [...plan.tasks, ...outside];
+  }, [plan.tasks, extra, serverRange]);
+
+  // Optimistic tick state. The server action + router.refresh() is the source of truth; this
+  // only stops the checkbox from lagging a round-trip behind the click. Cleared whenever
+  // fresh server data arrives.
+  const [doneOverride, setDoneOverride] = React.useState<Record<number, boolean>>({});
+  React.useEffect(() => setDoneOverride({}), [plan.tasks]);
+  const isDone = (t: Task) => doneOverride[t.id] ?? t.done;
+
+  // ⚠️ IDENTITY: this screen belongs to ONE person — the signed-in employee. Tasks, logged
+  // activity and Quick Add presets are all scoped to `plan.employeeCode` server-side.
   //
-  // Everything owner-scoped here (tasks, logged activity, Quick Add presets, leave) is keyed
-  // off that same `agent`, deliberately. An earlier version mixed the two — activity written
-  // as Stone while the leave banner followed the switched user — so the plan could show
-  // someone else's leave. Keep them aligned.
-  //
-  // `can()` stays viewer-scoped: permissions belong to whoever is looking, not to the plan's
-  // owner. Wire = replace `currentAgent()` with the session user; then the two converge.
+  // The leave banner is the exception: `/leave` is still on seed data (Phase 6), so it is
+  // matched by nickname against the sample roster the way it always was. It shows nothing
+  // for anyone the seed doesn't know — which is honest, not a regression.
   const { can } = useRbac();
   const { requests } = useLeave();
   const [leaveOpen, setLeaveOpen] = React.useState(false);
   const planOwner = React.useMemo(
-    () => listEmployees().find((e) => e.nickname === agent),
-    [agent]
+    () => listEmployees().find((e) => e.nickname === plan.nickname),
+    [plan.nickname]
   );
   const myLeaveToday = planOwner
     ? requests.find((r) => r.employeeId === planOwner.id && coversDate(r, date))
     : undefined;
 
-  // Quick Add presets — per-user, loaded after mount so the server render matches.
-  const [quick, setQuick] = React.useState<QuickAction[]>(DEFAULT_QUICK_ACTIONS);
-  const [quickEdit, setQuickEdit] = React.useState(false);
-  React.useEffect(() => setQuick(loadQuickActions(agent)), [agent]);
-  const applyQuick = (next: QuickAction[]) => {
-    setQuick(next);
-    saveQuickActions(agent, next);
-  };
+  // Someone who has never customised their presets gets the starter set. Tapping one still
+  // creates a real task — the chips only need saving once they're edited.
+  const quick: QuickAction[] = React.useMemo(
+    () =>
+      plan.quickActions.length
+        ? plan.quickActions.map((q) => ({
+            id: `qa_${q.id}`,
+            label: q.label,
+            type: q.type,
+            activityType: q.activityType,
+          }))
+        : DEFAULT_QUICK_ACTIONS,
+    [plan.quickActions]
+  );
 
   const dayTasks = tasks
     .filter((t) => t.date === date)
     .sort((a, b) => a.order - b.order);
-  const doneCount = dayTasks.filter((t) => t.done).length;
+  const doneCount = dayTasks.filter(isDone).length;
   const pct = dayTasks.length ? Math.round((doneCount / dayTasks.length) * 100) : 0;
 
+  /** After any write: refresh the server month, and re-fetch the browsed month if it isn't it. */
+  const syncAfterWrite = React.useCallback(async () => {
+    if (viewMonth !== plan.month) {
+      const { from, to } = monthBounds(viewMonth);
+      const rows = await fetchTasksInRange(from, to);
+      setExtra((e) => ({ ...e, [viewMonth]: rows }));
+    }
+    startRefresh(() => router.refresh());
+  }, [viewMonth, plan.month, router]);
+
+  /** Every write funnels through here so busy/error handling is identical everywhere.
+   *
+   *  The try/catch is not defensive padding: a server action can REJECT rather than return
+   *  `{ok:false}` — a dropped connection, or a navigation that aborts the request. Without
+   *  it the rejection is swallowed by the `void run(...)` call sites, the optimistic tick
+   *  stays on screen, and the plan quietly claims work was logged that never reached the DB. */
+  const run = React.useCallback(
+    async (fn: () => Promise<{ ok: true } | { ok: false; error: string } | { ok: true; task: Task }>) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await fn();
+        if (!res.ok) setError(res.error);
+        else await syncAfterWrite();
+        return res.ok;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [syncAfterWrite]
+  );
+
   // ── Task → activity bridge ────────────────────────────────────────────────
-  // Completing a task carrying an `activityType` WRITES an activity row. Since the
+  // Completing a task carrying an `activityType` WRITES an `activities` row. Since the
   // +บันทึก FAB was removed (CEO feedback R1), this is the only path by which activity
   // reaches the KPI targets, the new-sales rank ladder, and the entity timelines.
   //
-  // Tick a linked task → confirm sheet (count + remark) → log. Untick → remove the row, so
-  // a mis-tick doesn't leave a phantom activity behind. Unlinked tasks just tick.
-  //
-  // `canLog` re-gates activity.log. Deleting the FAB removed the app's ONLY check on that
-  // permission, so a role without it (Marketing / Listing Support / Admin) could log by
-  // ticking an action-linked task — contradicting the matrix the wiring pass must mirror in
-  // RLS. Without the permission a task still ticks; it just doesn't write an activity.
-  const canLog = can("activity.log");
+  // Tick a linked task → confirm sheet (count + remark) → log. Untick → the row is deleted
+  // server-side, so a mis-tick doesn't leave a phantom activity behind. Unlinked tasks just
+  // tick. `canLog` mirrors the same `activity.log` check the server action re-runs.
+  const canLog = plan.canLog;
 
-  const toggle = (id: string) => {
-    const t = tasks.find((x) => x.id === id);
-    if (!t) return;
-    if (!t.done && t.activityType && canLog) {
+  const toggle = async (t: Task) => {
+    const currentlyDone = isDone(t);
+    if (!currentlyDone && t.activityType && canLog) {
       setCompleting(t);
       return;
     }
-    if (t.done && t.activityType && canLog) removeActivity(taskActivityId(t.id));
-    setTasks((ts) => ts.map((x) => (x.id === id ? { ...x, done: !x.done } : x)));
+    setDoneOverride((o) => ({ ...o, [t.id]: !currentlyDone }));
+    const ok = await run(() => setTaskDone(t.id, !currentlyDone));
+    if (!ok) setDoneOverride((o) => ({ ...o, [t.id]: currentlyDone }));
   };
 
-  const confirmComplete = (count: number, remark: string) => {
+  const confirmComplete = async (count: number, remark: string) => {
     const t = completing;
     if (!t) return;
-    logActivity({
-      id: taskActivityId(t.id),
-      created_by: agent,
-      action: t.activityType!,
-      // The TASK's date, not today — ticking a back-dated plan item logs it on that day.
-      date: t.date,
-      count,
-      remark: remark || null,
-      related_lead_id: t.relatedLeadId ?? null,
-      related_lead_name: t.relatedLeadName ?? null,
-      related_listing_id: t.relatedListingId ?? null,
-      related_listing_name: t.relatedListingName ?? null,
-    });
-    setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, done: true } : x)));
     setCompleting(null);
+    setDoneOverride((o) => ({ ...o, [t.id]: true }));
+    const ok = await run(() => setTaskDone(t.id, true, { count, remark }));
+    if (!ok) setDoneOverride((o) => ({ ...o, [t.id]: false }));
   };
 
-  const cycleType = (id: string) =>
-    setTasks((ts) =>
-      ts.map((t) =>
-        t.id === id
-          ? { ...t, type: TASK_TYPE_ORDER[(TASK_TYPE_ORDER.indexOf(t.type) + 1) % TASK_TYPE_ORDER.length] }
-          : t
-      )
-    );
+  const cycleType = (t: Task) => {
+    const next = TASK_TYPE_ORDER[(TASK_TYPE_ORDER.indexOf(t.type) + 1) % TASK_TYPE_ORDER.length];
+    void run(() => updateTask(t.id, { ...toInput(t), type: next }));
+  };
 
   const add = () => {
     const title = draft.trim();
     if (!title) return;
-    // TODO (wiring): smart time parse — if the quick-add text starts with a time
-    // (e.g. "10.00 นั่งสมาธิ" / "10:00 นั่งสมาธิ"), extract HH:MM into startTime and
-    // strip it from the title. Quick-add only. See HANDOVER_CHECKLIST → Momentum.
-    const order = Math.max(-1, ...dayTasks.map((t) => t.order)) + 1;
-    setTasks((ts) => [
-      ...ts,
-      { id: newTaskId(), agent, date, title, done: false, order, type: draftType },
-    ]);
     setDraft("");
+    void run(() => createTask({ title, date, type: draftType }));
   };
 
   const cycleDraftType = () =>
@@ -194,70 +239,38 @@ export function DailyPlan({ agent }: { agent: string }) {
 
   /** Quick Add — appends an UNTICKED task. It's a plan, not a log: the tick is what
    *  records the activity. Time / notes / linked entity get filled in afterwards. */
-  const addQuick = (qa: QuickAction) => {
-    const order = Math.max(-1, ...dayTasks.map((t) => t.order)) + 1;
-    setTasks((ts) => [
-      ...ts,
-      {
-        id: newTaskId(),
-        agent,
-        date,
-        title: qa.label,
-        done: false,
-        order,
-        type: qa.type,
-        activityType: qa.activityType,
-      },
-    ]);
-  };
+  const addQuick = (qa: QuickAction) =>
+    void run(() =>
+      createTask({ title: qa.label, date, type: qa.type, activityType: qa.activityType ?? null })
+    );
 
-  // Advanced add / edit via the detail sheet.
-  //
-  // Editing a task that has ALREADY been ticked must keep its logged activity in sync —
-  // otherwise changing the action leaves the old one counted, and clearing the action
-  // strands a row that can never be removed (untick only fires for tasks that still carry
-  // an activityType). Both cases silently inflate KPI targets and the probation ladder.
+  // Advanced add / edit via the detail sheet. Keeping a completed task's logged activity in
+  // sync with the edit is handled server-side by `updateTask`.
   const applyDraft = (d: TaskDraft) => {
     if (sheet.task) {
-      const prev = sheet.task;
-      const next: Task = { ...prev, ...d };
-      if (prev.done && canLog) {
-        if (!next.activityType) {
-          // Action removed from a completed task → drop the activity it produced.
-          removeActivity(taskActivityId(prev.id));
-        } else {
-          // Re-log under the same id: action/date/entity may all have changed.
-          logActivity({
-            id: taskActivityId(prev.id),
-            created_by: agent,
-            action: next.activityType,
-            date: next.date,
-            count: 1,
-            remark: null,
-            related_lead_id: next.relatedLeadId ?? null,
-            related_lead_name: next.relatedLeadName ?? null,
-            related_listing_id: next.relatedListingId ?? null,
-            related_listing_name: next.relatedListingName ?? null,
-          });
-        }
-      }
-      setTasks((ts) => ts.map((t) => (t.id === prev.id ? next : t)));
+      // Capture id AND date now: the sheet calls onClose() right after onSubmit(), which
+      // nulls `sheet.task` before the async write runs.
+      const { id, date: taskDate } = sheet.task;
+      void run(() => updateTask(id, { ...d, date: taskDate }));
     } else {
-      const order = Math.max(-1, ...dayTasks.map((t) => t.order)) + 1;
-      setTasks((ts) => [...ts, { id: newTaskId(), agent, date, done: false, order, ...d }]);
+      void run(() => createTask({ ...d, date }));
     }
   };
 
-  const deleteTask = () => {
+  const removeTask = () => {
     if (!sheet.task) return;
-    const { id, done, activityType } = sheet.task;
-    // Deleting a COMPLETED task must also delete the activity it logged, or the row lives
-    // on forever with no UI left to remove it — permanently overstating effort.
-    if (done && activityType && canLog) removeActivity(taskActivityId(id));
-    setTasks((ts) => ts.filter((t) => t.id !== id));
+    const id = sheet.task.id;
+    void run(() => deleteTaskAction(id));
   };
 
-  const rel = relLabel(date);
+  const applyQuick = (next: QuickAction[]) =>
+    void run(() =>
+      saveQuickActions(
+        next.map((q) => ({ label: q.label, type: q.type, activityType: q.activityType ?? null }))
+      )
+    );
+
+  const rel = relLabel(date, plan.today);
 
   return (
     <Card>
@@ -295,9 +308,9 @@ export function DailyPlan({ agent }: { agent: string }) {
           >
             <ChevronRight size={16} strokeWidth={1.75} />
           </button>
-          {date !== TODAY && (
+          {date !== plan.today && (
             <button
-              onClick={() => setDate(TODAY)}
+              onClick={() => setDate(plan.today)}
               className="text-small font-medium text-accent border border-accent rounded-md px-2.5 h-8 shrink-0 hover:bg-accent-wash transition-colors"
             >
               วันนี้
@@ -311,6 +324,7 @@ export function DailyPlan({ agent }: { agent: string }) {
               <div className="absolute top-[calc(100%+8px)] left-0 z-50 w-[300px] max-w-[calc(100vw-48px)] p-3.5 rounded-lg bg-surface border border-border shadow-pop">
                 <MiniCalendar
                   selected={date}
+                  today={plan.today}
                   tasks={tasks}
                   onPick={(d) => {
                     setDate(d);
@@ -330,12 +344,16 @@ export function DailyPlan({ agent }: { agent: string }) {
         {myLeaveToday && (
           <div className="px-4 py-2.5 border-b border-border bg-amber-bg/40 flex items-center gap-2 text-small">
             <CalendarOff size={14} strokeWidth={1.75} className="text-amber shrink-0" />
-            <span className="text-text">
-              คุณลา{myLeaveToday.type}วันนี้
-            </span>
+            <span className="text-text">คุณลา{myLeaveToday.type}วันนี้</span>
             <Pill tone={myLeaveToday.status === "approved" ? "green" : "amber"}>
               {myLeaveToday.status === "approved" ? "อนุมัติแล้ว" : "รออนุมัติ"}
             </Pill>
+          </div>
+        )}
+
+        {error && (
+          <div className="px-4 py-2.5 border-b border-border bg-red-bg/50 text-small text-red">
+            {error}
           </div>
         )}
 
@@ -350,9 +368,12 @@ export function DailyPlan({ agent }: { agent: string }) {
             <TaskRow
               key={t.id}
               task={t}
-              onToggle={() => toggle(t.id)}
+              done={isDone(t)}
+              targetLabel={plan.targets.find((g) => g.id === t.targetId)?.label}
+              busy={busy}
+              onToggle={() => void toggle(t)}
               onEdit={() => setSheet({ open: true, task: t })}
-              onCycleType={() => cycleType(t.id)}
+              onCycleType={() => cycleType(t)}
             />
           ))}
         </ul>
@@ -364,7 +385,8 @@ export function DailyPlan({ agent }: { agent: string }) {
             <button
               key={qa.id}
               onClick={() => addQuick(qa)}
-              className="inline-flex items-center gap-1 rounded-full border border-border-strong px-2.5 py-1 text-small text-text-muted hover:border-accent hover:text-accent transition-colors"
+              disabled={busy}
+              className="inline-flex items-center gap-1 rounded-full border border-border-strong px-2.5 py-1 text-small text-text-muted hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
             >
               <Plus size={12} strokeWidth={2} />
               {qa.label}
@@ -418,8 +440,9 @@ export function DailyPlan({ agent }: { agent: string }) {
           </button>
           <button
             onClick={add}
+            disabled={busy}
             aria-label="เพิ่มงาน"
-            className="size-8 grid place-items-center rounded-md bg-accent text-text-onaccent hover:bg-accent-hover transition-colors shrink-0"
+            className="size-8 grid place-items-center rounded-md bg-accent text-text-onaccent hover:bg-accent-hover transition-colors shrink-0 disabled:opacity-50"
           >
             <Plus size={16} strokeWidth={2} />
           </button>
@@ -429,10 +452,11 @@ export function DailyPlan({ agent }: { agent: string }) {
       <TaskDetailSheet
         open={sheet.open}
         mode={sheet.task ? "edit" : "add"}
-        agent={agent}
         initial={sheet.task}
+        targets={plan.targets}
+        actionGroups={plan.actionGroups}
         onSubmit={applyDraft}
-        onDelete={deleteTask}
+        onDelete={removeTask}
         onClose={() => setSheet({ open: false, task: null })}
       />
 
@@ -446,6 +470,7 @@ export function DailyPlan({ agent }: { agent: string }) {
       {quickEdit && (
         <QuickActionsEditor
           actions={quick}
+          actionGroups={plan.actionGroups}
           onChange={applyQuick}
           onClose={() => setQuickEdit(false)}
         />
@@ -456,23 +481,44 @@ export function DailyPlan({ agent }: { agent: string }) {
         open={leaveOpen}
         defaultDate={date}
         employeeId={planOwner?.id ?? ""}
-        nickname={agent}
+        nickname={plan.nickname}
         onClose={() => setLeaveOpen(false)}
       />
     </Card>
   );
 }
 
+/** A task, back in the shape the update action takes. */
+function toInput(t: Task) {
+  return {
+    title: t.title,
+    date: t.date,
+    type: t.type,
+    notes: t.notes ?? null,
+    targetId: t.targetId ?? null,
+    activityType: t.activityType ?? null,
+    relatedLeadId: t.relatedLeadId ?? null,
+    relatedListingId: t.relatedListingId ?? null,
+    startTime: t.startTime ?? null,
+    endTime: t.endTime ?? null,
+    repeatFreq: t.repeat?.freq ?? null,
+    repeatWeekdays: t.repeat?.weekdays ?? null,
+    repeatDayOfMonth: t.repeat?.dayOfMonth ?? null,
+  };
+}
+
 // ── Quick Add editor ─────────────────────────────────────────────────────────
 // Per-user preference, so it lives here rather than in company Settings. Adding a chip
-// picks an action from the SAME catalog the activity log uses (ACTION_GROUPS) — a chip
-// bound to an action logs it on completion; one without is a plain to-do.
+// picks an action from the SAME catalog the activity log uses (`action_type`, loaded from
+// the DB) — a chip bound to an action logs it on completion; one without is a plain to-do.
 function QuickActionsEditor({
   actions,
+  actionGroups,
   onChange,
   onClose,
 }: {
   actions: QuickAction[];
+  actionGroups: PlanData["actionGroups"];
   onChange: (next: QuickAction[]) => void;
   onClose: () => void;
 }) {
@@ -485,7 +531,7 @@ function QuickActionsEditor({
     if (!l) return;
     onChange([
       ...actions,
-      { id: `qa_custom_${Date.now()}`, label: l, type, activityType: action || undefined },
+      { id: `qa_new_${actions.length}`, label: l, type, activityType: action || undefined },
     ]);
     setLabel("");
     setAction("");
@@ -543,7 +589,7 @@ function QuickActionsEditor({
               className="flex-1 h-9 px-3 rounded-md border border-border-strong bg-surface text-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <option value="">— ไม่ผูกกิจกรรม (งานทั่วไป) —</option>
-              {ACTION_GROUPS.map((g) => (
+              {actionGroups.map((g) => (
                 <optgroup key={g.group} label={g.group}>
                   {g.items.map((a) => (
                     <option key={a} value={a}>{a}</option>
@@ -576,29 +622,35 @@ function QuickActionsEditor({
 
 function TaskRow({
   task: t,
+  done,
+  targetLabel,
+  busy,
   onToggle,
   onEdit,
   onCycleType,
 }: {
   task: Task;
+  done: boolean;
+  targetLabel?: string;
+  busy: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onCycleType: () => void;
 }) {
-  const target = getTarget(t.targetId);
   const repeats = t.repeat && t.repeat.freq !== "none";
-  const hasMeta = !!(target || t.relatedLeadName || t.relatedListingId);
+  const hasMeta = !!(targetLabel || t.relatedLeadName || t.relatedListingId);
   return (
     <li className="flex items-start gap-3 px-4 py-2.5">
       <button
         onClick={onToggle}
-        aria-label={t.done ? "ทำเครื่องหมายยังไม่เสร็จ" : "ทำเครื่องหมายเสร็จ"}
+        disabled={busy}
+        aria-label={done ? "ทำเครื่องหมายยังไม่เสร็จ" : "ทำเครื่องหมายเสร็จ"}
         className={cn(
-          "mt-0.5 size-5 rounded-md border grid place-items-center shrink-0 transition-colors",
-          t.done ? "bg-accent border-accent text-text-onaccent" : "border-border-strong hover:border-accent"
+          "mt-0.5 size-5 rounded-md border grid place-items-center shrink-0 transition-colors disabled:opacity-60",
+          done ? "bg-accent border-accent text-text-onaccent" : "border-border-strong hover:border-accent"
         )}
       >
-        {t.done && (
+        {done && (
           <svg viewBox="0 0 12 12" className="size-3" fill="none">
             <path d="M2.5 6.5l2.5 2.5 4.5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -612,7 +664,7 @@ function TaskRow({
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onEdit()}
       >
         <div className="flex items-center gap-2">
-          <span className={cn("text-body", t.done && "line-through text-text-subtle")}>{t.title}</span>
+          <span className={cn("text-body", done && "line-through text-text-subtle")}>{t.title}</span>
           {t.startTime && (
             <span className="inline-flex items-center gap-0.5 text-label text-text-subtle num shrink-0">
               <Clock size={11} strokeWidth={1.75} />
@@ -625,15 +677,19 @@ function TaskRow({
         </div>
         {hasMeta && (
           <div className="flex flex-wrap items-center gap-1.5 mt-1">
-            {target && (
+            {targetLabel && (
               <span className="inline-flex items-center gap-1 text-label text-text-subtle">
-                <TargetIcon size={11} strokeWidth={1.75} /> {target.label}
+                <TargetIcon size={11} strokeWidth={1.75} /> {targetLabel}
               </span>
             )}
             {t.relatedLeadName && (
-              <span className="inline-flex items-center gap-1 text-label text-violet">
+              <Link
+                href={`/leads/${t.relatedLeadId}`}
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 text-label text-violet hover:underline"
+              >
                 <UserRound size={11} strokeWidth={1.75} /> {t.relatedLeadName}
-              </span>
+              </Link>
             )}
             {t.relatedListingId && (
               <Link
@@ -653,9 +709,10 @@ function TaskRow({
           e.stopPropagation();
           onCycleType();
         }}
+        disabled={busy}
         title="ประเภทงาน (แตะเพื่อเปลี่ยน)"
         aria-label="ประเภทงาน"
-        className="shrink-0 mt-0.5"
+        className="shrink-0 mt-0.5 disabled:opacity-60"
       >
         <Pill tone={TASK_TYPES[t.type].tone}>{TASK_TYPES[t.type].label}</Pill>
       </button>

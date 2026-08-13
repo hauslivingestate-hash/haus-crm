@@ -4,14 +4,14 @@
 // work gets recorded. Quick Add is what keeps that fast — instead of typing "โทรหาลูกค้า"
 // every morning, a sale taps a chip. Time / notes / linked lead can be filled in after.
 //
-// PER-USER, not company-wide (Ben: "ที่ user สามารถ set เองได้ ตาม preferences ของเขา").
-// Persisted to localStorage keyed by agent — same approach the leads table already uses for
-// its column order. Wire later: `user_quick_actions(user_id, label, task_type,
-// activity_type, sort_order)`.
+// PER-USER (Ben: "ที่ user สามารถ set เองได้ ตาม preferences ของเขา"). Phase 5 #6 moved the
+// storage from localStorage to `user_quick_actions`, so a preset follows the person to
+// another device and its `activity_type` is FK-checked against `action_type`. What remains
+// here is only the starting set for someone who has never customised theirs.
 //
 // A preset is a SHORTCUT over vocabularies that already exist — `activityType` values come
-// from ACTION_GROUPS (lib/actions) and `type` from TASK_TYPES (lib/momentum). Quick Add
-// introduces no new vocabulary of its own.
+// from `action_type` and `type` from TASK_TYPES (lib/momentum). Quick Add introduces no new
+// vocabulary of its own.
 
 import type { TaskType } from "@/lib/momentum";
 
@@ -32,30 +32,3 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   { id: "qa_survey", label: "สำรวจทรัพย์", type: "build", activityType: "Survey" },
   { id: "qa_sourcing", label: "หาทรัพย์ใหม่", type: "build", activityType: "Sourcing" },
 ];
-
-const KEY_PREFIX = "haus.quickActions.";
-
-export function loadQuickActions(agent: string): QuickAction[] {
-  if (typeof window === "undefined") return DEFAULT_QUICK_ACTIONS;
-  try {
-    const raw = localStorage.getItem(KEY_PREFIX + agent);
-    if (!raw) return DEFAULT_QUICK_ACTIONS;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return DEFAULT_QUICK_ACTIONS;
-    // Tolerate hand-edited / older payloads rather than throwing away the whole set.
-    return parsed.filter(
-      (x): x is QuickAction => !!x && typeof x.id === "string" && typeof x.label === "string"
-    );
-  } catch {
-    return DEFAULT_QUICK_ACTIONS;
-  }
-}
-
-export function saveQuickActions(agent: string, actions: QuickAction[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(KEY_PREFIX + agent, JSON.stringify(actions));
-  } catch {
-    /* quota / private mode — chips just fall back to defaults next load */
-  }
-}
