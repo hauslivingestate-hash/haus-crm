@@ -6,21 +6,26 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { Pill } from "@/components/ui/Pill";
 import { useRbac } from "@/components/RbacProvider";
-import { listingAgent } from "@/lib/listings";
+import type { StaffMember } from "@/lib/queries";
 import { formatDate } from "@/lib/format";
 
 // Owner contact is PRIVATE. A sale sees the owner's name/phone only for listings they manage,
 // or if they hold `contacts.view_all` (Listing Support / leadership — owners are contacts).
 // Everyone else sees the managing agent's contact instead, so they can reach out to Co-Agent.
-// Design-first: "manages this listing" uses the seeded managing agent (lib/listings); wire to
-// the real creating-agent + real contacts RLS.
+//
+// Both facts now arrive from the server: `agent` is the listing's real `effective_sale_id`,
+// and `isManager` is that code compared against the session's employee code. Previously the
+// component hashed the listing id to invent an agent and then compared display names — so it
+// gated the owner's phone number on a coin flip. RLS is the real protection (owner_phone
+// comes back null for listings you don't manage), but the card must agree with it.
 export function ListingOwnerCard({
   ownerName,
   ownerPhone,
   ownerLine,
   ownerTalkLastDate,
   activityComment,
-  listingId,
+  agent,
+  isManager,
 }: {
   ownerName: string | null;
   ownerPhone: string | null;
@@ -30,11 +35,12 @@ export function ListingOwnerCard({
   ownerTalkLastDate?: string | null;
   /** `activity_comment` (col Y) — free-text note from that last owner conversation. */
   activityComment?: string | null;
-  listingId: string;
+  /** The agent who actually manages this listing, or null when nobody does. */
+  agent: StaffMember | null;
+  /** True when the viewer IS that agent. */
+  isManager: boolean;
 }) {
-  const { can, currentUser } = useRbac();
-  const agent = listingAgent(listingId);
-  const isManager = !!agent && currentUser.name === agent.nickname;
+  const { can } = useRbac();
   const canSeeOwner = can("contacts.view_all") || isManager;
 
   if (canSeeOwner) {
@@ -107,10 +113,10 @@ export function ListingOwnerCard({
       {agent ? (
         <div className="p-4 flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <Avatar name={agent.nickname} src={agent.avatarUrl} tone="crimson" className="h-10 w-10" />
+            <Avatar name={agent.nickname} tone="crimson" className="h-10 w-10" />
             <div className="min-w-0">
-              <div className="text-body font-medium truncate num">{agent.nickname}</div>
-              <div className="text-label text-text-subtle">{agent.position}</div>
+              <div className="text-body font-medium truncate">{agent.nickname}</div>
+              <div className="text-label text-text-subtle">{agent.position ?? "—"}</div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

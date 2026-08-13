@@ -28,11 +28,10 @@ import { ListingEditButton } from "@/components/ListingEditSheet";
 import { ExclusiveAgreementCard } from "@/components/ExclusiveAgreementCard";
 import { ListingChecklist } from "@/components/ListingChecklist";
 import { ListingCopyButton } from "@/components/ListingCopyButton";
-import { getListing } from "@/lib/queries";
+import { getListing, getProject, getNicknameByAuthId, getStaffDirectory } from "@/lib/queries";
+import { getAuthContext } from "@/lib/auth";
 import { listingGallery } from "@/lib/placeholderImages"; // PREVIEW ONLY — fake listing photos
-import { getProjectByName } from "@/lib/projects";
 import { getActivitiesForListing } from "@/lib/actions";
-import { listingAgentNickname } from "@/lib/listings";
 import {
   formatBaht,
   formatRent,
@@ -62,7 +61,20 @@ export default async function ListingDetailPage({
   if (!listing) notFound();
 
   const deal = dealType(listing.asking_price, listing.rental_price);
-  const project = getProjectByName(listing.project_name_eng);
+  // Resolve by the FK, not by matching the project's English name: the source sheet put
+  // Thai names in the English column often enough that a name match found 1 of 508 rows.
+  const project = await getProject(listing.project_id);
+  const creatorName = await getNicknameByAuthId(listing.created_by);
+
+  // Who manages this listing, resolved from the real FK — and whether that is the viewer.
+  // Decided here rather than in the card, so the owner-contact gate is computed from the
+  // session's employee code instead of a display-name comparison in the browser.
+  const auth = await getAuthContext();
+  const staff = await getStaffDirectory();
+  const managingAgent =
+    staff.find((s) => s.code === listing.effective_sale_id) ?? null;
+  const isManager =
+    !!auth?.employeeCode && auth.employeeCode === listing.effective_sale_id;
   const activities = getActivitiesForListing(listing.listing_id);
 
   // Price move (Listings cols J → K). Only meaningful when BOTH sides are present.
@@ -350,12 +362,12 @@ export default async function ListingDetailPage({
                 <Row label="วันที่สร้าง">
                   <span className="num">{formatDate(listing.date_created)}</span>
                 </Row>
-                {/* created_by is exposed by the view but NULL in the live rows — fall back to
-                    the seeded managing agent until the import backfills it. */}
-                <Row label="ผู้ดูแล">
-                  <span className="num">
-                    {listing.created_by ?? listingAgentNickname(listing.listing_id) ?? "—"}
-                  </span>
+                {/* `created_by` holds an auth.users uuid, and every one of the 511 imported
+                    rows holds the SAME one (the admin the import ran as) — it was being
+                    printed raw. Relabelled too: this is who filed the record, not who
+                    manages the property; the manager has its own card above. */}
+                <Row label="ผู้สร้างรายการ">
+                  <span>{creatorName ?? "—"}</span>
                 </Row>
                 {listing.owner_focus && (
                   <Row label="Owner Focus">
@@ -423,7 +435,8 @@ export default async function ListingDetailPage({
               ownerLine={listing.owner_line}
               ownerTalkLastDate={listing.owner_talk_last_date}
               activityComment={listing.activity_comment}
-              listingId={listing.listing_id}
+              agent={managingAgent}
+              isManager={isManager}
             />
 
             {/* Marketing — REAL data now (portal links + media + sign/VDO flags all come

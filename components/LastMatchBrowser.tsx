@@ -8,11 +8,8 @@ import {
   closeTypeTone,
   sizeSummary,
   matchScope,
-  scopeMatches,
 } from "@/lib/lastMatch";
 import { useRbac } from "@/components/RbacProvider";
-import { visibleMemberIds } from "@/lib/teams";
-import { getEmployee } from "@/lib/team";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
@@ -37,32 +34,23 @@ const SORT_VALUE: Record<string, (m: LastMatch) => number | string | null> = {
   zone: (m) => m.zone_name_thai,
   price: (m) => m.last_match_price,
   close: (m) => orderIndex(CLOSE_TYPES, m.close_type),
-  agent: (m) => m.sale_id,
+  agent: (m) => m.sale_name,
 };
 
-export function LastMatchBrowser({ matches: all }: { matches: LastMatch[] }) {
+export function LastMatchBrowser({ matches }: { matches: LastMatch[] }) {
   const [q, setQ] = React.useState("");
   const [close, setClose] = React.useState<"all" | CloseType>("all");
   const { sort, onSort } = useSort({ key: "date", dir: "desc" });
-  const { can, currentUser, teams } = useRbac();
+  const { can } = useRbac();
 
-  // ── Scope: own → team → all (CEO feedback R1). Resolved from permissions, then mapped
-  // from user ids to the employee codes (S-00x) the ledger's `sale_id` actually stores.
+  // ── Scope: own → team → all (CEO feedback R1) — enforced by RLS on the query, so the
+  // rows arriving here are already the viewer's. What's left for the permission to decide
+  // is presentation: whether a เซลส์ column earns its place, and whether an empty result
+  // means "no access" or "nothing closed yet".
+  //
+  // The client-side re-filter this replaced compared seed user ids against seed employee
+  // codes; with real sessions it matched nothing and would have blanked the table.
   const scope = matchScope(can);
-  const matches = React.useMemo(() => {
-    if (scope === "all") return all;
-    if (scope === "none") return [];
-    // "team" reuses the existing team-scoping helper (a leader sees their team, everyone
-    // else just themselves); "own" is always just the viewer.
-    const memberIds =
-      scope === "team"
-        ? (visibleMemberIds(teams, currentUser.id, false) ?? new Set([currentUser.id]))
-        : new Set([currentUser.id]);
-    const codes = new Set(
-      [...memberIds].map((id) => getEmployee(id)?.code).filter((c): c is string => !!c)
-    );
-    return scopeMatches(all, codes);
-  }, [all, scope, teams, currentUser.id]);
 
   const query = q.trim().toLowerCase();
   const filtered = matches
@@ -187,7 +175,7 @@ export function LastMatchBrowser({ matches: all }: { matches: LastMatch[] }) {
                       <span className="text-text-subtle">—</span>
                     )}
                   </TD>
-                  {showAgent && <TD className="num text-small text-text-muted">{m.sale_id ?? "—"}</TD>}
+                  {showAgent && <TD className="text-small text-text-muted">{m.sale_name ?? "—"}</TD>}
                   <TD className="text-small text-text-muted max-w-[220px]">
                     <span className="line-clamp-1">{m.last_match_remark ?? "—"}</span>
                   </TD>

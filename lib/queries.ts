@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth";
+import type { Project } from "@/lib/projects";
+import type { LastMatch } from "@/lib/lastMatch";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -236,4 +238,259 @@ export async function getPotentialCount(): Promise<number> {
     .from("main_10_potential_listing")
     .select("*", { count: "exact", head: true });
   return count ?? 0;
+}
+
+/**
+ * The staff a listing can be handed to, by employee code.
+ *
+ * This replaces `lib/listings.ts`, which picked a "managing agent" by hashing the listing
+ * id — a demo device that survived into the live app. It decided who the ทรัพย์ทั้งบริษัท
+ * page told you to phone for a co-agent, and which listings the owner-contact card treated
+ * you as manager of. `main_4_listing_database.sale_id` has been the real answer since
+ * 2026-08-03; `effective_sale_id` falls back to the zone's primary agent.
+ *
+ * Only columns `authenticated` may read: salary/PII were revoked at the column level.
+ */
+export interface StaffMember {
+  code: string;
+  nickname: string;
+  position: string | null;
+  phone: string | null;
+  lineUserId: string | null;
+}
+
+export async function getStaffDirectory(): Promise<StaffMember[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("main_1_hr")
+    .select("employee_code,nickname,position,phone,line_userid")
+    .order("employee_code");
+  return ((data ?? []) as {
+    employee_code: string;
+    nickname: string | null;
+    position: string | null;
+    phone: string | null;
+    line_userid: string | null;
+  }[]).map((e) => ({
+    code: e.employee_code,
+    nickname: e.nickname ?? e.employee_code,
+    position: e.position,
+    phone: e.phone,
+    lineUserId: e.line_userid,
+  }));
+}
+
+/**
+ * Nickname for an `auth.users` id — what `main_4_listing_database.created_by` stores.
+ *
+ * All 511 listings carry the same uuid (the admin account the 2026-08-03 import ran as),
+ * and the listing page was printing it verbatim: a raw internal id where a person's name
+ * belongs. Returns null when the uuid belongs to no employee row.
+ */
+export async function getNicknameByAuthId(
+  authUserId: string | null | undefined
+): Promise<string | null> {
+  if (!authUserId) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("main_1_hr")
+    .select("nickname")
+    .eq("auth_user_id", authUserId)
+    .maybeSingle();
+  return (data?.nickname as string | undefined) ?? null;
+}
+
+// ── Projects (Phase 6) ───────────────────────────────────────────────────────
+
+type ProjectDbRow = {
+  project_id: string;
+  project_name_eng: string | null;
+  project_name_thai: string | null;
+  property_type: string | null;
+  zone: string | null;
+  total_units: number | null;
+  phases: number | null;
+  unit_types: string | null;
+  material: string | null;
+  floor_to_ceiling: string | null;
+  project_age: string | null;
+  facilities: string | null;
+  common_fee: number | string | null;
+  juristic: string | null;
+  juristic_collect_pct: number | string | null;
+  extra_parking_fee: number | string | null;
+  rental_price_in_project: string | null;
+  flooding: boolean | null;
+  resident_occupation: string | null;
+  project_sold_price: string | null;
+  pros: string | null;
+  cons: string | null;
+  sales_id: string | null;
+};
+
+const PROJECT_COLUMNS = [
+  "project_id", "project_name_eng", "project_name_thai", "property_type", "zone",
+  "total_units", "phases", "unit_types", "material", "floor_to_ceiling", "project_age",
+  "facilities", "common_fee", "juristic", "juristic_collect_pct", "extra_parking_fee",
+  "rental_price_in_project", "flooding", "resident_occupation", "project_sold_price",
+  "pros", "cons", "sales_id",
+].join(",");
+
+// `numeric` arrives as a string over PostgREST; Number() before formatting or "35" becomes
+// NaN-adjacent nonsense downstream.
+const numOrNull = (v: number | string | null): number | null => {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+const unit = (v: number | string | null, suffix: string): string | null => {
+  const n = numOrNull(v);
+  return n == null ? null : `${n.toLocaleString("en-US")} ${suffix}`;
+};
+
+function toProject(
+  r: ProjectDbRow,
+  zoneNames: Map<string, string>,
+  saleNames: Map<string, string>
+): Project {
+  return {
+    id: r.project_id,
+    name_eng: r.project_name_eng ?? "",
+    name_thai: r.project_name_thai ?? r.project_name_eng ?? r.project_id,
+    property_type: r.property_type,
+    zone: r.zone ? zoneNames.get(r.zone) ?? r.zone : null,
+    units: r.total_units != null ? `${r.total_units.toLocaleString("en-US")} ยูนิต` : null,
+    phases: r.phases != null ? `${r.phases} เฟส` : null,
+    unit_types: r.unit_types,
+    material: r.material,
+    floor_to_ceiling: r.floor_to_ceiling,
+    age: r.project_age,
+    common_area: r.facilities,
+    common_fee: unit(r.common_fee, "บาท"),
+    juristic: r.juristic,
+    fee_collection_rate: numOrNull(r.juristic_collect_pct) != null
+      ? `${numOrNull(r.juristic_collect_pct)}%`
+      : null,
+    overflow_parking_fee: unit(r.extra_parking_fee, "บาท"),
+    rental_range: r.rental_price_in_project,
+    // A boolean column, but the UI renders free text — and "not recorded" must stay
+    // distinguishable from "does not flood".
+    flood: r.flooding == null ? null : r.flooding ? "เคยท่วม" : "ไม่ท่วม",
+    resident_persona: r.resident_occupation,
+    closing_price: r.project_sold_price,
+    pros: r.pros,
+    cons: r.cons,
+    created_by: r.sales_id ? saleNames.get(r.sales_id) ?? r.sales_id : null,
+  };
+}
+
+/** zone_id → Thai name, and employee_code → nickname. Both tables are tiny. */
+async function nameMaps(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const [zones, staff] = await Promise.all([
+    supabase.from("zone").select("zone_id,name_thai"),
+    supabase.from("main_1_hr").select("employee_code,nickname"),
+  ]);
+  return {
+    zoneNames: new Map(
+      ((zones.data ?? []) as { zone_id: string; name_thai: string | null }[])
+        .filter((z) => z.name_thai)
+        .map((z) => [z.zone_id, z.name_thai as string] as const)
+    ),
+    saleNames: new Map(
+      ((staff.data ?? []) as { employee_code: string; nickname: string | null }[])
+        .filter((s) => s.nickname)
+        .map((s) => [s.employee_code, s.nickname as string] as const)
+    ),
+  };
+}
+
+export async function getProjects(): Promise<Project[]> {
+  const supabase = await createClient();
+  const [{ data }, maps] = await Promise.all([
+    supabase
+      .from("main_3_property_detail")
+      .select(PROJECT_COLUMNS)
+      // Zone first so the browser's filter chips come out in a stable order rather than
+      // however the rows happened to arrive.
+      .order("zone", { nullsFirst: false })
+      .order("project_name_thai"),
+    nameMaps(supabase),
+  ]);
+  return ((data ?? []) as unknown as ProjectDbRow[]).map((r) =>
+    toProject(r, maps.zoneNames, maps.saleNames)
+  );
+}
+
+export async function getProject(id: string | null | undefined): Promise<Project | null> {
+  if (!id) return null;
+  const supabase = await createClient();
+  const [{ data }, maps] = await Promise.all([
+    supabase.from("main_3_property_detail").select(PROJECT_COLUMNS).eq("project_id", id).maybeSingle(),
+    nameMaps(supabase),
+  ]);
+  return data ? toProject(data as unknown as ProjectDbRow, maps.zoneNames, maps.saleNames) : null;
+}
+
+// ── Last Match (Phase 6) ─────────────────────────────────────────────────────
+
+/**
+ * The closed-deal ledger, already scoped by RLS to own → team → all.
+ *
+ * No client-side re-filtering follows this: the policy on `main_7_last_match` is the
+ * enforcement, and the design build's browser-side scope filter compared seed user ids to
+ * seed employee codes, which real sessions never matched.
+ */
+/**
+ * 6 rows carry `1899-12-30` — Excel's serial-zero, i.e. the source sheet's date cell was
+ * blank and the import wrote the epoch instead of nothing. "30/12/1899" on screen is worse
+ * than an em-dash, so anything predating the company reads as not-recorded. The rows
+ * themselves are untouched; cleaning them is a data decision, not a rendering one.
+ */
+const realDate = (d: string | null): string | null => (d && d >= "2000-01-01" ? d : null);
+
+export async function getLastMatches(): Promise<LastMatch[]> {
+  const supabase = await createClient();
+  const [{ data }, maps] = await Promise.all([
+    supabase
+      .from("main_7_last_match")
+      .select(
+        "last_match_id,sale_id,close_type,project_name,property_type,zone,sq_wa,sq_m,bed,bath,last_match_price,last_match_remark,buyer_persona,date_created"
+      )
+      .order("date_created", { ascending: false, nullsFirst: false }),
+    nameMaps(supabase),
+  ]);
+
+  return ((data ?? []) as {
+    last_match_id: string;
+    sale_id: string | null;
+    close_type: string | null;
+    project_name: string | null;
+    property_type: string | null;
+    zone: string | null;
+    sq_wa: number | string | null;
+    sq_m: number | string | null;
+    bed: number | null;
+    bath: number | string | null;
+    last_match_price: number | string | null;
+    last_match_remark: string | null;
+    buyer_persona: string | null;
+    date_created: string | null;
+  }[]).map((r) => ({
+    last_match_id: r.last_match_id,
+    sale_id: r.sale_id,
+    sale_name: r.sale_id ? maps.saleNames.get(r.sale_id) ?? r.sale_id : null,
+    close_type: (r.close_type as LastMatch["close_type"]) ?? null,
+    project_name: r.project_name,
+    property_type: r.property_type,
+    zone: r.zone,
+    zone_name_thai: r.zone ? maps.zoneNames.get(r.zone) ?? null : null,
+    sq_wa: numOrNull(r.sq_wa),
+    sq_m: numOrNull(r.sq_m),
+    bed: r.bed,
+    bath: numOrNull(r.bath),
+    last_match_price: numOrNull(r.last_match_price),
+    last_match_remark: r.last_match_remark,
+    buyer_persona: r.buyer_persona,
+    date_created: realDate(r.date_created),
+  }));
 }

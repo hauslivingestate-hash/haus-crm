@@ -16,7 +16,7 @@ import { Pill } from "@/components/ui/Pill";
 import { formatBaht, formatRent, formatNumber } from "@/lib/format";
 import { listingStatusDot, potentialTone, potentialGroup } from "@/lib/status";
 import { compareValues, orderIndex } from "@/lib/sort";
-import { listingAgent } from "@/lib/listings";
+import type { StaffMember } from "@/lib/queries";
 import { cn } from "@/lib/cn";
 import { listingCoverImage } from "@/lib/placeholderImages"; // PREVIEW ONLY — fake listing photos
 
@@ -31,10 +31,15 @@ const POT_GROUPS = [
   { key: "a_list", label: "A-List" },
 ];
 
-// Listing + its managing sales agent (design-first seed). NO owner data is surfaced here —
-// this is the company-wide co-agent view; owner contact stays on the detail page, gated.
+// Listing + the sales agent who actually manages it (`effective_sale_id` — the listing's own
+// agent, falling back to the zone's primary). NO owner data is surfaced here — this is the
+// company-wide co-agent view; owner contact stays on the detail page, gated.
+//
+// This used to hash the listing id to pick an agent from a seed pool, which meant the phone
+// number on this page — the entire point of the page — belonged to a colleague chosen at
+// random.
 interface Row extends ListingRow {
-  agent: Employee | undefined;
+  agent: StaffMember | undefined;
 }
 
 const SORT_VALUE: Record<string, (l: Row) => number | string | null> = {
@@ -52,7 +57,13 @@ const SORT_VALUE: Record<string, (l: Row) => number | string | null> = {
   agent: (l) => l.agent?.nickname ?? null,
 };
 
-export function CompanyListings({ listings }: { listings: ListingRow[] }) {
+export function CompanyListings({
+  listings,
+  agents,
+}: {
+  listings: ListingRow[];
+  agents: StaffMember[];
+}) {
   const router = useRouter();
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState("all");
@@ -60,20 +71,23 @@ export function CompanyListings({ listings }: { listings: ListingRow[] }) {
   const [agentNick, setAgentNick] = React.useState<string>("all");
   const { sort, onSort } = useSort();
 
-  const rows: Row[] = React.useMemo(
-    () => listings.map((l) => ({ ...l, agent: listingAgent(l.listing_id) })),
-    [listings]
-  );
+  const rows: Row[] = React.useMemo(() => {
+    const byCode = new Map(agents.map((a) => [a.code, a]));
+    return listings.map((l) => ({
+      ...l,
+      agent: l.effective_sale_id ? byCode.get(l.effective_sale_id) : undefined,
+    }));
+  }, [listings, agents]);
 
   // Per-agent totals across the whole company (independent of status/search) — feeds the
   // agent-filter dropdown, sorted by who holds the most inventory. Scales to any headcount.
   const agentCounts = React.useMemo(() => {
-    const m = new Map<string, { agent: Employee; count: number }>();
+    const m = new Map<string, { agent: StaffMember; count: number }>();
     for (const r of rows) {
       if (!r.agent) continue;
-      const cur = m.get(r.agent.nickname);
+      const cur = m.get(r.agent.code);
       if (cur) cur.count++;
-      else m.set(r.agent.nickname, { agent: r.agent, count: 1 });
+      else m.set(r.agent.code, { agent: r.agent, count: 1 });
     }
     return [...m.values()].sort((a, b) => b.count - a.count);
   }, [rows]);
@@ -102,7 +116,7 @@ export function CompanyListings({ listings }: { listings: ListingRow[] }) {
       key: agent.nickname,
       label: agent.nickname,
       count,
-      leading: <Avatar name={agent.nickname} src={agent.avatarUrl} tone="crimson" className="h-5 w-5" />,
+      leading: <Avatar name={agent.nickname} tone="crimson" className="h-5 w-5" />,
     })),
   ];
   const currentAgent = agentOptions.find((o) => o.key === agentNick);
@@ -228,8 +242,8 @@ export function CompanyListings({ listings }: { listings: ListingRow[] }) {
                   <TD>
                     {l.agent ? (
                       <span className="inline-flex items-center gap-2">
-                        <Avatar name={l.agent.nickname} src={l.agent.avatarUrl} tone="crimson" />
-                        <span className="text-small text-text-muted num">{l.agent.nickname}</span>
+                        <Avatar name={l.agent.nickname} tone="crimson" />
+                        <span className="text-small text-text-muted">{l.agent.nickname}</span>
                       </span>
                     ) : (
                       <span className="text-text-subtle">—</span>

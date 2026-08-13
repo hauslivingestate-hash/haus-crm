@@ -15,7 +15,8 @@ import { Topbar } from "@/components/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
-import { getProject, projectCompleteness } from "@/lib/projects";
+import { projectCompleteness } from "@/lib/projects";
+import { getProject } from "@/lib/queries";
 
 export default async function ProjectDetailPage({
   params,
@@ -23,7 +24,7 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const p = getProject(id);
+  const p = await getProject(id);
   if (!p) notFound();
 
   const pct = projectCompleteness(p);

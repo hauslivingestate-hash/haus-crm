@@ -1,9 +1,9 @@
 import { Topbar } from "@/components/Topbar";
 import { CompanyListings } from "@/components/CompanyListings";
-import { getListings } from "@/lib/queries";
+import { getListings, getStaffDirectory } from "@/lib/queries";
 
 export default async function CompanyListingsPage() {
-  const listings = await getListings();
+  const [listings, agents] = await Promise.all([getListings(), getStaffDirectory()]);
 
   return (
     <>
@@ -13,7 +13,7 @@ export default async function CompanyListingsPage() {
         actions={false}
       />
       <div className="p-4 lg:p-6">
-        <CompanyListings listings={listings} />
+        <CompanyListings listings={listings} agents={agents} />
       </div>
     </>
   );
