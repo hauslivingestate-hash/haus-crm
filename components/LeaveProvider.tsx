@@ -1,75 +1,103 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
-  listLeave,
   DEFAULT_LEAVE_ALLOWANCES,
   type LeaveRequest,
   type LeaveStatus,
   type LeaveAllowance,
 } from "@/lib/leave";
+import {
+  submitLeave as submitLeaveAction,
+  decideLeave as decideLeaveAction,
+  withdrawLeave as withdrawLeaveAction,
+  type LeaveDraft,
+} from "@/lib/mutations/leave";
 
-// Shared LIVE store for leave requests (design-first, in-memory), seeded from the real
-// HR Sheet rows. Two sides read it:
-//   • แผนวันนี้ — a rep submits ขอลา and sees their own requests / away banner
+// Shared leave state for the two surfaces that need it:
+//   • แผนวันนี้ — a rep files ขอลา and sees the "you're on leave" banner
 //   • /leave    — HR reviews the queue and approves or rejects
-// Both must see the same list the instant one changes, which is why it's a provider rather
-// than page-local state.
 //
-// Wire later = `leave_requests` table; submit/decide become insert + update. Enforce the
-// decision gate in RLS (`leave.manage`), not just in the UI.
+// Phase 6 replaced the in-memory store with the `leave_requests` table. The rows arrive
+// from the layout (server-rendered, RLS-scoped) and every mutation is a server action
+// followed by router.refresh(); the provider itself no longer holds the truth, it just
+// hands the shared list down and reports busy/error state.
+//
+// The approve/reject gate is enforced in the action AND in RLS, not here — the UI only
+// decides whether to draw the buttons.
 
 interface Ctx {
   requests: LeaveRequest[];
-  /** File a new request — always lands as `pending`. */
-  submit: (r: Omit<LeaveRequest, "id" | "status">) => void;
-  /** Approve or reject. `by` is the decider's nickname (audit trail). */
-  decide: (id: string, status: Exclude<LeaveStatus, "pending">, by: string, at: string) => void;
-  /** Cancel a request you filed — only meaningful while still pending. */
-  withdraw: (id: string) => void;
-  requestsFor: (employeeId: string) => LeaveRequest[];
-  pendingCount: number;
-  /** Annual quota per leave type. PLACEHOLDER values — CEO edits in ตั้งค่า → โควตาวันลา. */
   allowances: LeaveAllowance[];
-  setAllowances: React.Dispatch<React.SetStateAction<LeaveAllowance[]>>;
+  /** File a new request — always lands as `pending`. */
+  submit: (draft: LeaveDraft) => Promise<boolean>;
+  decide: (id: number, status: Exclude<LeaveStatus, "pending">) => Promise<boolean>;
+  /** Cancel a request you filed — only possible while still pending. */
+  withdraw: (id: number) => Promise<boolean>;
+  requestsFor: (employeeCode: string | null) => LeaveRequest[];
+  pendingCount: number;
+  busy: boolean;
+  error: string | null;
+  clearError: () => void;
 }
 
 const Ctx = React.createContext<Ctx | null>(null);
 
-// Monotonic id source. `requests.length` is unsafe — withdraw() shrinks the array, so
-// submit → withdraw → submit would mint an id that already exists, and decide()/withdraw()
-// would then act on both rows. Wire = a DB-generated id.
-let leaveSeq = 0;
-const newLeaveId = () => `lv_new_${++leaveSeq}`;
+export function LeaveProvider({
+  children,
+  requests = [],
+  allowances = DEFAULT_LEAVE_ALLOWANCES,
+}: {
+  children: React.ReactNode;
+  requests?: LeaveRequest[];
+  allowances?: LeaveAllowance[];
+}) {
+  const router = useRouter();
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  // Busy until the refreshed rows land, not just until the write returns — the same gap
+  // that let /today's tick act on a stale render.
+  const [refreshing, startRefresh] = React.useTransition();
 
-export function LeaveProvider({ children }: { children: React.ReactNode }) {
-  const [requests, setRequests] = React.useState<LeaveRequest[]>(() => listLeave());
-  const [allowances, setAllowances] = React.useState<LeaveAllowance[]>(
-    () => [...DEFAULT_LEAVE_ALLOWANCES]
-  );
-
-  const submit = React.useCallback((r: Omit<LeaveRequest, "id" | "status">) => {
-    setRequests((xs) => [{ ...r, id: newLeaveId(), status: "pending" }, ...xs]);
-  }, []);
-
-  const decide = React.useCallback(
-    (id: string, status: Exclude<LeaveStatus, "pending">, by: string, at: string) => {
-      setRequests((xs) =>
-        xs.map((r) => (r.id === id ? { ...r, status, decidedBy: by, decidedAt: at } : r))
-      );
+  const run = React.useCallback(
+    async (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await fn();
+        if (!res.ok) {
+          setError(res.error);
+          return false;
+        }
+        startRefresh(() => router.refresh());
+        return true;
+      } catch (e) {
+        // A server action can reject outright; swallowing it would leave the queue looking
+        // unchanged with no explanation.
+        setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+        return false;
+      } finally {
+        setSaving(false);
+      }
     },
-    []
+    [router]
   );
 
-  const withdraw = React.useCallback((id: string) => {
-    setRequests((xs) => xs.filter((r) => r.id !== id));
-  }, []);
+  const submit = React.useCallback((draft: LeaveDraft) => run(() => submitLeaveAction(draft)), [run]);
+  const decide = React.useCallback(
+    (id: number, status: Exclude<LeaveStatus, "pending">) => run(() => decideLeaveAction(id, status)),
+    [run]
+  );
+  const withdraw = React.useCallback((id: number) => run(() => withdrawLeaveAction(id)), [run]);
 
   const requestsFor = React.useCallback(
-    (employeeId: string) =>
-      requests
-        .filter((r) => r.employeeId === employeeId)
-        .sort((a, b) => b.startDate.localeCompare(a.startDate)),
+    (employeeCode: string | null) =>
+      employeeCode
+        ? requests
+            .filter((r) => r.employeeId === employeeCode)
+            .sort((a, b) => b.startDate.localeCompare(a.startDate))
+        : [],
     [requests]
   );
 
@@ -77,7 +105,18 @@ export function LeaveProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ requests, submit, decide, withdraw, requestsFor, pendingCount, allowances, setAllowances }}
+      value={{
+        requests,
+        allowances,
+        submit,
+        decide,
+        withdraw,
+        requestsFor,
+        pendingCount,
+        busy: saving || refreshing,
+        error,
+        clearError: () => setError(null),
+      }}
     >
       {children}
     </Ctx.Provider>

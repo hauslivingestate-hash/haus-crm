@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { X, Check, CalendarOff } from "lucide-react";
 import { useLeave } from "@/components/LeaveProvider";
 import { LEAVE_TYPES, leaveDays } from "@/lib/leave";
-import { TODAY } from "@/lib/momentum";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -22,20 +21,16 @@ const field =
 export function LeaveRequestSheet({
   open,
   defaultDate,
-  employeeId,
-  nickname,
   onClose,
 }: {
   open: boolean;
   defaultDate: string;
-  /** Who the request is filed FOR. Passed in rather than read from the session so this
-   *  matches whoever owns the plan the button was pressed on — otherwise the banner and the
-   *  submission could disagree while `/today` is still hardcoded to SAMPLE_AGENT. */
-  employeeId: string;
-  nickname: string;
   onClose: () => void;
 }) {
-  const { submit } = useLeave();
+  // Always filed in the signed-in person's name — the action stamps employee_code from the
+  // session, and the INSERT policy would refuse anything else. The employeeId/nickname props
+  // this used to take existed only because /today was hardcoded to a sample agent.
+  const { submit, busy, error } = useLeave();
   const [start, setStart] = React.useState(defaultDate);
   const [end, setEnd] = React.useState(defaultDate);
   const [type, setType] = React.useState(LEAVE_TYPES[0]);
@@ -74,26 +69,26 @@ export function LeaveRequestSheet({
     if (end < v) setEnd(v);
   }
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (invalidRange) return;
-    submit({
-      employeeId,
-      nickname,
-      submittedAt: TODAY,
+    // Only claim success once the row is actually in — the old version set `done` before
+    // anything was written, which cannot be wrong when the store is in memory but very much
+    // can be against a database.
+    const ok = await submit({
       startDate: start,
       endDate: end,
       type,
       remark: remark.trim() || null,
     });
-    setDone(true);
+    if (ok) setDone(true);
   }
 
   return createPortal(
     <div onClick={onClose} className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">
       <form
         onClick={(e) => e.stopPropagation()}
-        onSubmit={onSubmit}
+        onSubmit={(e) => void onSubmit(e)}
         className="w-full sm:max-w-sm bg-surface rounded-t-xl sm:rounded-xl border border-border shadow-pop p-5 flex flex-col gap-3.5"
       >
         <div className="flex items-start justify-between gap-3">
@@ -176,12 +171,14 @@ export function LeaveRequestSheet({
               />
             </label>
 
+            {error && <p className="text-small text-red">{error}</p>}
+
             <button
               type="submit"
-              disabled={invalidRange}
+              disabled={invalidRange || busy}
               className="h-10 rounded-md bg-accent text-text-onaccent font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:pointer-events-none"
             >
-              ส่งใบลา
+              {busy ? "กำลังส่ง…" : "ส่งใบลา"}
             </button>
           </>
         )}

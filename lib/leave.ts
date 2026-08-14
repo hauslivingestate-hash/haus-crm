@@ -1,19 +1,15 @@
-// Leave management (วันลา) — SAMPLE DATA + logic, design-first.
+// Leave management (วันลา) — types and pure helpers.
 //
-// Source: **HR Sheet → `Day off`** tab (cols A–G). Real columns:
-//   A Date Submit · B Name · C Start Date · D End Date · E Condition (leave type) ·
-//   F Remark · G ลิงค์กรอก (Google Form link — empty in every row)
+// Originally from HR Sheet → `Day off`. Phase 6 replaced the seed with the real
+// `leave_requests` / `leave_allowances` tables (read in lib/queries.ts, written in
+// lib/mutations/leave.ts). The helpers stay here because LeaveBoard is a client component.
 //
-// ⚠️ The source has **NO approval column** — today it is a pure submission log. The CRM
+// ⚠️ The source sheet had **NO approval column** — it was a pure submission log. The CRM
 // ADDS an approval step (Ben, 2026-08-01): requests land as `pending` and HR/CEO decides.
-// That is a deliberate process change, not a port. `decidedBy`/`decidedAt` have no source
-// column and start empty for historical rows.
-//
-// Seed below is the REAL sheet content (21 rows), dates converted from DD/MM/YYYY.
-// Wire later = `leave_requests(id, employee_id, submitted_at, start_date, end_date, type,
-// remark, status, decided_by, decided_at)`.
+// That is a deliberate process change, not a port, so the 20 imported rows carry no
+// decidedBy/decidedAt.
 
-import { TODAY } from "@/lib/momentum";
+import { todayISO } from "@/lib/momentum";
 
 export type LeaveStatus = "pending" | "approved" | "rejected";
 
@@ -42,10 +38,10 @@ export const LEAVE_TYPES = [
 ];
 
 export interface LeaveRequest {
-  id: string;
-  /** Employee/OrgUser id — ids mirror across rbac + team (lib/team.ts). */
+  id: number;
+  /** `main_1_hr.employee_code` (S-002) — the DB key, not a seed user id. */
   employeeId: string;
-  /** Denormalized for display; source stores only the nickname. */
+  /** Resolved for display; the row itself stores only the code. */
   nickname: string;
   submittedAt: string; // ISO date
   startDate: string; // ISO date, inclusive
@@ -55,42 +51,6 @@ export interface LeaveRequest {
   status: LeaveStatus;
   decidedBy?: string;
   decidedAt?: string;
-}
-
-// Real rows from the HR Sheet. Statuses are ASSIGNED here (no source column): everything
-// up to early July reads as settled → approved; the most recent three are left pending so
-// the HR queue has something to act on.
-const SAMPLE: LeaveRequest[] = [
-  { id: "lv_01", employeeId: "u_benz", nickname: "Benz", submittedAt: "2026-04-03", startDate: "2026-05-03", endDate: "2026-05-04", type: "ลาพักร้อน", remark: "EIEI", status: "approved" },
-  { id: "lv_02", employeeId: "u_pui", nickname: "Pui", submittedAt: "2026-04-09", startDate: "2026-04-15", endDate: "2026-04-20", type: "ลาพักร้อน", remark: "ไปพัทลุงจ้า", status: "approved" },
-  { id: "lv_03", employeeId: "u_q", nickname: "Q", submittedAt: "2026-04-09", startDate: "2026-04-16", endDate: "2026-04-20", type: "ลาพักร้อน", remark: "กลับใต้", status: "approved" },
-  { id: "lv_04", employeeId: "u_golf", nickname: "Golf", submittedAt: "2026-04-10", startDate: "2026-05-30", endDate: "2026-06-03", type: "ลาพักร้อน", remark: "เกาะเต่า", status: "approved" },
-  { id: "lv_05", employeeId: "u_pup", nickname: "Pup", submittedAt: "2026-04-10", startDate: "2026-04-16", endDate: "2026-04-18", type: "ลาพักร้อน", remark: null, status: "approved" },
-  { id: "lv_06", employeeId: "u_game", nickname: "Game", submittedAt: "2026-04-27", startDate: "2026-05-02", endDate: "2026-05-06", type: "ลากิจ", remark: "กลับใต้", status: "approved" },
-  { id: "lv_07", employeeId: "u_stone", nickname: "Stone", submittedAt: "2026-05-05", startDate: "2026-05-13", endDate: "2026-05-15", type: "ลาพักร้อน", remark: null, status: "approved" },
-  { id: "lv_08", employeeId: "u_stone", nickname: "Stone", submittedAt: "2026-05-22", startDate: "2026-05-29", endDate: "2026-05-29", type: "ลาพักร้อน", remark: "ไปเวียดนาม", status: "approved" },
-  { id: "lv_09", employeeId: "u_mhow", nickname: "Mhow", submittedAt: "2026-05-25", startDate: "2026-06-05", endDate: "2026-06-05", type: "ลาพักร้อน", remark: "ไป ตจว ครับบ", status: "approved" },
-  { id: "lv_10", employeeId: "u_pup", nickname: "Pup", submittedAt: "2026-05-25", startDate: "2026-05-28", endDate: "2026-05-29", type: "ลาพักร้อน", remark: null, status: "approved" },
-  { id: "lv_11", employeeId: "u_pui", nickname: "Pui", submittedAt: "2026-05-25", startDate: "2026-05-29", endDate: "2026-05-29", type: "ลาพักร้อน", remark: null, status: "approved" },
-  { id: "lv_12", employeeId: "u_q", nickname: "Q", submittedAt: "2026-05-29", startDate: "2026-05-29", endDate: "2026-05-31", type: "ลาพักร้อน", remark: null, status: "approved" },
-  { id: "lv_13", employeeId: "u_pui", nickname: "Pui", submittedAt: "2026-06-23", startDate: "2026-06-23", endDate: "2026-06-23", type: "ลาป่วย", remark: "Mental Health JubJub eiei", status: "approved" },
-  // ⚠️ SOURCE DATA ERROR: sheet row 15 reads start 09/10/2026, end 20/06/2026 — end BEFORE
-  // start. Remark is "ไปเที่ยวเมกา". Seeded as 9–20 Oct (assuming the end month was mistyped).
-  // Confirm with HR at import; add a start<=end constraint so this can't recur.
-  { id: "lv_14", employeeId: "u_golf", nickname: "Golf", submittedAt: "2026-06-25", startDate: "2026-10-09", endDate: "2026-10-20", type: "ลาพักร้อน", remark: "ไปเที่ยวเมกา", status: "approved" },
-  { id: "lv_15", employeeId: "u_benz", nickname: "Benz", submittedAt: "2026-07-07", startDate: "2026-07-08", endDate: "2026-07-08", type: "ลากิจ", remark: "จัดการเรื่องห้องเช่า", status: "approved" },
-  { id: "lv_16", employeeId: "u_benz", nickname: "Benz", submittedAt: "2026-07-07", startDate: "2026-07-16", endDate: "2026-07-17", type: "ลาพักร้อน", remark: "เขาใหญ่", status: "approved" },
-  { id: "lv_17", employeeId: "u_pup", nickname: "Pup", submittedAt: "2026-07-07", startDate: "2026-07-10", endDate: "2026-07-14", type: "ลาพักร้อน", remark: null, status: "approved" },
-  // Awaiting a decision — gives the HR queue something to act on.
-  { id: "lv_18", employeeId: "u_game", nickname: "Game", submittedAt: "2026-07-31", startDate: "2026-07-31", endDate: "2026-08-02", type: "ลากิจ", remark: "ปาลินไม่สบาย", status: "pending" },
-  { id: "lv_19", employeeId: "u_stone", nickname: "Stone", submittedAt: "2026-07-31", startDate: "2026-08-14", endDate: "2026-08-14", type: "ลาพักร้อน", remark: "ไปพัทยา", status: "pending" },
-  // Sheet rows 21 and 22 are IDENTICAL duplicates — deduped here to one. Import must
-  // dedupe on (employee, start, end, type) or the same leave counts twice.
-  { id: "lv_20", employeeId: "u_golf", nickname: "Golf", submittedAt: "2026-07-31", startDate: "2026-08-14", endDate: "2026-08-14", type: "ลาเพื่อทำหมัน", remark: null, status: "pending" },
-];
-
-export function listLeave(): LeaveRequest[] {
-  return [...SAMPLE];
 }
 
 /** Inclusive day count — 1 day off is 1, not 0. */
@@ -107,7 +67,7 @@ export function coversDate(r: LeaveRequest, iso: string): boolean {
 }
 
 /** Everyone away on a given date — powers the Daily-Plan banner and the HR day view. */
-export function awayOn(requests: LeaveRequest[], iso: string = TODAY): LeaveRequest[] {
+export function awayOn(requests: LeaveRequest[], iso: string = todayISO()): LeaveRequest[] {
   return requests.filter((r) => coversDate(r, iso));
 }
 
@@ -135,7 +95,7 @@ export function leaveDaysInYear(
 export function daysTakenInYear(
   requests: LeaveRequest[],
   employeeId: string,
-  year: string = TODAY.slice(0, 4)
+  year: string = todayISO().slice(0, 4)
 ): number {
   return requests
     .filter((r) => r.employeeId === employeeId && r.status === "approved")
@@ -191,7 +151,7 @@ export function usageByType(
   requests: LeaveRequest[],
   allowances: LeaveAllowance[],
   employeeId: string,
-  year: string = TODAY.slice(0, 4)
+  year: string = todayISO().slice(0, 4)
 ): TypeUsage[] {
   const mine = requests.filter((r) => r.employeeId === employeeId && r.status === "approved");
   return allowances.map((a) => {
@@ -214,7 +174,7 @@ export function usageByType(
 export function overQuota(
   requests: LeaveRequest[],
   allowances: LeaveAllowance[],
-  year: string = TODAY.slice(0, 4)
+  year: string = todayISO().slice(0, 4)
 ): { employeeId: string; nickname: string; rows: TypeUsage[] }[] {
   const byEmployee = new Map<string, string>();
   for (const r of requests) byEmployee.set(r.employeeId, r.nickname);

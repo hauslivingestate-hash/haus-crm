@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { useLeave } from "@/components/LeaveProvider";
 import { overQuota } from "@/lib/leave";
-import { TODAY } from "@/lib/momentum";
+import { setLeaveAllowance } from "@/lib/mutations/leave";
+import { todayISO } from "@/lib/momentum";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 
 // ตั้งค่า → โควตาวันลา. Annual days per LEAVE TYPE — deliberately per-type, since
@@ -18,24 +20,49 @@ import { cn } from "@/lib/cn";
 // policy — the banner says so, loudly, because a quota people trust and act on must not be
 // a guess. Blank = untracked (no quota enforced).
 export function LeaveAllowanceManager() {
-  const { allowances, setAllowances, requests } = useLeave();
-  const year = TODAY.slice(0, 4);
+  const { allowances, requests } = useLeave();
+  const router = useRouter();
+  const year = todayISO().slice(0, 4);
   const breaches = overQuota(requests, allowances, year);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  // Typing shows immediately; the row is written when the field loses focus, so a quota
+  // isn't saved half-typed ("1" on the way to "15").
+  const [draft, setDraft] = React.useState<Record<string, string>>({});
 
   // Only an EMPTY field means "unlimited". A non-numeric keystroke used to fall through to
   // null, silently switching an enforced quota off and emptying the breach list — the exact
   // failure this screen exists to prevent. Garbage input is now ignored instead.
-  const setDays = (type: string, raw: string) => {
+  const commit = async (type: string, raw: string) => {
     const trimmed = raw.trim();
     let next: number | null;
     if (trimmed === "") {
       next = null; // explicit "no annual quota"
     } else {
       const n = Number(trimmed);
-      if (!Number.isFinite(n) || n < 0) return; // reject, keep the previous value
+      if (!Number.isFinite(n) || n < 0) {
+        setDraft((d) => {
+          const { [type]: _drop, ...rest } = d;
+          return rest; // reject, snap back to the saved value
+        });
+        return;
+      }
       next = Math.round(n);
     }
-    setAllowances((xs) => xs.map((a) => (a.type === type ? { ...a, daysPerYear: next } : a)));
+    const before = allowances.find((a) => a.type === type)?.daysPerYear ?? null;
+    if (before === next) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await setLeaveAllowance(type, next);
+      if (!res.ok) setError(res.error);
+      else router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -56,11 +83,13 @@ export function LeaveAllowanceManager() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Input
-                  value={a.daysPerYear == null ? "" : String(a.daysPerYear)}
-                  onChange={(e) => setDays(a.type, e.target.value)}
+                  value={draft[a.type] ?? (a.daysPerYear == null ? "" : String(a.daysPerYear))}
+                  onChange={(e) => setDraft((d) => ({ ...d, [a.type]: e.target.value }))}
+                  onBlur={(e) => void commit(a.type, e.target.value)}
+                  disabled={busy}
                   inputMode="numeric"
                   placeholder="—"
-                  className="w-20 num text-right"
+                  className="w-20 num text-right disabled:opacity-50"
                 />
                 <span className="text-small text-text-subtle w-16">
                   {a.daysPerYear == null ? (
@@ -76,6 +105,12 @@ export function LeaveAllowanceManager() {
           ))}
         </CardContent>
       </Card>
+
+      {error && (
+        <div className="rounded-md border border-red/30 bg-red-bg/50 px-3.5 py-2.5 text-small text-red">
+          {error}
+        </div>
+      )}
 
       {/* Placeholder warning — the single most important thing on this screen. */}
       <div className="rounded-md border border-amber/30 bg-amber-bg/40 px-3.5 py-3 flex items-start gap-2.5">

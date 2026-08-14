@@ -12,6 +12,7 @@ import { LeadIntakeFab } from "@/components/LeadIntakeFab";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth";
 import { getLookups, getAssignableAgents } from "@/lib/lookups";
+import { getLeaveRequests, getLeaveAllowances } from "@/lib/queries";
 import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
 
 // The SIGNED-IN application shell. Everything inside this route group gets the sidebar, the
@@ -30,9 +31,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Reference vocabularies + assignable agents come from the DB so the intake form writes
   // FK-valid values. Without a session RLS returns nothing, so the providers keep their
   // seeds — which is right for design mode, where nothing is written anyway.
-  const [lookups, agents] = auth
-    ? await Promise.all([getLookups(), getAssignableAgents()])
-    : [undefined, []];
+  // Leave is loaded here rather than on /leave alone: แผนวันนี้ shows an "on leave today"
+  // banner from the same list, so both surfaces must see one queue.
+  const [lookups, agents, leaveRequests, leaveAllowances] = auth
+    ? await Promise.all([
+        getLookups(),
+        getAssignableAgents(),
+        getLeaveRequests(),
+        getLeaveAllowances(),
+      ])
+    : [undefined, [], [], undefined];
 
   return (
     <RbacProvider
@@ -57,7 +65,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <ActivityProvider>
                   {/* Leave requests — filed from แผนวันนี้, decided on /วันลา. Shared so
                       both sides see the same queue instantly. */}
-                  <LeaveProvider>
+                  <LeaveProvider requests={leaveRequests} allowances={leaveAllowances}>
                     <MobileNavProvider>
                       <div className="grid grid-cols-1 lg:grid-cols-[228px_1fr] min-h-screen">
                         <Sidebar />

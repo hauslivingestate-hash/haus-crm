@@ -42,6 +42,17 @@ interface RbacValue {
   viewerId: string;
   setViewerId: (id: string) => void;
   currentUser: OrgUser;
+  /**
+   * The signed-in employee's code (S-002), or null in demo mode.
+   *
+   * `currentUser.id` is a SEED id (u_game) matched by display name — fine for showing an
+   * avatar, useless for matching database rows, which key on employee_code. Anything
+   * comparing "is this row mine?" must use this.
+   *
+   * Deliberately NOT affected by "view as": impersonation previews permissions, and
+   * silently rewriting who the viewer *is* would let it act on someone else's records.
+   */
+  employeeCode: string | null;
   perms: Set<string>;
   /** True if any of the given permission keys is granted (or none required). */
   can: (keys?: string | string[]) => boolean;
@@ -161,6 +172,7 @@ export function RbacProvider({
     viewerId,
     setViewerId,
     currentUser,
+    employeeCode: session?.employeeCode ?? null,
     perms,
     can,
     isAuthenticated: !!session,

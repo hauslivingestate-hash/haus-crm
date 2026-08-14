@@ -30,7 +30,6 @@ import { MiniCalendar } from "@/components/PlanCalendar";
 import { useLeave } from "@/components/LeaveProvider";
 import { LeaveRequestSheet } from "@/components/LeaveRequestSheet";
 import { coversDate } from "@/lib/leave";
-import { listEmployees } from "@/lib/team";
 import { useRbac } from "@/components/RbacProvider";
 import { DEFAULT_QUICK_ACTIONS, type QuickAction } from "@/lib/quickAdd";
 import { formatDate } from "@/lib/format";
@@ -120,21 +119,13 @@ export function DailyPlan({ plan }: { plan: PlanData }) {
   const isDone = (t: Task) => doneOverride[t.id] ?? t.done;
 
   // ⚠️ IDENTITY: this screen belongs to ONE person — the signed-in employee. Tasks, logged
-  // activity and Quick Add presets are all scoped to `plan.employeeCode` server-side.
-  //
-  // The leave banner is the exception: `/leave` is still on seed data (Phase 6), so it is
-  // matched by nickname against the sample roster the way it always was. It shows nothing
-  // for anyone the seed doesn't know — which is honest, not a regression.
+  // activity, Quick Add presets and now leave are all keyed on `plan.employeeCode`.
   const { can } = useRbac();
   const { requests } = useLeave();
   const [leaveOpen, setLeaveOpen] = React.useState(false);
-  const planOwner = React.useMemo(
-    () => listEmployees().find((e) => e.nickname === plan.nickname),
-    [plan.nickname]
+  const myLeaveToday = requests.find(
+    (r) => r.employeeId === plan.employeeCode && coversDate(r, date)
   );
-  const myLeaveToday = planOwner
-    ? requests.find((r) => r.employeeId === planOwner.id && coversDate(r, date))
-    : undefined;
 
   // Someone who has never customised their presets gets the starter set. Tapping one still
   // creates a real task — the chips only need saving once they're edited.
@@ -344,7 +335,12 @@ export function DailyPlan({ plan }: { plan: PlanData }) {
         {myLeaveToday && (
           <div className="px-4 py-2.5 border-b border-border bg-amber-bg/40 flex items-center gap-2 text-small">
             <CalendarOff size={14} strokeWidth={1.75} className="text-amber shrink-0" />
-            <span className="text-text">คุณลา{myLeaveToday.type}วันนี้</span>
+            {/* Every LEAVE_TYPES entry except อื่นๆ already starts with "ลา", so prefixing
+                another one gives "คุณลาลาป่วยวันนี้". */}
+            <span className="text-text">
+              คุณ{myLeaveToday.type.startsWith("ลา") ? "" : "ลา"}
+              {myLeaveToday.type}วันนี้
+            </span>
             <Pill tone={myLeaveToday.status === "approved" ? "green" : "amber"}>
               {myLeaveToday.status === "approved" ? "อนุมัติแล้ว" : "รออนุมัติ"}
             </Pill>
@@ -480,8 +476,6 @@ export function DailyPlan({ plan }: { plan: PlanData }) {
       <LeaveRequestSheet
         open={leaveOpen}
         defaultDate={date}
-        employeeId={planOwner?.id ?? ""}
-        nickname={plan.nickname}
         onClose={() => setLeaveOpen(false)}
       />
     </Card>

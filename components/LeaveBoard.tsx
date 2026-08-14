@@ -20,7 +20,7 @@ import {
   overQuota,
   type LeaveStatus,
 } from "@/lib/leave";
-import { TODAY } from "@/lib/momentum";
+import { todayISO } from "@/lib/momentum";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -32,8 +32,10 @@ import { cn } from "@/lib/cn";
 type Filter = "pending" | LeaveStatus | "all";
 
 export function LeaveBoard() {
-  const { can, currentUser } = useRbac();
-  const { requests, decide, withdraw, allowances } = useLeave();
+  const { can, employeeCode } = useRbac();
+  const { requests, decide, withdraw, allowances, busy, error } = useLeave();
+  // The real clock, and the DB key rows are stored under — currentUser.id is a seed id.
+  const today = todayISO();
   const [q, setQ] = React.useState("");
   const canManage = can("leave.manage");
   // Managers land on the queue (the thing needing action); everyone else on their history.
@@ -41,15 +43,15 @@ export function LeaveBoard() {
 
   // Scope first, filter second — an own-scoped viewer must never see another person's rows.
   const scoped = React.useMemo(
-    () => (canManage ? requests : requests.filter((r) => r.employeeId === currentUser.id)),
-    [requests, canManage, currentUser.id]
+    () => (canManage ? requests : requests.filter((r) => r.employeeId === employeeCode)),
+    [requests, canManage, employeeCode]
   );
 
   // Quota is always computed from the FULL request set for this person — not `scoped` —
   // so it's correct regardless of which filter chip is active.
   const myUsage = React.useMemo(
-    () => usageByType(requests, allowances, currentUser.id),
-    [requests, allowances, currentUser.id]
+    () => usageByType(requests, allowances, employeeCode ?? ""),
+    [requests, allowances, employeeCode]
   );
   const breaches = React.useMemo(
     () => (canManage ? overQuota(requests, allowances) : []),
@@ -78,7 +80,7 @@ export function LeaveBoard() {
     { key: "all", label: "ทั้งหมด" },
   ];
 
-  const awayToday = awayOn(scoped, TODAY);
+  const awayToday = awayOn(scoped, today);
 
   return (
     <div className="flex flex-col gap-4">
@@ -91,9 +93,9 @@ export function LeaveBoard() {
           value={String(
             canManage
               ? scoped
-                  .filter((r) => r.status === "approved" && r.startDate.startsWith(TODAY.slice(0, 4)))
+                  .filter((r) => r.status === "approved" && r.startDate.startsWith(today.slice(0, 4)))
                   .reduce((s, r) => s + leaveDays(r), 0)
-              : daysTakenInYear(scoped, currentUser.id)
+              : daysTakenInYear(scoped, employeeCode ?? "")
           )}
         />
       </div>
@@ -103,7 +105,7 @@ export function LeaveBoard() {
       <Card>
         <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 flex-wrap">
           <span className="text-h3">โควตาวันลาของคุณ</span>
-          <span className="text-label text-text-subtle">ปี {Number(TODAY.slice(0, 4)) + 543}</span>
+          <span className="text-label text-text-subtle">ปี {Number(today.slice(0, 4)) + 543}</span>
           {canManage && (
             <span className="text-label text-text-subtle ml-auto">
               แก้ไขโควตาได้ที่ ตั้งค่า → โควตาวันลา
@@ -131,6 +133,10 @@ export function LeaveBoard() {
             ))}
         </CardContent>
       </Card>
+
+      {error && (
+        <Card className="p-3 text-small text-red bg-red-bg/50 border-red/30">{error}</Card>
+      )}
 
       {/* HR-only: anyone already past their quota. This is the thing having no balance hid. */}
       {canManage && breaches.length > 0 && (
@@ -162,7 +168,7 @@ export function LeaveBoard() {
           <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
             <CalendarOff size={15} strokeWidth={1.75} className="text-accent" />
             <span className="text-h3">ลาวันนี้</span>
-            <span className="text-label text-text-subtle">{formatDate(TODAY)}</span>
+            <span className="text-label text-text-subtle">{formatDate(today)}</span>
           </div>
           <CardContent className="flex flex-wrap gap-2">
             {awayToday.map((r) => (
@@ -235,7 +241,7 @@ export function LeaveBoard() {
               </THead>
               <TBody>
                 {list.map((r) => {
-                  const mine = r.employeeId === currentUser.id;
+                  const mine = r.employeeId === employeeCode;
                   return (
                     <TR key={r.id}>
                       {canManage && (
@@ -268,14 +274,16 @@ export function LeaveBoard() {
                         {r.status === "pending" && canManage && (
                           <span className="inline-flex gap-1.5">
                             <button
-                              onClick={() => decide(r.id, "approved", currentUser.name, TODAY)}
-                              className="h-7 px-2.5 rounded-md border border-green/30 bg-green-bg text-green text-small font-medium inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+                              onClick={() => void decide(r.id, "approved")}
+                              disabled={busy}
+                              className="disabled:opacity-50 h-7 px-2.5 rounded-md border border-green/30 bg-green-bg text-green text-small font-medium inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
                             >
                               <Check size={13} strokeWidth={2.5} /> อนุมัติ
                             </button>
                             <button
-                              onClick={() => decide(r.id, "rejected", currentUser.name, TODAY)}
-                              className="h-7 px-2.5 rounded-md border border-border-strong text-text-muted text-small font-medium inline-flex items-center gap-1 hover:bg-red-bg hover:text-red hover:border-red/30 transition-colors"
+                              onClick={() => void decide(r.id, "rejected")}
+                              disabled={busy}
+                              className="disabled:opacity-50 h-7 px-2.5 rounded-md border border-border-strong text-text-muted text-small font-medium inline-flex items-center gap-1 hover:bg-red-bg hover:text-red hover:border-red/30 transition-colors"
                             >
                               <X size={13} strokeWidth={2.5} /> ไม่อนุมัติ
                             </button>
@@ -284,8 +292,9 @@ export function LeaveBoard() {
                         {/* You can pull back your own request while it's still undecided. */}
                         {r.status === "pending" && mine && !canManage && (
                           <button
-                            onClick={() => withdraw(r.id)}
-                            className="h-7 px-2.5 rounded-md border border-border-strong text-text-muted text-small hover:bg-surface-2 transition-colors"
+                            onClick={() => void withdraw(r.id)}
+                            disabled={busy}
+                            className="disabled:opacity-50 h-7 px-2.5 rounded-md border border-border-strong text-text-muted text-small hover:bg-surface-2 transition-colors"
                           >
                             ยกเลิก
                           </button>

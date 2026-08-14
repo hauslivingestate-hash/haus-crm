@@ -10,6 +10,12 @@ import {
   type ContactSummary,
 } from "@/lib/contacts";
 import { stageMeta } from "@/lib/pipeline";
+import {
+  DEFAULT_LEAVE_ALLOWANCES,
+  type LeaveAllowance,
+  type LeaveRequest,
+  type LeaveStatus,
+} from "@/lib/leave";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -306,6 +312,78 @@ export async function getNicknameByAuthId(
     .eq("auth_user_id", authUserId)
     .maybeSingle();
   return (data?.nickname as string | undefined) ?? null;
+}
+
+// ── Leave (Phase 6) ──────────────────────────────────────────────────────────
+
+/**
+ * Every leave request the viewer may see.
+ *
+ * RLS on `leave_requests` already splits own vs. all on `leave.manage`, so this is not
+ * re-filtered here — but LeaveBoard still checks the permission to decide whether to show
+ * the HR queue and the approve/reject buttons.
+ */
+export async function getLeaveRequests(): Promise<LeaveRequest[]> {
+  const supabase = await createClient();
+  const [{ data, error }, staff] = await Promise.all([
+    supabase
+      .from("leave_requests")
+      .select(
+        "id,employee_code,submitted_at,start_date,end_date,type,remark,status,decided_by,decided_at"
+      )
+      .order("start_date", { ascending: false }),
+    getStaffDirectory(),
+  ]);
+  if (error) throw new Error(`อ่านข้อมูลวันลาไม่สำเร็จ: ${error.message}`);
+
+  const nickname = new Map(staff.map((s) => [s.code, s.nickname]));
+  return ((data ?? []) as {
+    id: number;
+    employee_code: string;
+    submitted_at: string | null;
+    start_date: string;
+    end_date: string;
+    type: string;
+    remark: string | null;
+    status: string;
+    decided_by: string | null;
+    decided_at: string | null;
+  }[]).map((r) => ({
+    id: r.id,
+    employeeId: r.employee_code,
+    nickname: nickname.get(r.employee_code) ?? r.employee_code,
+    // `submitted_at` is a timestamptz; the UI only ever shows the day.
+    submittedAt: (r.submitted_at ?? r.start_date).slice(0, 10),
+    startDate: r.start_date,
+    endDate: r.end_date,
+    type: r.type,
+    remark: r.remark,
+    status: (["pending", "approved", "rejected"] as LeaveStatus[]).find((s) => s === r.status) ??
+      "pending",
+    decidedBy: r.decided_by ? nickname.get(r.decided_by) ?? r.decided_by : undefined,
+    decidedAt: r.decided_at ? r.decided_at.slice(0, 10) : undefined,
+  }));
+}
+
+/** Annual quota per leave type. Falls back to the statutory placeholders when the table
+ *  is empty, so the balance panel never reads as "no quota at all". */
+export async function getLeaveAllowances(): Promise<LeaveAllowance[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("leave_allowances")
+    .select("type,days_per_year,note");
+  const rows = (data ?? []) as { type: string; days_per_year: number | null; note: string | null }[];
+  if (!rows.length) return DEFAULT_LEAVE_ALLOWANCES;
+
+  // Keep the display order the app has always used rather than whatever the table returns.
+  const order = DEFAULT_LEAVE_ALLOWANCES.map((a) => a.type);
+  return rows
+    .map((r) => ({ type: r.type, daysPerYear: r.days_per_year, note: r.note ?? undefined }))
+    .sort((a, b) => {
+      const ia = order.indexOf(a.type);
+      const ib = order.indexOf(b.type);
+      return (ia < 0 ? order.length : ia) - (ib < 0 ? order.length : ib);
+    });
 }
 
 // ── Contacts (Phase 6) ───────────────────────────────────────────────────────
