@@ -9,7 +9,6 @@ import { Pill } from "@/components/ui/Pill";
 import { useRbac } from "@/components/RbacProvider";
 import { useMasterData } from "@/components/MasterDataProvider";
 import { POTENTIALS } from "@/lib/masterdata";
-import { listZones } from "@/lib/zones";
 import { NEW_LISTING_STATUSES } from "@/lib/newListing";
 import type { ListingRow } from "@/lib/queries";
 import { updateListing } from "@/lib/mutations/listings";
@@ -102,8 +101,10 @@ export function ListingEditSheet({
   onClose: () => void;
 }) {
   const { can } = useRbac();
-  const { propertyTypes } = useMasterData();
-  const zones = listZones();
+  // Zones come from the DB via MasterDataProvider. The old lib/zones sample listed 12
+  // zones against the real 30, and FOUR of its codes were not in `zone` at all — picking
+  // one of those failed the FK the moment you pressed save.
+  const { propertyTypes, zones } = useMasterData();
   const router = useRouter();
   const [f, setF] = React.useState<Draft>(() => toDraft(listing));
   const [done, setDone] = React.useState(false);
@@ -236,9 +237,9 @@ export function ListingEditSheet({
               <select value={S("zone")} onChange={(e) => set({ zone: e.target.value })} className={field}>
                 <option value="">—</option>
                 {zones.map((z) => (
-                  <option key={z.zone_id} value={z.zone_id}>{z.name_thai} · {z.zone_id}</option>
+                  <option key={z.id} value={z.id}>{z.label}</option>
                 ))}
-                {S("zone") && !zones.some((z) => z.zone_id === S("zone")) && (
+                {S("zone") && !zones.some((z) => z.id === S("zone")) && (
                   <option value={S("zone")}>{S("zone")} (ไม่อยู่ในรายการ)</option>
                 )}
               </select>

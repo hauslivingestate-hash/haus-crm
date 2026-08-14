@@ -1,32 +1,57 @@
-// SAMPLE DATA — UI-first. Shape mirrors the source `zone` table
-// (seq, zone_id, name_eng, name_thai, sale_id_assigned). Zone is CEO-managed
-// master data: the controlled vocabulary that listings / leads / last-match all
-// reference. Wire later = swap listZones for a Supabase query. See DATA_MODEL.md.
+// Zones — types only. Phase 6 replaced the sample list with the real `zone` table (read in
+// lib/queries.ts, written in lib/mutations/zones.ts).
+//
+// The sample it replaced was actively harmful, not merely stale: it carried 12 zones where
+// the DB has 30, FOUR of its codes (PTM, PT3, BKL, BWK) do not exist in `zone` at all, and
+// its owner column disagreed with `zone_sales` on most rows. It was still feeding the zone
+// dropdown in ListingEditSheet, so picking one of those four failed the FK on save.
+//
+// ⚠️ ONE ZONE HAS MANY AGENTS. `zone.sale_id_assigned` was dropped on 2026-08-03 in favour
+// of `zone_sales(zone_id, employee_code, is_primary)` — พระราม 3 really is Mhow + Pup. The
+// single `sale_id_assigned` field this file used to expose could not represent that.
 
-export interface Zone {
-  seq: number;
-  zone_id: string; // short code, e.g. "CYP"
-  name_eng: string;
-  name_thai: string;
-  sale_id_assigned: string | null; // owning agent, or null = unassigned
+/** One agent's link to a zone. */
+export interface ZoneSale {
+  code: string; // employee_code
+  nickname: string;
+  /** เจ้าภาพโซน — at most one per zone (partial unique index). Used as the fallback owner
+   *  for a lead with no listing, and for a new listing with no agent yet
+   *  (`zone_primary_sale()` → `v_main_listing.effective_sale_id`). */
+  isPrimary: boolean;
 }
 
-// Codes for the live listings are included so the CRM's zone references line up.
-const SAMPLE: Zone[] = [
-  { seq: 1, zone_id: "ASK", name_eng: "Asoke", name_thai: "อโศก", sale_id_assigned: "S-004" },
-  { seq: 2, zone_id: "BGY", name_eng: "Bang Yai", name_thai: "บางใหญ่", sale_id_assigned: "S-001" },
-  { seq: 3, zone_id: "CYP", name_eng: "Chaiyaphruek", name_thai: "ชัยพฤกษ์", sale_id_assigned: "S-003" },
-  { seq: 4, zone_id: "RP1", name_eng: "Ratchaphruek (Ton)", name_thai: "ราชพฤกษ์ต้น", sale_id_assigned: "S-003" },
-  { seq: 5, zone_id: "RM2", name_eng: "Rama 2", name_thai: "พระราม 2", sale_id_assigned: "S-002" },
-  { seq: 6, zone_id: "PKS", name_eng: "Phetkasem", name_thai: "เพชรเกษม", sale_id_assigned: "S-002" },
-  { seq: 7, zone_id: "PTM", name_eng: "Phutthamonthon Sai 2", name_thai: "พุทธมณฑลสาย 2", sale_id_assigned: null },
-  { seq: 8, zone_id: "PT3", name_eng: "Phutthamonthon Sai 3", name_thai: "พุทธมณฑลสาย 3", sale_id_assigned: null },
-  { seq: 9, zone_id: "SLY", name_eng: "Salaya", name_thai: "ศาลายา", sale_id_assigned: "S-001" },
-  { seq: 10, zone_id: "BKL", name_eng: "Bang Kluay", name_thai: "บางกรวย", sale_id_assigned: null },
-  { seq: 11, zone_id: "BWK", name_eng: "Bang Waek", name_thai: "บางแวก", sale_id_assigned: "S-004" },
-  { seq: 12, zone_id: "SSW", name_eng: "Suksawat", name_thai: "สุขสวัสดิ์", sale_id_assigned: null },
-];
+export interface Zone {
+  zone_id: string; // short code, e.g. "CYP" — part of every listing_id, never renamed
+  name_eng: string;
+  name_thai: string;
+  sales: ZoneSale[];
+  /** Listings currently in this zone — the impact line on delete. */
+  listingCount: number;
+}
 
-export function listZones(): Zone[] {
-  return [...SAMPLE].sort((a, b) => a.seq - b.seq);
+/** The zone's เจ้าภาพ, if one is set. */
+export function primarySale(z: Zone): ZoneSale | undefined {
+  return z.sales.find((s) => s.isPrimary);
+}
+
+/**
+ * Is `code` safe to add as a new zone id?
+ *
+ * ⚠️ A listing id is `<property type><zone_id><running number>` with NO separator, so a
+ * code that is a prefix of another (or vice-versa) makes ids ambiguous — "CRP" + "1001"
+ * and "CRP1" + "001" read identically. Checked here rather than in the DB because it is a
+ * rule about how ids are composed, not about the row.
+ */
+export function zoneCodeConflict(code: string, existing: string[]): string | null {
+  const c = code.trim().toUpperCase();
+  if (!c) return "ต้องใส่รหัสโซน";
+  if (!/^[A-Z0-9]+$/.test(c)) return "รหัสโซนใช้ได้เฉพาะ A-Z และ 0-9";
+  for (const e of existing) {
+    const u = e.toUpperCase();
+    if (u === c) return `รหัส ${c} มีอยู่แล้ว`;
+    if (u.startsWith(c) || c.startsWith(u)) {
+      return `รหัส ${c} ชนกับ ${e} — รหัสโซนห้ามเป็นคำนำหน้าของอีกโซน (รหัสทรัพย์จะซ้ำกัน)`;
+    }
+  }
+  return null;
 }

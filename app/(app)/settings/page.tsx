@@ -1,12 +1,9 @@
 import { Topbar } from "@/components/Topbar";
 import { SettingsView } from "@/components/SettingsView";
-import { listZones } from "@/lib/zones";
-import { getListings, getEmployees } from "@/lib/queries";
+import { getListings, getEmployees, getZones } from "@/lib/queries";
 import { getAccounts } from "@/lib/accounts";
 
 export default async function SettingsPage() {
-  const zones = listZones();
-
   // Live usage per property type (v_main_listing) — powers the delete-confirm impact line
   // ("มี N ทรัพย์ที่ใช้ค่านี้อยู่") in the master-data manager.
   const listings = await getListings();
@@ -16,7 +13,11 @@ export default async function SettingsPage() {
     propertyTypeUsage[l.property_type] = (propertyTypeUsage[l.property_type] ?? 0) + 1;
   }
 
-  const [accounts, employees] = await Promise.all([getAccounts(), getEmployees()]);
+  const [accounts, employees, zones] = await Promise.all([
+    getAccounts(),
+    getEmployees(),
+    getZones(),
+  ]);
 
   return (
     <>

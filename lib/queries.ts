@@ -23,6 +23,7 @@ import {
   type Employee,
 } from "@/lib/team";
 import { todayISO } from "@/lib/momentum";
+import type { Zone, ZoneSale } from "@/lib/zones";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -474,14 +475,66 @@ export async function getEmployees(): Promise<Employee[]> {
   });
 }
 
-/** Zone picker options, from the `zone` master (30 rows) — not `lib/zones.ts`, which is
- *  still the design-phase sample and lists 1 agent per zone. */
+/** Zone picker options, from the `zone` master (30 rows). */
 export async function getZoneOptions(): Promise<{ code: string; name: string }[]> {
   const supabase = await createClient();
   const { data } = await supabase.from("zone").select("zone_id,name_thai").order("zone_id");
   return ((data ?? []) as { zone_id: string; name_thai: string | null }[]).map((z) => ({
     code: z.zone_id,
     name: z.name_thai ?? z.zone_id,
+  }));
+}
+
+/**
+ * Zones with every agent covering them, plus a live listing count.
+ *
+ * A zone has MANY agents (`zone_sales`), which is the whole reason `zone.sale_id_assigned`
+ * was dropped: พระราม 3 is covered by Mhow and Pup together. `is_primary` marks the one
+ * เจ้าภาพ used as the fallback owner in `zone_primary_sale()`.
+ */
+export async function getZones(): Promise<Zone[]> {
+  const supabase = await createClient();
+  const [zones, links, staff, listings] = await Promise.all([
+    supabase.from("zone").select("zone_id,name_thai,name_eng").order("zone_id"),
+    supabase.from("zone_sales").select("zone_id,employee_code,is_primary"),
+    getStaffDirectory(),
+    supabase.from("main_4_listing_database").select("zone"),
+  ]);
+  if (zones.error) throw new Error(`อ่านข้อมูลโซนไม่สำเร็จ: ${zones.error.message}`);
+
+  const nickname = new Map(staff.map((s) => [s.code, s.nickname]));
+  const count = new Map<string, number>();
+  for (const l of (listings.data ?? []) as { zone: string | null }[]) {
+    if (l.zone) count.set(l.zone, (count.get(l.zone) ?? 0) + 1);
+  }
+  const salesOf = new Map<string, ZoneSale[]>();
+  for (const l of (links.data ?? []) as {
+    zone_id: string;
+    employee_code: string;
+    is_primary: boolean | null;
+  }[]) {
+    const arr = salesOf.get(l.zone_id) ?? [];
+    arr.push({
+      code: l.employee_code,
+      nickname: nickname.get(l.employee_code) ?? l.employee_code,
+      isPrimary: !!l.is_primary,
+    });
+    salesOf.set(l.zone_id, arr);
+  }
+
+  return ((zones.data ?? []) as {
+    zone_id: string;
+    name_thai: string | null;
+    name_eng: string | null;
+  }[]).map((z) => ({
+    zone_id: z.zone_id,
+    name_thai: z.name_thai ?? z.zone_id,
+    name_eng: z.name_eng ?? "",
+    // เจ้าภาพ first, then by nickname.
+    sales: (salesOf.get(z.zone_id) ?? []).sort(
+      (a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.nickname.localeCompare(b.nickname)
+    ),
+    listingCount: count.get(z.zone_id) ?? 0,
   }));
 }
 

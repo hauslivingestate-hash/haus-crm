@@ -120,7 +120,7 @@ export function SettingsView({
             <TeamsManager employees={employees} />
           </>
         )}
-        {section === "zones" && <ZonesSection zones={zones} />}
+        {section === "zones" && <ZonesSection zones={zones} employees={employees} />}
         {section === "property_types" && (
           <>
             <SectionHeader title="ประเภททรัพย์" desc="รายการประเภททรัพย์กลาง · จัดการโดย CEO / Listing Support" />
@@ -282,19 +282,14 @@ function RolesSection() {
   );
 }
 
-function ZonesSection({ zones }: { zones: Zone[] }) {
+function ZonesSection({ zones, employees }: { zones: Zone[]; employees: Employee[] }) {
   return (
     <>
       <SectionHeader
         title="โซน"
         desc="ข้อมูลอ้างอิงกลางที่ทรัพย์ · Lead · Last Match ใช้ร่วมกัน"
-        action={
-          <Button size="sm" disabled>
-            + เพิ่มโซน
-          </Button>
-        }
       />
-      <ZonesAdmin zones={zones} />
+      <ZonesAdmin zones={zones} employees={employees} />
     </>
   );
 }
