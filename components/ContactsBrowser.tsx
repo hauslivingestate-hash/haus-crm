@@ -3,7 +3,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
-import { type Contact, type ContactRole, ROLE_LABEL, ROLE_TONE, visibleContacts } from "@/lib/contacts";
+import {
+  type ContactSummary,
+  type ContactRole,
+  ROLE_LABEL,
+  ROLE_TONE,
+  normalizePhone,
+} from "@/lib/contacts";
 import { useRbac } from "@/components/RbacProvider";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -18,29 +24,30 @@ const ROLES = Object.keys(ROLE_LABEL) as ContactRole[];
 
 // บทบาท (role) sorts by the contact's PRIMARY (first) role's rank, since a
 // contact can hold several roles.
-const SORT_VALUE: Record<string, (c: Contact) => number | string | null> = {
+const SORT_VALUE: Record<string, (c: ContactSummary) => number | string | null> = {
   name: (c) => c.name,
   role: (c) => orderIndex(ROLES, c.roles[0]),
   phone: (c) => c.phone,
   line: (c) => c.line,
 };
 
-export function ContactsBrowser({ contacts }: { contacts: Contact[] }) {
+export function ContactsBrowser({ contacts: scoped }: { contacts: ContactSummary[] }) {
   const router = useRouter();
-  const { currentUser, can } = useRbac();
+  const { can } = useRbac();
   const [q, setQ] = React.useState("");
   const [role, setRole] = React.useState<"all" | ContactRole>("all");
   const { sort, onSort } = useSort();
 
-  // Contact privacy: unless you can view all, you only see contacts you created
-  // or are assigned to.
+  // Privacy is already applied: the rows come from main_2_owner and main_6_buyer_crm, both
+  // RLS-scoped, so an agent's list only ever contains their own owners and leads. The
+  // permission is read here purely to caption WHY the list is short.
   const canViewAll = can("contacts.view_all");
-  const scoped = React.useMemo(
-    () => visibleContacts(contacts, currentUser.name, canViewAll),
-    [contacts, currentUser.name, canViewAll]
-  );
 
   const query = q.trim().toLowerCase();
+  // Phone matching ignores punctuation on BOTH sides: the stored numbers are written
+  // "066-1532619" but nobody types the dash when they are checking whether a caller is
+  // already in the system, which is the one job this page has.
+  const queryDigits = normalizePhone(q);
   const filtered = scoped
     .filter((c) => role === "all" || c.roles.includes(role))
     .filter(
@@ -48,7 +55,8 @@ export function ContactsBrowser({ contacts }: { contacts: Contact[] }) {
         !query ||
         c.name.toLowerCase().includes(query) ||
         (c.phone ?? "").toLowerCase().includes(query) ||
-        (c.line ?? "").toLowerCase().includes(query)
+        (c.line ?? "").toLowerCase().includes(query) ||
+        (!!queryDigits && (normalizePhone(c.phone) ?? "").includes(queryDigits))
     );
 
   const sortFn = SORT_VALUE[sort.key];
@@ -101,7 +109,7 @@ export function ContactsBrowser({ contacts }: { contacts: Contact[] }) {
 
       {!canViewAll && (
         <div className="px-3 py-1.5 text-label text-text-subtle border-b border-border bg-surface-2">
-          แสดงเฉพาะผู้ติดต่อที่คุณสร้างหรือได้รับมอบหมาย
+          แสดงเฉพาะเจ้าของทรัพย์ที่คุณดูแล และลูกค้าที่คุณรับผิดชอบ
         </div>
       )}
 

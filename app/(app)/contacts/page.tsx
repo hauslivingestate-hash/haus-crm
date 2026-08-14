@@ -1,21 +1,18 @@
 import { Topbar } from "@/components/Topbar";
-import { Button } from "@/components/ui/Button";
 import { ContactsBrowser } from "@/components/ContactsBrowser";
-import { listContacts } from "@/lib/contacts";
+import { getContacts } from "@/lib/queries";
 
-export default function ContactsPage() {
-  const contacts = listContacts();
+// Merged live from main_2_owner + main_6_buyer_crm — there is no contacts table.
+// See lib/contacts.ts for why.
+export default async function ContactsPage() {
+  const contacts = await getContacts();
 
   return (
     <>
       <Topbar
         title="ผู้ติดต่อ"
-        subtitle={`ฐานข้อมูลส่วนกลาง · ${contacts.length} ราย`}
-        actions={
-          <Button size="sm" disabled>
-            + เพิ่มผู้ติดต่อ
-          </Button>
-        }
+        subtitle={`เจ้าของทรัพย์และลูกค้าที่คุณเห็น · ${contacts.length} ราย`}
+        actions={false}
       />
       <div className="p-4 lg:p-6">
         <ContactsBrowser contacts={contacts} />

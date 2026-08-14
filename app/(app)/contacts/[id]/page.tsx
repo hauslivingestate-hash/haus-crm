@@ -7,7 +7,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Dot";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
-import { getContact, ROLE_LABEL, ROLE_TONE } from "@/lib/contacts";
+import { ROLE_LABEL, ROLE_TONE } from "@/lib/contacts";
+import { getContact } from "@/lib/queries";
 import { formatBaht, formatRent } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -17,7 +18,7 @@ export default async function ContactDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const c = getContact(id);
+  const c = await getContact(id);
   if (!c) notFound();
 
   return (

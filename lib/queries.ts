@@ -2,6 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth";
 import type { Project } from "@/lib/projects";
 import type { LastMatch } from "@/lib/lastMatch";
+import {
+  normalizePhone,
+  roleForLeadType,
+  type Contact,
+  type ContactRole,
+  type ContactSummary,
+} from "@/lib/contacts";
+import { stageMeta } from "@/lib/pipeline";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -298,6 +306,177 @@ export async function getNicknameByAuthId(
     .eq("auth_user_id", authUserId)
     .maybeSingle();
   return (data?.nickname as string | undefined) ?? null;
+}
+
+// ── Contacts (Phase 6) ───────────────────────────────────────────────────────
+//
+// Assembled live from `main_2_owner` + `main_6_buyer_crm`, merged on phone number. See the
+// header of lib/contacts.ts for why there is no `contacts` table behind this.
+//
+// Both source tables are RLS-scoped already, so this returns exactly the people the viewer
+// is allowed to know about — an agent gets their own owners and their own leads.
+
+type OwnerRow = {
+  owner_id: number;
+  owner_name: string | null;
+  owner_phone: string | null;
+  owner_line: string | null;
+  remark: string | null;
+};
+
+type LeadPersonRow = {
+  lead_id: string;
+  lead_name: string | null;
+  phone: string | null;
+  line_id: string | null;
+  lead_type: string | null;
+  budget: number | string | null;
+  pipeline_stage: string | null;
+  sale_id: string | null;
+  listing_code: string | null;
+  interested: string | null;
+  interest_zone: string | null;
+  interest_property_type: string | null;
+  /** The lead table's note column is `admin_remark`, NOT `remark` — asking for the wrong
+   *  name makes PostgREST fail the whole select, which `?? []` then turns into "this agent
+   *  has no leads". That is how this shipped 0 buyers on the first run. */
+  admin_remark: string | null;
+};
+
+type OwnedListingRow = {
+  listing_id: string;
+  listing_name: string | null;
+  owner_id: number | null;
+  asking_price: number | string | null;
+  rental_price: number | string | null;
+  effective_sale_id: string | null;
+};
+
+/** Everyone the viewer may see, keyed by the synthetic contact id. */
+async function loadPeople(): Promise<Map<string, Contact>> {
+  const supabase = await createClient();
+  const [owners, leads, listings, staff] = await Promise.all([
+    supabase.from("main_2_owner").select("owner_id,owner_name,owner_phone,owner_line,remark"),
+    supabase
+      .from("main_6_buyer_crm")
+      .select(
+        "lead_id,lead_name,phone,line_id,lead_type,budget,pipeline_stage,sale_id,listing_code,interested,interest_zone,interest_property_type,admin_remark"
+      ),
+    supabase
+      .from("v_main_listing")
+      .select("listing_id,listing_name,owner_id,asking_price,rental_price,effective_sale_id"),
+    getStaffDirectory(),
+  ]);
+
+  // Fail loudly. A half-built directory is worse than none: an agent who sees only their
+  // owners has no way to tell that the buyer half of the page silently errored out.
+  const failure = owners.error ?? leads.error ?? listings.error;
+  if (failure) throw new Error(`อ่านข้อมูลผู้ติดต่อไม่สำเร็จ: ${failure.message}`);
+
+  const nickname = new Map(staff.map((s) => [s.code, s.nickname]));
+
+  // owner_id → their listings, for both the "ทรัพย์ที่เป็นเจ้าของ" panel and the
+  // owner-vs-landlord distinction (a rent-only owner is a landlord).
+  const byOwner = new Map<number, OwnedListingRow[]>();
+  for (const l of (listings.data ?? []) as unknown as OwnedListingRow[]) {
+    if (l.owner_id == null) continue;
+    const arr = byOwner.get(l.owner_id);
+    if (arr) arr.push(l);
+    else byOwner.set(l.owner_id, [l]);
+  }
+
+  const people = new Map<string, Contact>();
+  const touch = (id: string, name: string, phone: string | null, line: string | null): Contact => {
+    const found = people.get(id);
+    if (found) {
+      // Keep the first non-empty value for each field rather than letting a blank
+      // lead row wipe a phone that came from the owner side.
+      if (!found.name && name) found.name = name;
+      if (!found.phone && phone) found.phone = phone;
+      if (!found.line && line) found.line = line;
+      return found;
+    }
+    const created: Contact = {
+      id, name, phone, line,
+      roles: [], email: null, note: null, assignedTo: null, owned: [], demand: [],
+    };
+    people.set(id, created);
+    return created;
+  };
+  const addRole = (c: Contact, r: ContactRole) => {
+    if (!c.roles.includes(r)) c.roles.push(r);
+  };
+
+  for (const o of (owners.data ?? []) as OwnerRow[]) {
+    const digits = normalizePhone(o.owner_phone);
+    const c = touch(
+      digits ? `p${digits}` : `o${o.owner_id}`,
+      o.owner_name?.trim() || "ไม่ระบุชื่อ",
+      o.owner_phone,
+      o.owner_line
+    );
+    if (o.remark && !c.note) c.note = o.remark;
+
+    const owned = byOwner.get(o.owner_id) ?? [];
+    for (const l of owned) {
+      const sale = numOrNull(l.asking_price);
+      const rent = numOrNull(l.rental_price);
+      // A listing can be both for sale and to let; show the sale figure as the headline.
+      c.owned.push({
+        listingId: l.listing_id,
+        name: l.listing_name ?? l.listing_id,
+        price: sale ?? rent ?? 0,
+        deal: sale != null ? "sale" : "rent",
+      });
+      if (!c.assignedTo && l.effective_sale_id) {
+        c.assignedTo = nickname.get(l.effective_sale_id) ?? l.effective_sale_id;
+      }
+    }
+    // Someone who only ever lets property is a landlord, not a seller.
+    const hasSale = owned.some((l) => numOrNull(l.asking_price) != null);
+    const hasRent = owned.some((l) => numOrNull(l.rental_price) != null);
+    if (hasSale || !hasRent) addRole(c, "owner");
+    if (hasRent) addRole(c, "landlord");
+  }
+
+  for (const l of (leads.data ?? []) as LeadPersonRow[]) {
+    const digits = normalizePhone(l.phone);
+    const c = touch(
+      digits ? `p${digits}` : `l${l.lead_id}`,
+      l.lead_name?.trim() || "ไม่ระบุชื่อ",
+      l.phone,
+      l.line_id
+    );
+    addRole(c, roleForLeadType(l.lead_type));
+    if (l.admin_remark && !c.note) c.note = l.admin_remark;
+    if (!c.assignedTo && l.sale_id) c.assignedTo = nickname.get(l.sale_id) ?? l.sale_id;
+
+    const stage = stageMeta(l.pipeline_stage);
+    const wants = [l.interest_property_type, l.interest_zone].filter(Boolean).join(" · ");
+    c.demand.push({
+      leadId: l.lead_id,
+      interest: wants || l.interested || l.listing_code || "ไม่ระบุความต้องการ",
+      budget: numOrNull(l.budget),
+      stageTh: stage.th,
+      stageDot: stage.dot,
+      deal: l.lead_type === "Buyer - Rent" ? "rent" : "buy",
+    });
+  }
+
+  return people;
+}
+
+/** The directory list — no listings/leads attached, so the payload stays small. */
+export async function getContacts(): Promise<ContactSummary[]> {
+  const people = await loadPeople();
+  return [...people.values()]
+    .map(({ id, name, roles, phone, line }) => ({ id, name, roles, phone, line }))
+    .sort((a, b) => a.name.localeCompare(b.name, "th"));
+}
+
+export async function getContact(id: string): Promise<Contact | null> {
+  const people = await loadPeople();
+  return people.get(id) ?? null;
 }
 
 // ── Projects (Phase 6) ───────────────────────────────────────────────────────

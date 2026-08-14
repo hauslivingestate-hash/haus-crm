@@ -1,13 +1,22 @@
-// Central contacts directory — mirrors Shelter CRM's unified `contacts` model
-// (one person, one or more roles, plus their owned listings and demand/leads).
+// The contacts directory — types and pure helpers.
 //
-// DESIGN-FIRST / SAMPLE DATA: HAUS has no contacts table yet. People currently
-// live split across v_main_listing (owner_name/owner_phone) and
-// main_6_buyer_crm (lead_name/phone) with no link between them. This hardcoded
-// sample lets the full UI be designed now; wire a real Supabase contacts table
-// later and swap listContacts/getContact to query it.
+// ⚠️ THERE IS NO `contacts` TABLE BEHIND THIS PAGE, deliberately (Ben, 2026-08-13).
+// People already exist in two places: owners in `main_2_owner`, buyers/tenants in
+// `main_6_buyer_crm`. A unified table was in the original design, but the real data does
+// not justify it — of 1,169 distinct phone numbers only 5 (0.4%) belong to someone who is
+// both an owner and a buyer. Copying every name and phone into a third table would buy that
+// 0.4% at the cost of two records to keep in step, plus a snapshot that silently goes stale
+// as new owners and leads are created.
+//
+// So `getContacts()` (lib/queries.ts) reads the two source tables live and merges on phone
+// number. Nothing to import, nothing to sync, and the one thing a directory is genuinely
+// useful for still works: type a phone number and find out whether this person is already
+// known to us, and in what capacity.
+//
+// Scoping comes free with that: both source tables are already RLS-scoped, so an agent's
+// search covers their own owners and leads and nobody else's.
 
-export type ContactRole = "owner" | "buyer" | "tenant" | "landlord";
+export type ContactRole = "owner" | "buyer" | "tenant" | "landlord" | "agent";
 
 type PillTone = "neutral" | "accent" | "green" | "amber" | "blue" | "violet" | "red";
 
@@ -16,6 +25,7 @@ export const ROLE_LABEL: Record<ContactRole, string> = {
   buyer: "ผู้ซื้อ",
   tenant: "ผู้เช่า",
   landlord: "ปล่อยเช่า",
+  agent: "นายหน้า",
 };
 
 export const ROLE_TONE: Record<ContactRole, PillTone> = {
@@ -23,6 +33,7 @@ export const ROLE_TONE: Record<ContactRole, PillTone> = {
   buyer: "accent",
   tenant: "violet",
   landlord: "green",
+  agent: "amber",
 };
 
 /** A listing this contact owns — links to /listings/[listingId]. */
@@ -43,160 +54,38 @@ export interface ContactDemand {
   deal: "buy" | "rent";
 }
 
-export interface Contact {
+/** What the directory list needs. Kept separate from `Contact` so the list page doesn't
+ *  ship every person's listings and leads to the browser — there are ~1,200 of them. */
+export interface ContactSummary {
+  /** Synthetic and stable: the person's digits-only phone, or their source row's id when
+   *  they have no phone. Not a database key — there is no contacts table. */
   id: string;
   name: string;
   roles: ContactRole[];
   phone: string | null;
   line: string | null;
+}
+
+export interface Contact extends ContactSummary {
   email: string | null;
   note: string | null;
-  /** Owner of the record (agent name) — drives the privacy rule. */
-  createdBy: string;
-  /** Agent the contact is assigned to (agent name), if any. */
+  /** Nickname of the agent responsible, resolved from the listing/lead. */
   assignedTo: string | null;
   owned: ContactOwned[];
   demand: ContactDemand[];
 }
 
-const CONTACTS: Contact[] = [
-  {
-    id: "c-thana",
-    name: "คุณธนา มั่งมี",
-    roles: ["owner"],
-    createdBy: "Stone",
-    assignedTo: "Stone",
-    phone: "089-500-5000",
-    line: "thana.m",
-    email: "thana@example.com",
-    note: "ขายด่วน ต้องการเงินก้อน ต่อรองได้",
-    owned: [
-      { listingId: "CASK001", name: "อโศก สกาย เรสซิเดนซ์", price: 9800000, deal: "sale" },
-      { listingId: "CASK002", name: "อโศก สกาย เรสซิเดนซ์", price: 32000, deal: "rent" },
-    ],
-    demand: [],
-  },
-  {
-    id: "c-napha",
-    name: "คุณนภา ศรีสุข",
-    roles: ["buyer"],
-    createdBy: "Q",
-    assignedTo: "Q",
-    phone: "082-111-0011",
-    line: "napha.s",
-    email: null,
-    note: null,
-    owned: [],
-    demand: [
-      {
-        leadId: "L-1001",
-        interest: "คอนโด 2 นอน ย่านอโศก",
-        budget: 4500000,
-        stageTh: "ใหม่",
-        stageDot: "bg-dot-blue",
-        deal: "buy",
-      },
-    ],
-  },
-  {
-    id: "c-james",
-    name: "คุณเจมส์ วิลสัน",
-    roles: ["buyer"],
-    createdBy: "Stone",
-    assignedTo: "Stone",
-    phone: "082-103-0003",
-    line: "jameswil",
-    email: "james@example.com",
-    note: "พร้อมโอน มองหาบ้านอยู่จริง",
-    owned: [],
-    demand: [
-      {
-        leadId: "L-1002",
-        interest: "บ้านเดี่ยว พระราม 2",
-        budget: 12000000,
-        stageTh: "ติดต่อแล้ว",
-        stageDot: "bg-dot-teal",
-        deal: "buy",
-      },
-    ],
-  },
-  {
-    id: "c-weera",
-    name: "คุณวีระ ตั้งใจดี",
-    roles: ["owner", "buyer"],
-    createdBy: "Mhow",
-    assignedTo: "Mhow",
-    phone: "082-105-0005",
-    line: "weera.t",
-    email: null,
-    note: "ขายหลังเดิมเพื่ออัปไซส์",
-    owned: [{ listingId: "TCYP001", name: "ชัยพฤกษ์ ปาร์ค", price: 3200000, deal: "sale" }],
-    demand: [
-      {
-        leadId: "L-1003",
-        interest: "ทาวน์เฮาส์ ชัยพฤกษ์ 3 นอน",
-        budget: 3500000,
-        stageTh: "นัดหมาย",
-        stageDot: "bg-dot-violet",
-        deal: "buy",
-      },
-    ],
-  },
-  {
-    id: "c-pimjai",
-    name: "คุณพิมพ์ใจ รักบ้าน",
-    roles: ["tenant"],
-    createdBy: "Q",
-    assignedTo: "Q",
-    phone: "082-104-0004",
-    line: "pimjai",
-    email: null,
-    note: "หาเช่าใกล้ BTS เข้าอยู่ได้ทันที",
-    owned: [],
-    demand: [
-      {
-        leadId: "L-1004",
-        interest: "เช่าคอนโด 1 นอน ใกล้ BTS",
-        budget: 25000,
-        stageTh: "พาชม",
-        stageDot: "bg-dot-amber",
-        deal: "rent",
-      },
-    ],
-  },
-  {
-    id: "c-somchai",
-    name: "คุณสมชาย ใจดี",
-    roles: ["landlord"],
-    createdBy: "Stone",
-    assignedTo: "Stone",
-    phone: "081-222-3333",
-    line: "somchai.j",
-    email: null,
-    note: null,
-    owned: [{ listingId: "HRM2002", name: "แกรนด์ วิลล่า พระราม 2", price: 85000, deal: "rent" }],
-    demand: [],
-  },
-];
-
-export function listContacts(): Contact[] {
-  return CONTACTS;
+/** Digits only, so "081-909-4966" and "0819094966" are recognised as one person. */
+export function normalizePhone(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  return digits.length ? digits : null;
 }
 
-export function getContact(id: string): Contact | null {
-  return CONTACTS.find((c) => c.id === id) ?? null;
-}
-
-/**
- * Contact privacy: a contact is hidden unless the viewer created it or it's
- * assigned to them. `canViewAll` (contacts.view_all) bypasses the rule for
- * Admin/CEO. Managers/team scoping is handled at wiring time.
- */
-export function visibleContacts(
-  contacts: Contact[],
-  viewerName: string,
-  canViewAll: boolean
-): Contact[] {
-  if (canViewAll) return contacts;
-  return contacts.filter((c) => c.createdBy === viewerName || c.assignedTo === viewerName);
+/** `lead_type` → the role it implies. The vocabulary is the DB's, not a seed's. */
+export function roleForLeadType(leadType: string | null | undefined): ContactRole {
+  if (leadType === "Buyer - Rent") return "tenant";
+  if (leadType === "Co-Agent") return "agent";
+  if (leadType?.startsWith("Owner - ")) return "owner";
+  return "buyer";
 }
