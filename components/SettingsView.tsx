@@ -22,6 +22,7 @@ import { AccountsManager } from "@/components/AccountsManager";
 import type { AccountRow } from "@/lib/accounts";
 import type { Employee } from "@/lib/team";
 import type { AttachMode } from "@/lib/actions";
+import type { RbacConfig } from "@/lib/queries";
 import { useRbac } from "@/components/RbacProvider";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -62,6 +63,7 @@ export function SettingsView({
   actionTypes,
   actionUsage,
   propertyTypeCodes,
+  rbac,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
@@ -75,6 +77,8 @@ export function SettingsView({
   actionUsage: Record<string, number>;
   /** property_type name → listing-id letter. */
   propertyTypeCodes: Record<string, string>;
+  /** Roles, the permission catalogue and who holds what. */
+  rbac: RbacConfig;
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
@@ -123,7 +127,7 @@ export function SettingsView({
 
       {/* Section content */}
       <div className="flex flex-col gap-4 min-w-0">
-        {section === "roles" && <RolesSection />}
+        {section === "roles" && <RolesSection rbac={rbac} />}
         {section === "teams" && (
           <>
             <SectionHeader title="ทีมขาย" desc="สร้างทีม กำหนดหัวหน้า เป้ารายได้ และมอบหมายเซลเข้าทีม · จัดการโดย CEO" />
@@ -282,17 +286,16 @@ function Note({ children }: { children: React.ReactNode }) {
   );
 }
 
-function RolesSection() {
+function RolesSection({ rbac }: { rbac: RbacConfig }) {
   return (
     <>
       <SectionHeader title="บทบาท & สิทธิ์" desc="กำหนดบทบาทและสิทธิ์การใช้งาน · จัดการโดย CEO" />
       <Note>
         สร้างบทบาท เปิด/ปิดสิทธิ์ และกำหนดผู้ใช้ได้ที่นี่ — ผู้ใช้หนึ่งคนถือได้หลายบทบาท (สิทธิ์รวมกัน)
-        เช่น หัวหน้าทีมที่ยังขายอยู่ = Agent + Sales Leader.{" "}
-        <span className="text-amber">⚠️ หน้านี้ยังแก้ได้แค่ในจอ — บทบาทจริงอยู่ในตาราง roles/user_roles
-        ต้องแก้ด้วย SQL</span>
+        เช่น หัวหน้าทีมที่ยังขายอยู่ = Agent + Sales Leader · เปลี่ยนแล้วมีผลทันที{" "}
+        <span className="text-text">ทั้งกับหน้าเว็บและกับสิ่งที่ฐานข้อมูลยอมให้ทำ</span> — ไม่ใช่แค่ซ่อนเมนู
       </Note>
-      <RolesManager />
+      <RolesManager config={rbac} />
     </>
   );
 }

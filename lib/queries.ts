@@ -480,6 +480,98 @@ export async function getEmployees(): Promise<Employee[]> {
   });
 }
 
+// ── RBAC (ตั้งค่า → บทบาท & สิทธิ์) ──────────────────────────────────────────
+
+export interface RbacRole {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  /** System roles (CEO, ผู้ดูแลระบบ) cannot be renamed, deleted or re-permissioned. */
+  system: boolean;
+  /** Employee codes holding it. */
+  members: string[];
+}
+
+export interface RbacConfig {
+  roles: RbacRole[];
+  /** Permission catalogue from the `permissions` table, grouped for display. */
+  groups: { key: string; label: string; perms: { key: string; label: string; hint?: string }[] }[];
+  /** Everyone who can be given a role. */
+  people: { code: string; nickname: string; roleIds: string[] }[];
+}
+
+/**
+ * The whole role/permission picture in one read.
+ *
+ * ⚠️ `user_roles` SELECT is own-row unless the viewer holds `roles.manage`/`people.manage`,
+ * so for anyone else this comes back with only their own assignment. The screen is gated on
+ * `roles.manage` anyway, but do not reuse this elsewhere expecting a full list.
+ */
+export async function getRbacConfig(): Promise<RbacConfig> {
+  const supabase = await createClient();
+  const [roles, perms, grants, assignments, staff] = await Promise.all([
+    supabase.from("roles").select("id,name,description,is_system,sort_order").order("sort_order"),
+    supabase
+      .from("permissions")
+      .select("key,group_key,group_label,label,hint,sort_order")
+      .order("sort_order"),
+    supabase.from("role_permissions").select("role_id,permission_key"),
+    supabase.from("user_roles").select("employee_code,role_id"),
+    getStaffDirectory(),
+  ]);
+  if (roles.error) throw new Error(`อ่านข้อมูลบทบาทไม่สำเร็จ: ${roles.error.message}`);
+
+  const permsOf = new Map<string, string[]>();
+  for (const g of (grants.data ?? []) as { role_id: string; permission_key: string }[]) {
+    permsOf.set(g.role_id, [...(permsOf.get(g.role_id) ?? []), g.permission_key]);
+  }
+  const membersOf = new Map<string, string[]>();
+  const rolesOf = new Map<string, string[]>();
+  for (const a of (assignments.data ?? []) as { employee_code: string; role_id: string }[]) {
+    membersOf.set(a.role_id, [...(membersOf.get(a.role_id) ?? []), a.employee_code]);
+    rolesOf.set(a.employee_code, [...(rolesOf.get(a.employee_code) ?? []), a.role_id]);
+  }
+
+  const groups: RbacConfig["groups"] = [];
+  for (const p of (perms.data ?? []) as {
+    key: string;
+    group_key: string;
+    group_label: string | null;
+    label: string | null;
+    hint: string | null;
+  }[]) {
+    let g = groups.find((x) => x.key === p.group_key);
+    if (!g) {
+      g = { key: p.group_key, label: p.group_label ?? p.group_key, perms: [] };
+      groups.push(g);
+    }
+    g.perms.push({ key: p.key, label: p.label ?? p.key, hint: p.hint ?? undefined });
+  }
+
+  return {
+    roles: ((roles.data ?? []) as {
+      id: string;
+      name: string;
+      description: string | null;
+      is_system: boolean | null;
+    }[]).map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description ?? "",
+      permissions: permsOf.get(r.id) ?? [],
+      system: !!r.is_system,
+      members: membersOf.get(r.id) ?? [],
+    })),
+    groups,
+    people: staff.map((s) => ({
+      code: s.code,
+      nickname: s.nickname,
+      roleIds: rolesOf.get(s.code) ?? [],
+    })),
+  };
+}
+
 /** property_type name → its listing-id letter, for ตั้งค่า → ประเภททรัพย์. */
 export async function getPropertyTypeCodes(): Promise<Record<string, string>> {
   const supabase = await createClient();
