@@ -1,6 +1,6 @@
 import { Topbar } from "@/components/Topbar";
 import { SettingsView } from "@/components/SettingsView";
-import { getListings, getEmployees, getZones } from "@/lib/queries";
+import { getListings, getEmployees, getZones, getActionTypes } from "@/lib/queries";
 import { getAccounts } from "@/lib/accounts";
 
 export default async function SettingsPage() {
@@ -13,10 +13,11 @@ export default async function SettingsPage() {
     propertyTypeUsage[l.property_type] = (propertyTypeUsage[l.property_type] ?? 0) + 1;
   }
 
-  const [accounts, employees, zones] = await Promise.all([
+  const [accounts, employees, zones, actionTypes] = await Promise.all([
     getAccounts(),
     getEmployees(),
     getZones(),
+    getActionTypes(),
   ]);
 
   return (
@@ -28,6 +29,7 @@ export default async function SettingsPage() {
           propertyTypeUsage={propertyTypeUsage}
           accounts={accounts}
           employees={employees}
+          actionTypes={actionTypes}
         />
       </div>
     </>

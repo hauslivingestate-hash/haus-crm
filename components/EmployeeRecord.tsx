@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/Input";
 import { useRbac } from "@/components/RbacProvider";
 import { formatDate } from "@/lib/format";
 import { createEmployee, updateEmployee } from "@/lib/mutations/employees";
+import { setProbation } from "@/lib/mutations/probation";
+import { todayISO } from "@/lib/momentum";
 import {
   employeeFullName,
   DEPARTMENT_LABEL,
@@ -360,6 +362,9 @@ export function EmployeeRecord({
           <F label="วันเริ่มงาน" view={f.startDate ? formatDate(f.startDate) : ""} edit={editing}>
             <input type="date" value={f.startDate} onChange={(e) => set("startDate", e.target.value)} className={cn(field, "w-auto")} />
           </F>
+          {!isNew && employee.department === "sales" && (
+            <ProbationControl employee={employee} canManage={canManage} />
+          )}
           <F label="ลิงก์ชีทงานขาย" view={f.salesSheetUrl} edit={editing} link>
             <Input value={f.salesSheetUrl} onChange={(e) => set("salesSheetUrl", e.target.value)} placeholder="https://docs.google.com/…" />
           </F>
@@ -419,6 +424,77 @@ export function EmployeeRecord({
           <LockedNote label="ข้อมูลอ่อนไหว (บัตร ปชช./บัญชี/สลิป/สัญญา)" />
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * เซลล์ใหม่ programme membership — the only way onto the /new-sales board.
+ *
+ * Kept out of the main edit form on purpose: it is not a field about the person, it is an
+ * event ("joined the programme", "passed"), and it writes through its own action with its
+ * own permission check. Ben, 2026-08-14: the programme restarts from zero, so every current
+ * employee is already marked as passed and this is what enrols the next hire.
+ */
+function ProbationControl({ employee, canManage }: { employee: Employee; canManage: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = React.useState(false);
+  const [refreshing, startRefresh] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+  const working = busy || refreshing;
+
+  const inProgram = !!employee.probationStart && !employee.probationPassedAt;
+
+  const run = async (start: string | null, passed: string | null) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await setProbation(employee.code, start, passed);
+      if (!res.ok) setError(res.error);
+      else startRefresh(() => router.refresh());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-label text-text-muted">โปรแกรมเซลล์ใหม่ (โปรเบชั่น)</span>
+      <div className="flex items-center gap-2 flex-wrap">
+        {inProgram ? (
+          <Pill tone="accent">อยู่ในโปรแกรม · เริ่ม {formatDate(employee.probationStart!)}</Pill>
+        ) : employee.probationPassedAt ? (
+          <Pill tone="green">ผ่านแล้ว · {formatDate(employee.probationPassedAt)}</Pill>
+        ) : (
+          <span className="text-body text-text-subtle">ไม่เคยเข้าโปรแกรม</span>
+        )}
+        {canManage &&
+          (inProgram ? (
+            <button
+              onClick={() => void run(employee.probationStart ?? null, todayISO())}
+              disabled={working}
+              className="h-8 px-3 rounded-md border border-green/30 bg-green-bg text-green text-small font-medium disabled:opacity-50"
+            >
+              บันทึกว่าผ่านโปรเบชั่น
+            </button>
+          ) : (
+            <button
+              onClick={() => void run(todayISO(), null)}
+              disabled={working}
+              className="h-8 px-3 rounded-md border border-border-strong text-text-muted text-small hover:bg-surface-2 transition-colors disabled:opacity-50"
+            >
+              เข้าโปรแกรมเซลล์ใหม่
+            </button>
+          ))}
+      </div>
+      {inProgram && (
+        <span className="text-label text-text-subtle">
+          เกณฑ์แบบ “สะสมรวม” นับกิจกรรมตั้งแต่วันเริ่มโปรแกรม · เลื่อน Rank อัตโนมัติ
+        </span>
+      )}
+      {error && <span className="text-label text-red">{error}</span>}
     </div>
   );
 }

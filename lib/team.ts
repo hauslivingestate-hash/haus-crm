@@ -63,11 +63,13 @@ export interface Employee {
   /** ⚠️ EMPTY for all 10 — the HR sheet never had it. The new-sales ladder and first-year
    *  leave pro-rating both need it, so neither can be computed until HR fills it in. */
   startDate?: string;
-  /** Entry date into the เซลล์ใหม่ probation program. ⚠️ NOT A COLUMN — there is no
-   *  probation table yet and `date_started` (which it would derive from) is empty for
-   *  everyone, so this is always undefined and the ladder board is empty on purpose.
-   *  Kept on the type so the board keeps compiling for when HR supplies the dates. */
+  /** Entry date into the เซลล์ใหม่ probation program (`main_1_hr.probation_start`).
+   *  undefined = never enrolled. `total` criteria are counted from this date. */
   probationStart?: string;
+  /** When they cleared the last rank. Set = they are OUT of the program and stay out —
+   *  stored rather than re-derived so a quiet month cannot un-pass someone
+   *  (a `monthly` criterion would otherwise stop being met). */
+  probationPassedAt?: string;
 
   // Emergency
   emergencyContact?: string;

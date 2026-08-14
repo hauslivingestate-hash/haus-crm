@@ -58,6 +58,7 @@ export function SettingsView({
   propertyTypeUsage,
   accounts,
   employees,
+  actionTypes,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
@@ -65,6 +66,8 @@ export function SettingsView({
   accounts: AccountRow[];
   /** Real roster (main_1_hr) — the team builder picks its members from this. */
   employees: Employee[];
+  /** Governed activity vocabulary — rank criteria are FKs to it. */
+  actionTypes: { name: string; group: string }[];
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
@@ -218,7 +221,7 @@ export function SettingsView({
               ผ่านโปรเบชั่น ดูภาพรวมได้ที่หน้า “เซลล์ใหม่”{" "}
               <span className="text-text">โหมดออกแบบ: การเปลี่ยนแปลงยังไม่ถูกบันทึก</span>
             </Note>
-            <SalesRankManager />
+            <SalesRankManager actionTypes={actionTypes} />
           </>
         )}
         {section === "accounts" && (

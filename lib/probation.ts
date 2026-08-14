@@ -1,16 +1,19 @@
 // New-sales probation ladder — CEO-defined ranks whose criteria count the SAME action
-// entity the KPI system uses (KpiTemplate.source="activity"). Design-first: the seed ladder
-// below is edited in Settings (ProbationProvider, in-memory); tallies read the unified
-// activity log (lib/actions). Wire later = probation_rank + rank_criterion tables and a
-// promotion log (rank_achieved_at events) so monthly dips can't demote an earned rank —
-// the live-derived preview here recomputes every render instead.
+// entity the KPI system uses (KpiTemplate.source="activity"), so there is one activity
+// vocabulary rather than three.
+//
+// Phase 6/8: the ladder lives in `probation_rank` + `rank_criterion` (read in
+// lib/queries.ts, written in lib/mutations/probation.ts), and membership is
+// `main_1_hr.probation_start` / `probation_passed_at`. Everything below is pure — it takes
+// the tallies it needs rather than reaching for a seeded log and a stubbed clock.
 //
 // AUTO-PROMOTE model: rank is DERIVED, not stored. A rank is achieved when ALL its
 // criteria are met; the current rank is the longest leading run of achieved ranks
 // (the ladder is sequential). Clearing the final rank = passed probation.
-
-import { listActivities, type Activity } from "@/lib/actions";
-import { TODAY } from "@/lib/momentum";
+//
+// ⚠️ Known consequence of deriving live: a `monthly` criterion that was met last month and
+// not this one un-achieves its rank. `probation_passed_at` is stored precisely so that
+// PASSING, at least, cannot be taken back by a quiet month.
 
 /** Counting window for one criterion — "have both" per Ben:
  *  total = cumulative since probation start · monthly = within the current month. */
@@ -23,11 +26,25 @@ export const WINDOW_LABEL: Record<CriterionWindow, string> = {
 
 export interface RankCriterion {
   id: string;
-  /** Action name from ACTION_GROUPS — same vocabulary as ประเภทกิจกรรม / KPI templates. */
+  /** Action name from `action_type` — same vocabulary as ประเภทกิจกรรม / KPI templates. */
   activityType: string;
   target: number;
   window: CriterionWindow;
 }
+
+/**
+ * Activity tallies for ONE agent, as `${activityType}` → count.
+ *
+ * Two buckets because criteria count two different ways: `total` since the agent joined
+ * the program, `monthly` within the current month. Built server-side in lib/queries.ts so
+ * this file needs no database and no clock.
+ */
+export interface ActivityTally {
+  total: Record<string, number>;
+  monthly: Record<string, number>;
+}
+
+export const EMPTY_TALLY: ActivityTally = { total: {}, monthly: {} };
 
 export interface SalesRank {
   id: string;
@@ -35,8 +52,9 @@ export interface SalesRank {
   criteria: RankCriterion[];
 }
 
-// Seed ladder (CEO edits in Settings → Rank เซลล์ใหม่). Ordered: index 0 is the first
-// rank to earn; everyone starts below it ("เริ่มต้น"). Passing the last = ผ่านโปรเบชั่น.
+// The ladder the DB is seeded with — kept only as the fallback for a render with no
+// session (and as documentation of the shape). The live one comes from `probation_rank`.
+// Ordered: index 0 is the first rank to earn; everyone starts below it ("เริ่มต้น").
 export const SEED_SALES_RANKS: SalesRank[] = [
   {
     id: "r_rookie",
@@ -65,24 +83,6 @@ export const SEED_SALES_RANKS: SalesRank[] = [
   },
 ];
 
-/** Tally one action for one agent from the unified log. `monthly` counts the current
- *  (stubbed) month; `total` counts everything since `since` (probation start, if given). */
-export function tallyAction(
-  nickname: string,
-  activityType: string,
-  window: CriterionWindow,
-  since?: string,
-  /** LIVE log (ActivityProvider). Defaults to the static sample for non-React callers —
-   *  pass the live array so ticking a Daily-Plan task re-ranks immediately. */
-  activities: Activity[] = listActivities()
-): number {
-  const month = TODAY.slice(0, 7);
-  return activities
-    .filter((a) => a.created_by === nickname && a.action === activityType)
-    .filter((a) => (window === "monthly" ? a.date.startsWith(month) : !since || a.date >= since))
-    .reduce((sum, a) => sum + a.count, 0);
-}
-
 export interface CriterionProgress extends RankCriterion {
   have: number;
   met: boolean;
@@ -109,14 +109,12 @@ export interface LadderEvaluation {
 
 /** Derive an agent's ladder position from the activity log (auto-promote = pure derivation). */
 export function evaluateLadder(
-  nickname: string,
   ladder: SalesRank[],
-  probationStart?: string,
-  activities?: Activity[]
+  tally: ActivityTally = EMPTY_TALLY
 ): LadderEvaluation {
   const ranks: RankProgress[] = ladder.map((rank) => {
     const criteria = rank.criteria.map((c) => {
-      const have = tallyAction(nickname, c.activityType, c.window, probationStart, activities);
+      const have = (c.window === "monthly" ? tally.monthly : tally.total)[c.activityType] ?? 0;
       return { ...c, have, met: have >= c.target };
     });
     const pct = criteria.length

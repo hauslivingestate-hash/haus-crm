@@ -24,6 +24,7 @@ import {
 } from "@/lib/team";
 import { todayISO } from "@/lib/momentum";
 import type { Zone, ZoneSale } from "@/lib/zones";
+import type { ActivityTally, RankCriterion, SalesRank } from "@/lib/probation";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -355,7 +356,8 @@ export async function getEmployees(): Promise<Employee[]> {
         "employee_code,status,division,position,second_position,first_name_en,last_name_en," +
           "first_name_th,last_name_th,nickname,gender,nationality,phone,additional_phone," +
           "email,work_email,line_userid,birthday,date_started,emergency_contact," +
-          "emergency_contact_phone,emergency_contact_relationship,remark,sales_sheet_url,team_id"
+          "emergency_contact_phone,emergency_contact_relationship,remark,sales_sheet_url,team_id," +
+          "probation_start,probation_passed_at"
       )
       .order("employee_code"),
     supabase.from("zone_sales").select("zone_id,employee_code"),
@@ -458,6 +460,8 @@ export async function getEmployees(): Promise<Employee[]> {
       lineUserId: e.line_userid ?? undefined,
       birthday: e.birthday ?? undefined,
       startDate: e.date_started ?? undefined,
+      probationStart: e.probation_start ?? undefined,
+      probationPassedAt: e.probation_passed_at ?? undefined,
       emergencyContact: e.emergency_contact ?? undefined,
       emergencyPhone: e.emergency_contact_phone ?? undefined,
       emergencyRelation: e.emergency_contact_relationship ?? undefined,
@@ -535,6 +539,147 @@ export async function getZones(): Promise<Zone[]> {
       (a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.nickname.localeCompare(b.nickname)
     ),
     listingCount: count.get(z.zone_id) ?? 0,
+  }));
+}
+
+// ── เซลล์ใหม่ / probation (Phase 8 groundwork) ───────────────────────────────
+
+/**
+ * The governed activity vocabulary (`action_type`), for anything that has to produce an
+ * FK-valid action name.
+ *
+ * ⚠️ Not `ACTION_GROUPS` in lib/actions — that seed is missing three rows that exist in the
+ * table (Owner Talk, Update Price, เซ็นสัญญา), and Owner Talk is the first KPI the company
+ * ever defined. The same trap already bit the task form in Phase 5.
+ */
+export async function getActionTypes(): Promise<{ name: string; group: string }[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("action_type")
+    .select("name,group_label,sort_order")
+    .eq("is_active", true)
+    .order("sort_order");
+  return ((data ?? []) as { name: string; group_label: string | null }[]).map((a) => ({
+    name: a.name,
+    group: a.group_label ?? "อื่นๆ",
+  }));
+}
+
+/** The CEO's ladder, from `probation_rank` + `rank_criterion`. */
+export async function getSalesRanks(): Promise<SalesRank[]> {
+  const supabase = await createClient();
+  const [ranks, criteria] = await Promise.all([
+    supabase.from("probation_rank").select("id,name,sort_order").order("sort_order"),
+    supabase
+      .from("rank_criterion")
+      .select("id,rank_id,activity_type,target,count_window,sort_order")
+      .order("sort_order"),
+  ]);
+  if (ranks.error) throw new Error(`อ่านเกณฑ์ Rank ไม่สำเร็จ: ${ranks.error.message}`);
+
+  const byRank = new Map<string, RankCriterion[]>();
+  for (const c of (criteria.data ?? []) as {
+    id: string;
+    rank_id: string;
+    activity_type: string;
+    target: number;
+    count_window: string;
+  }[]) {
+    const arr = byRank.get(c.rank_id) ?? [];
+    arr.push({
+      id: c.id,
+      activityType: c.activity_type,
+      target: c.target,
+      window: c.count_window === "monthly" ? "monthly" : "total",
+    });
+    byRank.set(c.rank_id, arr);
+  }
+  return ((ranks.data ?? []) as { id: string; name: string }[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    criteria: byRank.get(r.id) ?? [],
+  }));
+}
+
+/**
+ * Activity tallies per agent for the probation board.
+ *
+ * `total` counts from each agent's own `probation_start`, so two people who joined the
+ * programme at different times are each measured from their own day one. `monthly` is the
+ * current calendar month for everyone.
+ *
+ * ⚠️ Same RLS ceiling as everywhere else: `activities` is own-row unless the viewer holds
+ * `performance.view_team`, and `visible_employee_codes()` is "just me" while `teams` is
+ * empty. An agent therefore sees real numbers for themselves and zeroes for everyone else.
+ * The board is CEO/leader-facing (nav gate: performance.view_team), so it is not filtered
+ * again here — but do not reuse this for a per-agent screen without checking that.
+ */
+export async function getProbationTallies(
+  members: { code: string; probationStart?: string }[]
+): Promise<Record<string, ActivityTally>> {
+  const out: Record<string, ActivityTally> = {};
+  for (const m of members) out[m.code] = { total: {}, monthly: {} };
+  if (!members.length) return out;
+
+  const supabase = await createClient();
+  // One query for everyone: earliest start bounds it, then each row is attributed to the
+  // agent it belongs to only if it falls on or after THAT agent's start.
+  const earliest = members
+    .map((m) => m.probationStart)
+    .filter((d): d is string => !!d)
+    .sort()[0];
+  const monthStart = todayISO().slice(0, 7) + "-01";
+
+  const { data, error } = await supabase
+    .from("activities")
+    .select("employee_code,action,activity_date,count")
+    .in("employee_code", members.map((m) => m.code))
+    .gte("activity_date", earliest ?? "1900-01-01");
+  if (error) throw new Error(`อ่านกิจกรรมไม่สำเร็จ: ${error.message}`);
+
+  const startOf = new Map(members.map((m) => [m.code, m.probationStart]));
+  for (const a of (data ?? []) as {
+    employee_code: string;
+    action: string;
+    activity_date: string;
+    count: number | null;
+  }[]) {
+    const t = out[a.employee_code];
+    if (!t) continue;
+    const n = a.count ?? 0;
+    const start = startOf.get(a.employee_code);
+    if (!start || a.activity_date >= start) {
+      t.total[a.action] = (t.total[a.action] ?? 0) + n;
+    }
+    if (a.activity_date >= monthStart) {
+      t.monthly[a.action] = (t.monthly[a.action] ?? 0) + n;
+    }
+  }
+  return out;
+}
+
+/** Recent activity rows for one agent — the log on their probation detail page. */
+export async function getAgentActivities(
+  code: string,
+  limit = 40
+): Promise<{ date: string; action: string; count: number; remark: string | null }[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("activities")
+    .select("activity_date,action,count,remark")
+    .eq("employee_code", code)
+    .order("activity_date", { ascending: false })
+    .limit(limit);
+  return ((data ?? []) as {
+    activity_date: string;
+    action: string;
+    count: number | null;
+    remark: string | null;
+  }[]).map((a) => ({
+    date: a.activity_date,
+    action: a.action,
+    count: a.count ?? 0,
+    remark: a.remark,
   }));
 }
 

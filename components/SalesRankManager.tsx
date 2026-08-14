@@ -4,9 +4,10 @@ import * as React from "react";
 import { Plus, Medal, ChevronUp, ChevronDown } from "lucide-react";
 import { useProbation } from "@/components/ProbationProvider";
 import { WINDOW_LABEL, type CriterionWindow, type SalesRank } from "@/lib/probation";
-import { ACTION_GROUPS, NOTE_ACTION } from "@/lib/actions";
+import { NOTE_ACTION } from "@/lib/actions";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { ConfirmDelete } from "@/components/ui/ConfirmDelete";
 import { cn } from "@/lib/cn";
 
@@ -14,14 +15,32 @@ import { cn } from "@/lib/cn";
 // ranks, each with criteria = action type × target × window (สะสมรวม / ต่อเดือน). Criteria
 // count the SAME action entity as ประเภทกิจกรรม / KPI templates. AUTO-PROMOTE: rank is
 // derived from the activity log, so editing here re-ranks the เซลล์ใหม่ board instantly.
-// Design-first: in-memory (ProbationProvider), not persisted.
+//
+// Phase 8 groundwork: the ladder is persisted (`probation_rank` / `rank_criterion`). It is
+// edited as a draft and committed with บันทึก — saving per keystroke would write a
+// half-built rank, and a criterion with no activity type fails its FK.
 
-// Loggable actions only — a rank criterion on the free-note action makes no sense.
-const ACTION_OPTIONS = ACTION_GROUPS.filter((g) => !g.items.includes(NOTE_ACTION));
-
-export function SalesRankManager() {
-  const { ranks, setRanks } = useProbation();
+export function SalesRankManager({
+  actionTypes = [],
+}: {
+  /** From `action_type`, NOT the ACTION_GROUPS seed — that list is missing three rows that
+   *  exist in the table, and `rank_criterion.activity_type` is an FK to it. */
+  actionTypes?: { name: string; group: string }[];
+}) {
+  const { ranks, setRanks, dirty, save, reset, busy, error } = useProbation();
   const [seq, setSeq] = React.useState(1);
+
+  // Loggable actions only — a rank criterion on the free-note action makes no sense.
+  const actionOptions = React.useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const a of actionTypes) {
+      if (a.name === NOTE_ACTION) continue;
+      const arr = groups.get(a.group) ?? [];
+      arr.push(a.name);
+      groups.set(a.group, arr);
+    }
+    return [...groups].map(([group, items]) => ({ group, items }));
+  }, [actionTypes]);
 
   const patchRank = (id: string, p: Partial<SalesRank>) =>
     setRanks((rs) => rs.map((r) => (r.id === id ? { ...r, ...p } : r)));
@@ -114,7 +133,7 @@ export function SalesRankManager() {
                     aria-label="ประเภทกิจกรรม"
                     className="w-40"
                   >
-                    {ACTION_OPTIONS.map((g) => (
+                    {actionOptions.map((g) => (
                       <optgroup key={g.group} label={g.group}>
                         {g.items.map((a) => (
                           <option key={a} value={a}>{a}</option>
@@ -170,6 +189,22 @@ export function SalesRankManager() {
       >
         <Medal size={15} strokeWidth={1.75} /> เพิ่ม Rank
       </button>
+
+      {error && <Card className="p-3 text-small text-red bg-red-bg/50 border-red/30">{error}</Card>}
+
+      {/* Commit bar. The ladder is a draft until this is pressed — the เซลล์ใหม่ board keeps
+          ranking against the saved version in the meantime. */}
+      <div className="sticky bottom-0 flex items-center gap-2 py-3 bg-background border-t border-border">
+        <Button size="sm" onClick={() => void save()} disabled={!dirty || busy}>
+          {busy ? "กำลังบันทึก…" : "บันทึกเกณฑ์"}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={reset} disabled={!dirty || busy}>
+          ยกเลิกการแก้ไข
+        </Button>
+        <span className="text-label text-text-subtle ml-1">
+          {dirty ? "มีการแก้ไขที่ยังไม่บันทึก" : "บันทึกแล้ว"}
+        </span>
+      </div>
     </div>
   );
 }

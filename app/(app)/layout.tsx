@@ -12,7 +12,7 @@ import { LeadIntakeFab } from "@/components/LeadIntakeFab";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth";
 import { getLookups, getAssignableAgents } from "@/lib/lookups";
-import { getLeaveRequests, getLeaveAllowances } from "@/lib/queries";
+import { getLeaveRequests, getLeaveAllowances, getSalesRanks } from "@/lib/queries";
 import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
 
 // The SIGNED-IN application shell. Everything inside this route group gets the sidebar, the
@@ -33,14 +33,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // seeds — which is right for design mode, where nothing is written anyway.
   // Leave is loaded here rather than on /leave alone: แผนวันนี้ shows an "on leave today"
   // banner from the same list, so both surfaces must see one queue.
-  const [lookups, agents, leaveRequests, leaveAllowances] = auth
+  const [lookups, agents, leaveRequests, leaveAllowances, salesRanks] = auth
     ? await Promise.all([
         getLookups(),
         getAssignableAgents(),
         getLeaveRequests(),
         getLeaveAllowances(),
+        getSalesRanks(),
       ])
-    : [undefined, [], [], undefined];
+    : [undefined, [], [], undefined, undefined];
 
   return (
     <RbacProvider
@@ -58,7 +59,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MasterDataProvider initial={lookups}>
         <ChecklistProvider>
           <CopyTemplatesProvider>
-            <ProbationProvider>
+            <ProbationProvider initial={salesRanks}>
               <NotificationsProvider>
                 {/* Live activity log. Fed by Daily-Plan task completion — the +บันทึก FAB
                     was removed per CEO feedback R1, so this is the only write path. */}

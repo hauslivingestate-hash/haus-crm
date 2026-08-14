@@ -9,11 +9,11 @@ import {
   currentRankName,
   ladderScore,
   type LadderEvaluation,
+  type SalesRank,
 } from "@/lib/probation";
 import type { Employee } from "@/lib/team";
-import { useActivities } from "@/components/ActivityProvider";
-import type { Activity } from "@/lib/actions";
-import { TODAY } from "@/lib/momentum";
+import type { ActivityTally } from "@/lib/probation";
+import { todayISO } from "@/lib/momentum";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
 import { Pill } from "@/components/ui/Pill";
@@ -22,9 +22,13 @@ import { RingProgress } from "@/components/ui/RingProgress";
 import { cn } from "@/lib/cn";
 
 // เซลล์ใหม่ (probation) leaderboard — ranking first; click a row for the agent's full
-// stats (/new-sales/[id]). Rank is DERIVED live from the activity log against the CEO's
-// ladder (ProbationProvider) — auto-promote, nothing stored. Population = active sales
-// with probationStart (lib/team). Design-first: reads seeded sample activities.
+// stats (/new-sales/[code]). Rank is DERIVED from the real activity log against the CEO's
+// ladder — auto-promote, nothing stored.
+//
+// Population = active sales who are IN the programme: `probation_start` set and
+// `probation_passed_at` still null. Ben, 2026-08-14: the programme starts from zero and
+// everyone currently employed is marked as having passed, so this is empty today and fills
+// as new people are enrolled on their employee record.
 
 interface Row {
   employee: Employee;
@@ -35,26 +39,35 @@ interface Row {
  *  `activities` = the LIVE log (ActivityProvider), so completing a Daily-Plan task
  *  re-ranks immediately — auto-promote depends on reading the same log the plan writes. */
 export function rankedNewSales(
-  ranks: ReturnType<typeof useProbation>["ranks"],
-  activities?: Activity[],
-  employees: Employee[] = []
+  ranks: SalesRank[],
+  employees: Employee[] = [],
+  tallies: Record<string, ActivityTally> = {}
 ): Row[] {
-  // ⚠️ `probationStart` has no column yet (see lib/team.ts), so this filter always empties
-  // the board — deliberately, until HR supplies date_started. The empty state below says so.
   return employees
-    .filter((e) => e.status === "active" && e.department === "sales" && !!e.probationStart)
+    .filter(
+      (e) =>
+        e.status === "active" &&
+        e.department === "sales" &&
+        !!e.probationStart &&
+        !e.probationPassedAt
+    )
     .map((employee) => ({
       employee,
-      ev: evaluateLadder(employee.nickname, ranks, employee.probationStart, activities),
+      ev: evaluateLadder(ranks, tallies[employee.code]),
     }))
     .sort((a, b) => ladderScore(b.ev) - ladderScore(a.ev));
 }
 
-export function NewSalesBoard({ employees = [] }: { employees?: Employee[] }) {
+export function NewSalesBoard({
+  employees = [],
+  tallies = {},
+}: {
+  employees?: Employee[];
+  tallies?: Record<string, ActivityTally>;
+}) {
   const { ranks } = useProbation();
-  const { activities } = useActivities();
   const router = useRouter();
-  const rows = rankedNewSales(ranks, activities, employees);
+  const rows = rankedNewSales(ranks, employees, tallies);
 
   if (rows.length === 0) {
     return (
@@ -63,9 +76,10 @@ export function NewSalesBoard({ employees = [] }: { employees?: Employee[] }) {
           <Sprout size={22} strokeWidth={1.5} className="text-text-subtle" />
           <p className="text-small text-text-subtle">ยังไม่มีเซลล์ใหม่ในโปรแกรมโปรเบชั่น</p>
           <p className="text-label text-text-subtle max-w-sm">
-            กระดานนี้นับจากวันเริ่มงาน (<span className="num">date_started</span>) ซึ่ง
-            <span className="text-text-muted"> ยังว่างทั้ง 10 คน</span> — ชีท HR ไม่มีคอลัมน์นี้
-            ต้องกรอกในหน้าประวัติพนักงานก่อน อันดับถึงจะคำนวณได้
+            พนักงานปัจจุบันผ่านโปรเบชั่นครบทุกคนแล้ว — เริ่มนับใหม่จาก 0
+            <br />
+            เซลใหม่ที่เข้ามาให้กดปุ่ม “เข้าโปรแกรมเซลล์ใหม่” ในหน้าประวัติพนักงาน
+            แล้วชื่อจะขึ้นที่กระดานนี้เอง
           </p>
         </CardContent>
       </Card>
@@ -98,7 +112,7 @@ export function NewSalesBoard({ employees = [] }: { employees?: Employee[] }) {
         <ul className="divide-y divide-border">
           {rows.map((row, i) => {
             const { employee: e, ev } = row;
-            const days = daysBetween(e.probationStart, TODAY);
+            const days = daysBetween(e.probationStart, todayISO());
             return (
               <li key={e.code}>
                 <button

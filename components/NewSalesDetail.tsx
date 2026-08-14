@@ -5,9 +5,9 @@ import { Medal, Trophy, Check, CalendarDays, History } from "lucide-react";
 import { useProbation } from "@/components/ProbationProvider";
 import { rankedNewSales, daysBetween } from "@/components/NewSalesBoard";
 import type { Employee } from "@/lib/team";
+import type { ActivityTally } from "@/lib/probation";
 import { currentRankName, WINDOW_LABEL } from "@/lib/probation";
-import { useActivities } from "@/components/ActivityProvider";
-import { TODAY } from "@/lib/momentum";
+import { todayISO } from "@/lib/momentum";
 import { formatDate } from "@/lib/format";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -21,15 +21,17 @@ import { cn } from "@/lib/cn";
 export function NewSalesDetail({
   employeeCode,
   employees = [],
+  tallies = {},
+  activities = [],
 }: {
   employeeCode: string;
   employees?: Employee[];
+  tallies?: Record<string, ActivityTally>;
+  /** This agent's recent log rows, newest first (lib/queries getAgentActivities). */
+  activities?: { date: string; action: string; count: number; remark: string | null }[];
 }) {
   const { ranks } = useProbation();
-  // LIVE log — the ladder and the activity list below must both reflect work logged from
-  // the Daily Plan, not the frozen sample.
-  const { activities } = useActivities();
-  const rows = rankedNewSales(ranks, activities, employees);
+  const rows = rankedNewSales(ranks, employees, tallies);
   const idx = rows.findIndex((r) => r.employee.code === employeeCode);
 
   if (idx === -1) {
@@ -43,10 +45,8 @@ export function NewSalesDetail({
   }
 
   const { employee: e, ev } = rows[idx];
-  const days = daysBetween(e.probationStart, TODAY);
-  const acts = activities
-    .filter((a) => a.created_by === e.nickname)
-    .sort((a, b) => b.date.localeCompare(a.date));
+  const days = daysBetween(e.probationStart, todayISO());
+  const acts = activities;
 
   return (
     <div className="space-y-4">
@@ -158,8 +158,8 @@ export function NewSalesDetail({
           </CardHeader>
           {acts.length ? (
             <div className="divide-y divide-border">
-              {acts.map((a) => (
-                <div key={a.id} className="flex items-start gap-3 px-4 py-2.5">
+              {acts.map((a, i) => (
+                <div key={`${a.date}-${a.action}-${i}`} className="flex items-start gap-3 px-4 py-2.5">
                   <span className="mt-1.5 size-2 rounded-full bg-accent shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
