@@ -9,8 +9,9 @@
 //   • Colour is STORED per tag (CEO's choice), not derived from a hash — the point of a
 //     standard is that everyone sees the same tag the same colour.
 //
-// Wire later: `lead_tags_ref(id, label, tone, sort_order, is_active)` +
-// `main_6_buyer_crm.tag_id`. Live edits are in-memory (MasterDataProvider) for now.
+// Wired 2026-08-14: `lead_tags_ref(id, label, tone, sort_order, is_active)` +
+// `main_6_buyer_crm.tag_id`, read in lib/lookups.ts and written in lib/mutations/reference.ts.
+// The seed below survives only as the fallback for a render with no session.
 
 const TAG_TONES = ["accent", "blue", "violet", "amber", "green", "neutral"] as const;
 export type TagTone = (typeof TAG_TONES)[number];
@@ -33,7 +34,8 @@ export interface LeadTag {
   tone: TagTone;
 }
 
-// PLACEHOLDER SEED — the CEO will set the real list in Settings (Ben, 2026-07-29:
+// PLACEHOLDER SEED — mirrors what `lead_tags_ref` was seeded with. The CEO sets the real
+// list in Settings, which now writes to that table (Ben, 2026-07-29:
 // "เดี๋ยวให้ CEO เค้าเซ็ท เอา seed มาไวๆสัก 3-4 อันก่อนก็ได้").
 //
 // Deliberately a BUYER-TYPE axis, not hot/warm/cold: the lead already carries `potential`

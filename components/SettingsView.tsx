@@ -21,6 +21,7 @@ import { LeaveAllowanceManager } from "@/components/LeaveAllowanceManager";
 import { AccountsManager } from "@/components/AccountsManager";
 import type { AccountRow } from "@/lib/accounts";
 import type { Employee } from "@/lib/team";
+import type { AttachMode } from "@/lib/actions";
 import { useRbac } from "@/components/RbacProvider";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -59,6 +60,8 @@ export function SettingsView({
   accounts,
   employees,
   actionTypes,
+  actionUsage,
+  propertyTypeCodes,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
@@ -66,8 +69,12 @@ export function SettingsView({
   accounts: AccountRow[];
   /** Real roster (main_1_hr) — the team builder picks its members from this. */
   employees: Employee[];
-  /** Governed activity vocabulary — rank criteria are FKs to it. */
-  actionTypes: { name: string; group: string }[];
+  /** Governed activity vocabulary — rank criteria and activities are FKs to it. */
+  actionTypes: { name: string; group: string; attach: AttachMode }[];
+  /** Logged activities per action, for the delete confirm. */
+  actionUsage: Record<string, number>;
+  /** property_type name → listing-id letter. */
+  propertyTypeCodes: Record<string, string>;
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
@@ -127,7 +134,7 @@ export function SettingsView({
         {section === "property_types" && (
           <>
             <SectionHeader title="ประเภททรัพย์" desc="รายการประเภททรัพย์กลาง · จัดการโดย CEO / Listing Support" />
-            <PropertyTypesManager usage={propertyTypeUsage} />
+            <PropertyTypesManager usage={propertyTypeUsage} codes={propertyTypeCodes} />
           </>
         )}
         {section === "checklists" && (
@@ -139,7 +146,7 @@ export function SettingsView({
             <Note>
               ทรัพย์ A-List / Exclusive จะแสดงเช็คลิสต์นี้อัตโนมัติในหน้าทรัพย์ ตั้งค่า “ใช้กับ” เป็น Exclusive
               หรือ A-List (หรือทั้งคู่) เพื่อคุมว่าเทมเพลตไหนใช้กับระดับใด{" "}
-              <span className="text-text">โหมดออกแบบ: การเปลี่ยนแปลงยังไม่ถูกบันทึก</span>
+              <span className="text-amber">⚠️ ส่วนนี้ยังไม่มีตารางเก็บ — แก้แล้วรีเฟรชจะหาย</span>
             </Note>
             <ChecklistTemplatesManager />
           </>
@@ -153,7 +160,7 @@ export function SettingsView({
             <Note>
               คำโฆษณาสร้างจากเทมเพลตเหล่านี้ โดยแทนค่า <code className="num">&lt;...&gt;</code> ด้วยข้อมูลของทรัพย์แต่ละรายการ
               — ปุ่ม “สร้างคำโฆษณา” ในหน้าทรัพย์จะให้ Headline / โพสต์ / DDproperty พร้อมคัดลอก{" "}
-              <span className="text-text">โหมดออกแบบ: การเปลี่ยนแปลงยังไม่ถูกบันทึก</span>
+              <span className="text-amber">⚠️ ส่วนนี้ยังไม่มีตารางเก็บ — แก้แล้วรีเฟรชจะหาย</span>
             </Note>
             <CopyTemplateEditor />
           </>
@@ -176,8 +183,8 @@ export function SettingsView({
             <Note>
               แท็กนี้เป็น <span className="text-text">กลุ่มประเภทลูกค้า</span> ไม่ใช่ระดับความร้อน —
               ระดับความร้อนใช้ช่อง Potential (A / B / C) ที่มีอยู่แล้ว ควรตั้งให้แต่ละแท็ก
-              <span className="text-text"> แยกจากกันชัดเจน</span> เพราะลูกค้า 1 คนติดได้แค่แท็กเดียว{" "}
-              <span className="text-text">โหมดออกแบบ: การเปลี่ยนแปลงยังไม่ถูกบันทึก</span>
+              <span className="text-text"> แยกจากกันชัดเจน</span> เพราะลูกค้า 1 คนติดได้แค่แท็กเดียว ·
+              เปลี่ยนชื่อแท็กแล้วลีดที่ติดแท็กอยู่ยังผูกอยู่เหมือนเดิม (ลีดเก็บรหัสแท็ก ไม่ได้เก็บชื่อ)
             </Note>
             <LeadTagsManager />
           </>
@@ -197,7 +204,7 @@ export function SettingsView({
               title="ประเภทกิจกรรม"
               desc="ชุดกิจกรรมกลางที่ปุ่มบันทึกและหน้าผลงานใช้ · จัดการโดย CEO"
             />
-            <ActionTypesManager />
+            <ActionTypesManager actionTypes={actionTypes} usage={actionUsage} />
           </>
         )}
         {section === "kpi" && (
@@ -206,7 +213,11 @@ export function SettingsView({
               title="เป้าหมาย KPI"
               desc="เทมเพลตเป้าหมายที่หัวหน้าใช้ตั้งเป้าให้ทีม (เชื่อมกับกิจกรรม/ไปป์ไลน์)"
             />
-            <KpiTemplatesManager />
+            <Note>
+              <span className="text-amber">⚠️ ส่วนนี้ยังไม่มีตารางเก็บ — แก้แล้วรีเฟรชจะหาย</span> ·
+              การตั้งเป้าจริงตอนนี้ทำได้ที่หน้า <span className="text-text">แผนวันนี้</span>
+            </Note>
+            <KpiTemplatesManager actionTypes={actionTypes} />
           </>
         )}
         {section === "ranks" && (
@@ -218,8 +229,8 @@ export function SettingsView({
             <Note>
               เซลล์ใหม่เลื่อน Rank <span className="text-text">อัตโนมัติ</span>เมื่อทำครบทุกเกณฑ์ของ Rank
               ถัดไป (นับจากกิจกรรมที่บันทึกจริง — เลือกได้ว่านับสะสมรวมหรือต่อเดือน) ผ่าน Rank สุดท้าย =
-              ผ่านโปรเบชั่น ดูภาพรวมได้ที่หน้า “เซลล์ใหม่”{" "}
-              <span className="text-text">โหมดออกแบบ: การเปลี่ยนแปลงยังไม่ถูกบันทึก</span>
+              ผ่านโปรเบชั่น ดูภาพรวมได้ที่หน้า “เซลล์ใหม่” · แก้แล้วต้องกด
+              <span className="text-text"> บันทึกเกณฑ์</span> ท้ายหน้า
             </Note>
             <SalesRankManager actionTypes={actionTypes} />
           </>
@@ -278,7 +289,8 @@ function RolesSection() {
       <Note>
         สร้างบทบาท เปิด/ปิดสิทธิ์ และกำหนดผู้ใช้ได้ที่นี่ — ผู้ใช้หนึ่งคนถือได้หลายบทบาท (สิทธิ์รวมกัน)
         เช่น หัวหน้าทีมที่ยังขายอยู่ = Agent + Sales Leader.{" "}
-        <span className="text-text">โหมดออกแบบ: การเปลี่ยนแปลงยังไม่ถูกบันทึก</span>
+        <span className="text-amber">⚠️ หน้านี้ยังแก้ได้แค่ในจอ — บทบาทจริงอยู่ในตาราง roles/user_roles
+        ต้องแก้ด้วย SQL</span>
       </Note>
       <RolesManager />
     </>

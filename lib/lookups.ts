@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { RefItem } from "@/components/MasterDataProvider";
+import { TAG_TONE_ORDER, type LeadTag } from "@/lib/tags";
 
 // The governed reference vocabularies, read from the DB rather than the seed constants.
 //
@@ -24,6 +25,7 @@ export interface Lookups {
   listingPotentials: RefItem[];
   /** Zones are id + name (ASK · อโศก) rather than a bare name, unlike the other lookups. */
   zones: RefItem[];
+  leadTags: LeadTag[];
 }
 
 /** Lookup tables keyed by `name` — the stored value IS the label. */
@@ -43,11 +45,17 @@ export async function getLookups(): Promise<Lookups> {
   const supabase = await createClient();
 
   const nameEntries = Object.entries(NAME_TABLES) as [keyof typeof NAME_TABLES, string][];
-  const [nameResults, zoneResult] = await Promise.all([
+  const [nameResults, zoneResult, tagResult] = await Promise.all([
     Promise.all(
       nameEntries.map(([, table]) => supabase.from(table).select("name").order("name"))
     ),
     supabase.from("zone").select("zone_id,name_thai").order("zone_id"),
+    supabase
+      .from("lead_tags_ref")
+      .select("id,label,tone,sort_order")
+      .eq("is_active", true)
+      .order("sort_order")
+      .order("id"),
   ]);
 
   const out = {} as Lookups;
@@ -74,6 +82,19 @@ export async function getLookups(): Promise<Lookups> {
   out.zones = zoneRows.map((z) => ({
     id: z.zone_id,
     label: z.name_thai ? `${z.name_thai} · ${z.zone_id}` : z.zone_id,
+  }));
+
+  // Tags carry a stored colour, so they are not RefItems — see lib/tags.ts.
+  out.leadTags = ((tagResult.data ?? []) as {
+    id: string;
+    label: string | null;
+    tone: string | null;
+  }[]).map((t) => ({
+    id: t.id,
+    label: t.label ?? t.id,
+    tone: (TAG_TONE_ORDER as readonly string[]).includes(t.tone ?? "")
+      ? (t.tone as LeadTag["tone"])
+      : "neutral",
   }));
 
   return out;

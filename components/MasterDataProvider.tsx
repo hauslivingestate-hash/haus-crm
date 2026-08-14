@@ -11,9 +11,10 @@ import { SEED_LEAD_TAGS, type LeadTag } from "@/lib/tags";
 // REAL: removing a value here immediately removes it from the form's dropdowns, while rows
 // already holding the value keep displaying it (label lookups fall back to the raw value).
 //
-// Mirrors the RbacProvider pattern (roles/teams): in-memory design-first, seeded from the
-// constants. Wire later = `id + label` tables (+ is_active for archive-instead-of-delete);
-// this provider then becomes a fetch + mutation layer over them.
+// Phase 6: every list here is now READ from its lookup table (lib/lookups.ts) and WRITTEN
+// through lib/mutations/reference.ts. There are no setters any more — the Settings managers
+// call server actions and let router.refresh() bring the new list back down. The old
+// setters made the delete-confirm's promise true for exactly one page view.
 //
 // Item rules: seed items keep their seed ids (stored rows keep matching when a label is
 // renamed); values whose stored representation IS the label (property type, nationality)
@@ -39,7 +40,6 @@ interface MasterDataValue {
   /** Lead group tag — CEO-governed, SINGLE-select per lead. Carries a stored tone,
    *  so it is a LeadTag list rather than a plain RefItem list. */
   leadTags: LeadTag[];
-  setLeadTags: React.Dispatch<React.SetStateAction<LeadTag[]>>;
   /** DB-only vocabularies the intake form writes as FKs. No Settings manager yet, so these
    *  are read-only — an empty list means the lookups weren't loaded (design mode). */
   leadTypes: RefItem[];
@@ -63,6 +63,7 @@ export interface MasterDataInitial {
   sellReasons?: RefItem[];
   listingPotentials?: RefItem[];
   zones?: RefItem[];
+  leadTags?: LeadTag[];
 }
 
 export function MasterDataProvider({
@@ -93,7 +94,9 @@ export function MasterDataProvider({
   const [nationalities, setNationalities] = React.useState<RefItem[]>(() =>
     seeded(initial?.nationalities, () => NATIONALITIES.map((n) => ({ id: n, label: n })))
   );
-  const [leadTags, setLeadTags] = React.useState<LeadTag[]>(() => [...SEED_LEAD_TAGS]);
+  // Real `lead_tags_ref` rows; the seed is only the no-session fallback. These ids are
+  // what `main_6_buyer_crm.tag_id` stores, so the seed's slugs must never reach a write.
+  const leadTags = seeded(initial?.leadTags, () => [...SEED_LEAD_TAGS]);
 
   // Read-only here: these three exist purely so the intake form can offer DB-valid options.
   // No Settings manager edits them yet, so they need no setter.
@@ -117,7 +120,6 @@ export function MasterDataProvider({
     nationalities,
     setNationalities,
     leadTags,
-    setLeadTags,
     leadTypes,
     purposes,
     sellReasons,

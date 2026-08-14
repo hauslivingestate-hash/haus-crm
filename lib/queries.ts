@@ -25,6 +25,7 @@ import {
 import { todayISO } from "@/lib/momentum";
 import type { Zone, ZoneSale } from "@/lib/zones";
 import type { ActivityTally, RankCriterion, SalesRank } from "@/lib/probation";
+import type { AttachMode } from "@/lib/actions";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -479,6 +480,17 @@ export async function getEmployees(): Promise<Employee[]> {
   });
 }
 
+/** property_type name → its listing-id letter, for ตั้งค่า → ประเภททรัพย์. */
+export async function getPropertyTypeCodes(): Promise<Record<string, string>> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("property_type").select("name,code");
+  const out: Record<string, string> = {};
+  for (const r of (data ?? []) as { name: string; code: string | null }[]) {
+    if (r.code) out[r.name] = r.code;
+  }
+  return out;
+}
+
 /** Zone picker options, from the `zone` master (30 rows). */
 export async function getZoneOptions(): Promise<{ code: string; name: string }[]> {
   const supabase = await createClient();
@@ -552,17 +564,38 @@ export async function getZones(): Promise<Zone[]> {
  * table (Owner Talk, Update Price, เซ็นสัญญา), and Owner Talk is the first KPI the company
  * ever defined. The same trap already bit the task form in Phase 5.
  */
-export async function getActionTypes(): Promise<{ name: string; group: string }[]> {
+export async function getActionTypes(): Promise<
+  { name: string; group: string; attach: AttachMode }[]
+> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("action_type")
-    .select("name,group_label,sort_order")
+    .select("name,group_label,attach,sort_order")
     .eq("is_active", true)
     .order("sort_order");
-  return ((data ?? []) as { name: string; group_label: string | null }[]).map((a) => ({
+  return ((data ?? []) as {
+    name: string;
+    group_label: string | null;
+    attach: string | null;
+  }[]).map((a) => ({
     name: a.name,
     group: a.group_label ?? "อื่นๆ",
+    attach: (["lead", "listing", "either", "none"] as AttachMode[]).find((m) => m === a.attach) ??
+      "either",
   }));
+}
+
+/** Logged activities per action name — the impact line on the delete confirm in
+ *  ตั้งค่า → ประเภทกิจกรรม. ⚠️ RLS-scoped: an agent counts only their own rows, so this is
+ *  a floor, not a total. The real refusal happens server-side in deleteLookupValue. */
+export async function getActionUsage(): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("activities").select("action");
+  const out: Record<string, number> = {};
+  for (const a of (data ?? []) as { action: string }[]) {
+    out[a.action] = (out[a.action] ?? 0) + 1;
+  }
+  return out;
 }
 
 /** The CEO's ladder, from `probation_rank` + `rank_criterion`. */

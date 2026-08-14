@@ -7,8 +7,17 @@ import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDelete, usageWarning } from "@/components/ui/ConfirmDelete";
+import { useRouter } from "next/navigation";
 import { useMasterData, type RefItem } from "@/components/MasterDataProvider";
-import { listActivities, ACTION_GROUPS, NOTE_ACTION, type AttachMode } from "@/lib/actions";
+import { NOTE_ACTION, type AttachMode } from "@/lib/actions";
+import {
+  addLookupValue,
+  renameLookupValue,
+  deleteLookupValue,
+  saveLeadTag,
+  deleteLeadTag,
+  type LookupTable,
+} from "@/lib/mutations/reference";
 import {
   KPI_TEMPLATES,
   KIND_LABEL,
@@ -20,59 +29,114 @@ import {
 import { TAG_TONE_CLASS, TAG_TONE_ORDER, type LeadTag, type TagTone } from "@/lib/tags";
 import { cn } from "@/lib/cn";
 
-// ---- Controlled vocabulary list ---------------------------------------------
-// Edits the LIVE list (MasterDataProvider) — so deleting a value here really removes it
-// from the intake form's dropdowns, while rows already storing it keep their old value
-// (display falls back to the raw value). Seed items keep their ids across label renames;
-// new custom items use id = label so raw-value fallbacks render cleanly.
+// ---- Server-backed vocabulary list -----------------------------------------
+//
+// Every list on this screen writes to its own lookup table. They used to write to React
+// state, which made the delete-confirm's promise true for exactly one page view.
+//
+// WARNING: the PK of these tables IS the label (project convention: dropdowns show words,
+// not numbers), and every FK to them is ON UPDATE CASCADE. Renaming here therefore rewrites
+// the value on every row that holds it — a typo fixed once is fixed everywhere, and a
+// rename to a different word RECLASSIFIES existing rows. Committed on blur rather than per
+// keystroke, so a half-typed word is never written.
+
+/** Shared busy/error plumbing — same shape as every other write surface in the app. */
+function useRefWriter() {
+  const router = useRouter();
+  const [saving, setSaving] = React.useState(false);
+  const [refreshing, startRefresh] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+
+  const run = React.useCallback(
+    async (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await fn();
+        if (!res.ok) {
+          setError(res.error);
+          return false;
+        }
+        startRefresh(() => router.refresh());
+        return true;
+      } catch (e) {
+        // A rejected action would otherwise leave the row looking saved.
+        setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [router]
+  );
+
+  return { run, busy: saving || refreshing, error };
+}
+
+function ErrorNote({ error }: { error: string | null }) {
+  if (!error) return null;
+  return <Card className="p-3 text-small text-red bg-red-bg/50 border-red/30">{error}</Card>;
+}
+
 function VocabList({
+  table,
   items,
-  onChange,
   placeholder,
   warnFor,
 }: {
+  table: LookupTable;
   items: RefItem[];
-  onChange: (next: RefItem[]) => void;
   placeholder: string;
   warnFor?: (label: string) => React.ReactNode;
 }) {
+  const { run, busy, error } = useRefWriter();
   const [draft, setDraft] = React.useState("");
+  // Local echo of what is being typed, so the input does not fight the server value.
+  const [edits, setEdits] = React.useState<Record<string, string>>({});
+  React.useEffect(() => setEdits({}), [items]);
 
-  const add = () => {
+  const add = async () => {
     const v = draft.trim();
-    if (!v || items.some((x) => x.label === v)) return;
-    onChange([...items, { id: v, label: v }]);
-    setDraft("");
+    if (!v || busy) return;
+    if (await run(() => addLookupValue(table, v))) setDraft("");
   };
 
   return (
     <div className="flex flex-col gap-1.5">
+      <ErrorNote error={error} />
       {items.map((it) => (
         <div key={it.id} className="flex items-center gap-2">
           <Input
-            value={it.label}
-            onChange={(e) => onChange(items.map((x) => (x.id === it.id ? { ...x, label: e.target.value } : x)))}
+            value={edits[it.id] ?? it.label}
+            disabled={busy}
+            onChange={(e) => setEdits((p) => ({ ...p, [it.id]: e.target.value }))}
+            onBlur={(e) => {
+              const next = e.target.value.trim();
+              if (next && next !== it.label) void run(() => renameLookupValue(table, it.label, next));
+            }}
             className="flex-1"
           />
           <ConfirmDelete
-            onDelete={() => onChange(items.filter((x) => x.id !== it.id))}
+            onDelete={() => void run(() => deleteLookupValue(table, it.label))}
             confirmLabel={`ลบ “${it.label}”?`}
             warning={warnFor?.(it.label)}
           />
         </div>
       ))}
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex itemsetms-center gap-2 pt-1">
         <Input
           value={draft}
+          disabled={busy}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
+          onKeyDown={(e) => e.key === "Enter" && void add()}
           placeholder={placeholder}
           className="flex-1"
         />
         <button
-          onClick={add}
+          onClick={() => void add()}
+          disabled={busy}
           aria-label="เพิ่ม"
-          className="size-8 grid place-items-center rounded-md bg-accent text-text-onaccent hover:bg-accent-hover transition-colors shrink-0"
+          className="size-8 grid place-items-center rounded-md bg-accent text-text-onaccent hover:bg-accent-hover transition-colors shrink-0 disabled:opacity-50"
         >
           <Plus size={16} strokeWidth={2} />
         </button>
@@ -81,33 +145,19 @@ function VocabList({
   );
 }
 
-// Uncontrolled variant for lists that are NOT provider-backed yet (action types).
-function EditableList({
-  seed,
-  placeholder,
-  warnFor,
-}: {
-  seed: string[];
-  placeholder: string;
-  warnFor?: (label: string) => React.ReactNode;
-}) {
-  const [items, setItems] = React.useState<RefItem[]>(() => seed.map((s) => ({ id: s, label: s })));
-  return <VocabList items={items} onChange={setItems} placeholder={placeholder} warnFor={warnFor} />;
-}
-
 // ---- Titled reference-list card (one controlled vocabulary) -----------------
 function RefListCard({
   title,
   note,
+  table,
   items,
-  onChange,
   placeholder,
   warnFor,
 }: {
   title: string;
   note?: string;
+  table: LookupTable;
   items: RefItem[];
-  onChange: (next: RefItem[]) => void;
   placeholder: string;
   warnFor?: (label: string) => React.ReactNode;
 }) {
@@ -118,7 +168,7 @@ function RefListCard({
         {note && <span className="text-label text-text-subtle">· {note}</span>}
       </div>
       <CardContent>
-        <VocabList items={items} onChange={onChange} placeholder={placeholder} warnFor={warnFor} />
+        <VocabList table={table} items={items} placeholder={placeholder} warnFor={warnFor} />
       </CardContent>
     </Card>
   );
@@ -128,17 +178,92 @@ function RefListCard({
 // Live list (provider) — the intake form's ประเภททรัพย์ selects read the same list.
 // `usage` = live count of listings per property type (from v_main_listing, computed
 // server-side on /settings) so the delete confirm states the real impact.
-export function PropertyTypesManager({ usage }: { usage?: Record<string, number> }) {
-  const { propertyTypes, setPropertyTypes } = useMasterData();
+export function PropertyTypesManager({
+  usage,
+  codes = {},
+}: {
+  usage?: Record<string, number>;
+  /** name → the single letter that starts a listing_id of this type. */
+  codes?: Record<string, string>;
+}) {
+  const { propertyTypes } = useMasterData();
+  const { run, busy, error } = useRefWriter();
+  const [draft, setDraft] = React.useState("");
+  const [draftCode, setDraftCode] = React.useState("");
+  const [edits, setEdits] = React.useState<Record<string, string>>({});
+  React.useEffect(() => setEdits({}), [propertyTypes]);
+
+  const add = async () => {
+    const v = draft.trim();
+    if (!v || busy) return;
+    if (await run(() => addLookupValue("property_type", v, draftCode))) {
+      setDraft("");
+      setDraftCode("");
+    }
+  };
+
   return (
     <Card>
-      <CardContent>
-        <VocabList
-          items={propertyTypes}
-          onChange={setPropertyTypes}
-          placeholder="เพิ่มประเภททรัพย์…"
-          warnFor={(label) => usageWarning(usage ? (usage[label] ?? 0) : null, "ทรัพย์")}
-        />
+      <CardContent className="flex flex-col gap-1.5">
+        <ErrorNote error={error} />
+        {propertyTypes.map((it) => (
+          <div key={it.id} className="flex items-center gap-2">
+            {/* The code is fixed after creation: it is baked into every listing_id already
+                issued for this type, and changing it would not rewrite them. */}
+            <span
+              className="num w-9 h-9 shrink-0 grid place-items-center rounded-md border border-border bg-surface-2 text-text-subtle"
+              title="ตัวแรกของรหัสทรัพย์"
+            >
+              {codes[it.label] ?? "—"}
+            </span>
+            <Input
+              value={edits[it.id] ?? it.label}
+              disabled={busy}
+              onChange={(e) => setEdits((p) => ({ ...p, [it.id]: e.target.value }))}
+              onBlur={(e) => {
+                const next = e.target.value.trim();
+                if (next && next !== it.label)
+                  void run(() => renameLookupValue("property_type", it.label, next));
+              }}
+              className="flex-1"
+            />
+            <ConfirmDelete
+              onDelete={() => void run(() => deleteLookupValue("property_type", it.label))}
+              confirmLabel={`ลบ “${it.label}”?`}
+              warning={usageWarning(usage ? (usage[it.label] ?? 0) : null, "ทรัพย์")}
+            />
+          </div>
+        ))}
+        <div className="flex items-center gap-2 pt-1">
+          <Input
+            value={draftCode}
+            disabled={busy}
+            onChange={(e) => setDraftCode(e.target.value.toUpperCase().slice(0, 1))}
+            placeholder="C"
+            aria-label="รหัส 1 ตัวอักษร"
+            className="w-9 num text-center px-0 shrink-0"
+          />
+          <Input
+            value={draft}
+            disabled={busy}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void add()}
+            placeholder="เพิ่มประเภททรัพย์…"
+            className="flex-1"
+          />
+          <button
+            onClick={() => void add()}
+            disabled={busy}
+            aria-label="เพิ่ม"
+            className="size-8 grid place-items-center rounded-md bg-accent text-text-onaccent hover:bg-accent-hover transition-colors shrink-0 disabled:opacity-50"
+          >
+            <Plus size={16} strokeWidth={2} />
+          </button>
+        </div>
+        <p className="text-label text-text-subtle pt-1">
+          รหัส 1 ตัวอักษรคือตัวแรกของรหัสทรัพย์ (C<span className="text-text-muted">ASK</span>020 =
+          คอนโด + อโศก) · ใช้ซ้ำกันได้ (บ้านเดี่ยว/บ้านแฝด ใช้ H เหมือนกัน) แต่ตั้งแล้วเปลี่ยนไม่ได้
+        </p>
       </CardContent>
     </Card>
   );
@@ -150,15 +275,16 @@ export function PropertyTypesManager({ usage }: { usage?: Record<string, number>
 // columns yet → usage isn't countable; the confirm warns to check manually (wire the real
 // count once the columns land).
 export function LeadReferenceManager() {
-  const { sources, setSources, contactBys, setContactBys, genders, setGenders, nationalities, setNationalities } =
-    useMasterData();
-  const unknownLeadUsage = () => usageWarning(null, "ลีด");
+  const { sources, contactBys, genders, nationalities } = useMasterData();
+  // The real count is checked server-side before deleting — that is what actually refuses
+  // the removal. This is only the advance warning on the confirm.
+  const inUse = () => usageWarning(null, "ลีด");
   return (
     <div className="flex flex-col gap-4">
-      <RefListCard title="Marketing Channel" note="ช่องทางที่ลีดเข้ามา" items={sources} onChange={setSources} placeholder="เพิ่มช่องทาง…" warnFor={unknownLeadUsage} />
-      <RefListCard title="Contact By" note="วิธี/กล่องที่ติดต่อเข้ามา" items={contactBys} onChange={setContactBys} placeholder="เพิ่มวิธีติดต่อ…" warnFor={unknownLeadUsage} />
-      <RefListCard title="เพศ" items={genders} onChange={setGenders} placeholder="เพิ่ม…" warnFor={unknownLeadUsage} />
-      <RefListCard title="สัญชาติ" items={nationalities} onChange={setNationalities} placeholder="เพิ่มสัญชาติ…" warnFor={unknownLeadUsage} />
+      <RefListCard title="Marketing Channel" note="ช่องทางที่ลีดเข้ามา" table="marketing_channel" items={sources} placeholder="เพิ่มช่องทาง…" warnFor={inUse} />
+      <RefListCard title="Contact By" note="วิธี/กล่องที่ติดต่อเข้ามา" table="contact_by" items={contactBys} placeholder="เพิ่มวิธีติดต่อ…" warnFor={inUse} />
+      <RefListCard title="เพศ" table="gender" items={genders} placeholder="เพิ่ม…" warnFor={inUse} />
+      <RefListCard title="สัญชาติ" table="nationality" items={nationalities} placeholder="เพิ่มสัญชาติ…" warnFor={inUse} />
     </div>
   );
 }
@@ -169,21 +295,22 @@ export function LeadReferenceManager() {
 // rather than derived from a hash. One tag per lead (CEO: "ติดได้คนเดียว"), so this list is
 // a set of mutually exclusive groups — see lib/tags.ts.
 export function LeadTagsManager() {
-  const { leadTags, setLeadTags } = useMasterData();
+  const { leadTags } = useMasterData();
+  const { run, busy, error } = useRefWriter();
   const [draft, setDraft] = React.useState("");
+  const [edits, setEdits] = React.useState<Record<string, string>>({});
+  React.useEffect(() => setEdits({}), [leadTags]);
 
-  const add = () => {
+  const add = async () => {
     const label = draft.trim();
-    if (!label || leadTags.some((t) => t.label === label)) return;
-    // New tags get id = label so a raw stored value still renders if the label is edited
-    // later; seeded tags keep their stable slug ids.
+    if (!label || busy) return;
+    if (leadTags.some((t) => t.label === label)) return;
+    // The id is what main_6_buyer_crm.tag_id stores, so it must be stable and must not
+    // change when the label is later edited. Derived once, here, and never again.
+    const id = `tag_${Date.now().toString(36)}`;
     const tone = TAG_TONE_ORDER[leadTags.length % TAG_TONE_ORDER.length];
-    setLeadTags([...leadTags, { id: label, label, tone }]);
-    setDraft("");
+    if (await run(() => saveLeadTag(id, label, tone, true))) setDraft("");
   };
-
-  const update = (id: string, patch: Partial<LeadTag>) =>
-    setLeadTags(leadTags.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
   return (
     <Card>
@@ -194,16 +321,26 @@ export function LeadTagsManager() {
         </p>
       </div>
       <CardContent className="flex flex-col gap-1.5">
+        <ErrorNote error={error} />
         {leadTags.map((t) => (
           <div key={t.id} className="flex items-center gap-2">
             <Input
-              value={t.label}
-              onChange={(e) => update(t.id, { label: e.target.value })}
+              value={edits[t.id] ?? t.label}
+              disabled={busy}
+              onChange={(e) => setEdits((p) => ({ ...p, [t.id]: e.target.value }))}
+              onBlur={(e) => {
+                const next = e.target.value.trim();
+                if (next && next !== t.label) void run(() => saveLeadTag(t.id, next, t.tone, false));
+              }}
               className="flex-1"
             />
-            <TonePicker value={t.tone} onChange={(tone) => update(t.id, { tone })} label={t.label} />
+            <TonePicker
+              value={t.tone}
+              onChange={(tone) => void run(() => saveLeadTag(t.id, t.label, tone, false))}
+              label={t.label}
+            />
             <ConfirmDelete
-              onDelete={() => setLeadTags(leadTags.filter((x) => x.id !== t.id))}
+              onDelete={() => void run(() => deleteLeadTag(t.id))}
               confirmLabel={`ลบ “${t.label}”?`}
               warning={usageWarning(null, "ลีด")}
             />
@@ -212,15 +349,17 @@ export function LeadTagsManager() {
         <div className="flex items-center gap-2 pt-1">
           <Input
             value={draft}
+            disabled={busy}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add()}
+            onKeyDown={(e) => e.key === "Enter" && void add()}
             placeholder="เพิ่มแท็ก…"
             className="flex-1"
           />
           <button
-            onClick={add}
+            onClick={() => void add()}
+            disabled={busy}
             aria-label="เพิ่ม"
-            className="size-8 grid place-items-center rounded-md bg-accent text-text-onaccent hover:bg-accent-hover transition-colors shrink-0"
+            className="size-8 grid place-items-center rounded-md bg-accent text-text-onaccent hover:bg-accent-hover transition-colors shrink-0 disabled:opacity-50"
           >
             <Plus size={16} strokeWidth={2} />
           </button>
@@ -312,23 +451,56 @@ const ATTACH_LABEL: Record<AttachMode, { label: string; tone: "violet" | "accent
   none: { label: "ทั่วไป", tone: "neutral" },
 };
 
-export function ActionTypesManager() {
-  // Impact = how many logged activities use each action type (sample log; wire to the real
-  // activities table count). Not provider-backed yet — local edit only.
-  const usedBy = (name: string) => listActivities().filter((a) => a.action === name).length;
+export function ActionTypesManager({
+  actionTypes = [],
+  usage = {},
+}: {
+  /** From `action_type` — the governed list every activity, task, target and rank
+   *  criterion is an FK to. */
+  actionTypes?: { name: string; group: string; attach: AttachMode }[];
+  /** Rows in `activities` per action, for the delete confirm. */
+  usage?: Record<string, number>;
+}) {
+  // Grouped the way the table says, not the way the seed said. The seed was missing three
+  // rows the table has — including Owner Talk, the company's first KPI.
+  const groups = React.useMemo(() => {
+    const m = new Map<string, { group: string; attach: AttachMode; items: RefItem[] }>();
+    for (const a of actionTypes) {
+      const g = m.get(a.group) ?? { group: a.group, attach: a.attach, items: [] };
+      g.items.push({ id: a.name, label: a.name });
+      m.set(a.group, g);
+    }
+    return [...m.values()];
+  }, [actionTypes]);
+
+  if (!groups.length) {
+    return (
+      <Card className="p-6 text-center text-small text-text-subtle">ยังไม่มีประเภทกิจกรรม</Card>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      {ACTION_GROUPS.map((g) => (
+      {groups.map((g) => (
         <Card key={g.group}>
           <div className="px-4 h-11 flex items-center justify-between border-b border-border">
             <span className="text-h3">{g.group}</span>
             <Pill tone={ATTACH_LABEL[g.attach].tone}>{ATTACH_LABEL[g.attach].label}</Pill>
           </div>
           <CardContent>
-            <EditableList seed={g.items} placeholder="เพิ่มกิจกรรม…" warnFor={(it) => usageWarning(usedBy(it), "กิจกรรมที่บันทึกไว้")} />
+            <VocabList
+              table="action_type"
+              items={g.items}
+              placeholder="เพิ่มกิจกรรม…"
+              warnFor={(it) => usageWarning(usage[it] ?? 0, "กิจกรรมที่บันทึกไว้")}
+            />
           </CardContent>
         </Card>
       ))}
+      <p className="text-label text-text-subtle">
+        กิจกรรมที่เพิ่มใหม่จะเข้ากลุ่ม “อื่นๆ” ก่อน — จัดกลุ่ม/ลำดับใหม่ต้องแก้ที่ตาราง
+        <span className="num"> action_type</span> โดยตรง
+      </p>
     </div>
   );
 }
@@ -336,10 +508,29 @@ export function ActionTypesManager() {
 // ---- KPI target templates ---------------------------------------------------
 // Loggable actions only — a KPI on the free-note action makes no sense (same rule as
 // the probation rank editor).
-const KPI_ACTION_OPTIONS = ACTION_GROUPS.filter((g) => !g.items.includes(NOTE_ACTION));
+// ⚠️ NO TABLE YET. Everything else on this screen writes to the database; this one still
+// edits React state, so a template added here is gone on reload. Left visible rather than
+// hidden because the shape is what a `kpi_template` table will need — but the section says
+// so, and nothing reads these templates yet.
 
-export function KpiTemplatesManager() {
+export function KpiTemplatesManager({
+  actionTypes = [],
+}: {
+  actionTypes?: { name: string; group: string }[];
+}) {
   const [rows, setRows] = React.useState<KpiTemplate[]>(KPI_TEMPLATES);
+  // Loggable actions only — a KPI on the free-note action makes no sense (same rule as the
+  // probation rank editor). From `action_type`, not the seed.
+  const actionOptions = React.useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const a of actionTypes) {
+      if (a.name === NOTE_ACTION) continue;
+      const arr = m.get(a.group) ?? [];
+      arr.push(a.name);
+      m.set(a.group, arr);
+    }
+    return [...m].map(([group, items]) => ({ group, items }));
+  }, [actionTypes]);
 
   const addRow = () =>
     setRows((rs) => [
@@ -404,7 +595,7 @@ export function KpiTemplatesManager() {
                 aria-label="กิจกรรมที่นับ"
                 className="w-36"
               >
-                {KPI_ACTION_OPTIONS.map((g) => (
+                {actionOptions.map((g) => (
                   <optgroup key={g.group} label={g.group}>
                     {g.items.map((a) => (
                       <option key={a} value={a}>{a}</option>
