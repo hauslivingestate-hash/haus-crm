@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Topbar } from "@/components/Topbar";
 import { NewSalesDetail } from "@/components/NewSalesDetail";
-import { getEmployee } from "@/lib/team";
+import { getEmployee, getEmployees } from "@/lib/queries";
 
 // One new sale's probation stats — click-through from the เซลล์ใหม่ leaderboard.
 export default async function NewSalesDetailPage({
@@ -12,8 +12,10 @@ export default async function NewSalesDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const employee = getEmployee(id);
-  // Only members of the probation program have a stats page.
+  const code = decodeURIComponent(id);
+  const [employee, employees] = await Promise.all([getEmployee(code), getEmployees()]);
+  // Only members of the probation program have a stats page — which is nobody until
+  // date_started is filled in.
   if (!employee || !employee.probationStart) notFound();
 
   return (
@@ -26,7 +28,7 @@ export default async function NewSalesDetailPage({
         >
           <ArrowLeft size={14} strokeWidth={1.75} /> กลับไปอันดับเซลล์ใหม่
         </Link>
-        <NewSalesDetail employeeId={employee.id} />
+        <NewSalesDetail employeeCode={employee.code} employees={employees} />
       </div>
     </>
   );

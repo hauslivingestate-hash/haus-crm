@@ -10,7 +10,7 @@ import {
   ladderScore,
   type LadderEvaluation,
 } from "@/lib/probation";
-import { listNewSales, type Employee } from "@/lib/team";
+import type { Employee } from "@/lib/team";
 import { useActivities } from "@/components/ActivityProvider";
 import type { Activity } from "@/lib/actions";
 import { TODAY } from "@/lib/momentum";
@@ -36,9 +36,13 @@ interface Row {
  *  re-ranks immediately — auto-promote depends on reading the same log the plan writes. */
 export function rankedNewSales(
   ranks: ReturnType<typeof useProbation>["ranks"],
-  activities?: Activity[]
+  activities?: Activity[],
+  employees: Employee[] = []
 ): Row[] {
-  return listNewSales()
+  // ⚠️ `probationStart` has no column yet (see lib/team.ts), so this filter always empties
+  // the board — deliberately, until HR supplies date_started. The empty state below says so.
+  return employees
+    .filter((e) => e.status === "active" && e.department === "sales" && !!e.probationStart)
     .map((employee) => ({
       employee,
       ev: evaluateLadder(employee.nickname, ranks, employee.probationStart, activities),
@@ -46,19 +50,22 @@ export function rankedNewSales(
     .sort((a, b) => ladderScore(b.ev) - ladderScore(a.ev));
 }
 
-export function NewSalesBoard() {
+export function NewSalesBoard({ employees = [] }: { employees?: Employee[] }) {
   const { ranks } = useProbation();
   const { activities } = useActivities();
   const router = useRouter();
-  const rows = rankedNewSales(ranks, activities);
+  const rows = rankedNewSales(ranks, activities, employees);
 
   if (rows.length === 0) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center gap-2 py-14 text-center">
           <Sprout size={22} strokeWidth={1.5} className="text-text-subtle" />
-          <p className="text-small text-text-subtle">
-            ยังไม่มีเซลล์ใหม่ในโปรแกรมโปรเบชั่น — ตั้งค่าได้ในประวัติพนักงาน
+          <p className="text-small text-text-subtle">ยังไม่มีเซลล์ใหม่ในโปรแกรมโปรเบชั่น</p>
+          <p className="text-label text-text-subtle max-w-sm">
+            กระดานนี้นับจากวันเริ่มงาน (<span className="num">date_started</span>) ซึ่ง
+            <span className="text-text-muted"> ยังว่างทั้ง 10 คน</span> — ชีท HR ไม่มีคอลัมน์นี้
+            ต้องกรอกในหน้าประวัติพนักงานก่อน อันดับถึงจะคำนวณได้
           </p>
         </CardContent>
       </Card>
@@ -93,9 +100,9 @@ export function NewSalesBoard() {
             const { employee: e, ev } = row;
             const days = daysBetween(e.probationStart, TODAY);
             return (
-              <li key={e.id}>
+              <li key={e.code}>
                 <button
-                  onClick={() => router.push(`/new-sales/${e.id}`)}
+                  onClick={() => router.push(`/new-sales/${e.code}`)}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface-hover transition-colors"
                 >
                   <span
@@ -106,7 +113,7 @@ export function NewSalesBoard() {
                   >
                     {i + 1}
                   </span>
-                  <Avatar name={e.nickname} tone="crimson" src={e.avatarUrl} />
+                  <Avatar name={e.nickname} tone="crimson" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-body font-semibold">{e.nickname}</span>

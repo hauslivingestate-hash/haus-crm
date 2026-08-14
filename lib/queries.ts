@@ -16,6 +16,13 @@ import {
   type LeaveRequest,
   type LeaveStatus,
 } from "@/lib/leave";
+import {
+  asEmployeeStatus,
+  asGender,
+  departmentOf,
+  type Employee,
+} from "@/lib/team";
+import { todayISO } from "@/lib/momentum";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -312,6 +319,175 @@ export async function getNicknameByAuthId(
     .eq("auth_user_id", authUserId)
     .maybeSingle();
   return (data?.nickname as string | undefined) ?? null;
+}
+
+// ── People / ทีม (Phase 6) ───────────────────────────────────────────────────
+
+/**
+ * The whole roster, from `main_1_hr` — plus zones, role names and this month's logged
+ * activity.
+ *
+ * Three things worth knowing before reading the numbers:
+ *
+ * 1. **SELECT on main_1_hr is `using (true)`** — every signed-in person sees every row.
+ *    That is deliberate: the sensitive columns are cut at the GRANT level instead, so the
+ *    roster is public while pay and PII are not.
+ * 2. **Salary/commission/PII come from `v_employee_private`**, which nulls each column the
+ *    viewer lacks permission for. Selecting them from the base table returns 42501.
+ * 3. **`activities` is own-row unless you hold `performance.view_team`** — and even then
+ *    only for `visible_employee_codes()`, which is "yourself" for everyone while `teams`
+ *    is empty. So effort is reported as `null` (→ "—") for anyone the viewer cannot see.
+ *    Summing the RLS-filtered rows and printing 0 would claim a colleague did nothing.
+ */
+export async function getEmployees(): Promise<Employee[]> {
+  const supabase = await createClient();
+  const monthStart = todayISO().slice(0, 7) + "-01";
+  const nextMonth = (() => {
+    const [y, m] = monthStart.split("-").map(Number);
+    return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  })();
+
+  const [hr, zoneLinks, zones, roleLinks, roles, priv, acts, visible, teams] = await Promise.all([
+    supabase
+      .from("main_1_hr")
+      .select(
+        "employee_code,status,division,position,second_position,first_name_en,last_name_en," +
+          "first_name_th,last_name_th,nickname,gender,nationality,phone,additional_phone," +
+          "email,work_email,line_userid,birthday,date_started,emergency_contact," +
+          "emergency_contact_phone,emergency_contact_relationship,remark,sales_sheet_url,team_id"
+      )
+      .order("employee_code"),
+    supabase.from("zone_sales").select("zone_id,employee_code"),
+    supabase.from("zone").select("zone_id,name_thai"),
+    supabase.from("user_roles").select("employee_code,role_id"),
+    supabase.from("roles").select("id,name"),
+    supabase
+      .from("v_employee_private")
+      .select("employee_code,salary,commission,id_card_no,kbank_account,payslip_drive,agreement_files"),
+    supabase
+      .from("activities")
+      .select("employee_code,count")
+      .gte("activity_date", monthStart)
+      .lt("activity_date", nextMonth),
+    supabase.rpc("visible_employee_codes"),
+    supabase.from("teams").select("id,name,leader_code"),
+  ]);
+
+  if (hr.error) throw new Error(`อ่านข้อมูลพนักงานไม่สำเร็จ: ${hr.error.message}`);
+
+  const zoneName = new Map(
+    ((zones.data ?? []) as { zone_id: string; name_thai: string | null }[]).map((z) => [
+      z.zone_id,
+      z.name_thai ?? z.zone_id,
+    ])
+  );
+  const roleName = new Map(
+    ((roles.data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name])
+  );
+  const teamById = new Map(
+    ((teams.data ?? []) as { id: string; name: string; leader_code: string | null }[]).map((t) => [
+      t.id,
+      t,
+    ])
+  );
+
+  const byCode = <T,>(rows: T[], key: (r: T) => string) => {
+    const m = new Map<string, T[]>();
+    for (const r of rows) {
+      const k = key(r);
+      (m.get(k) ?? m.set(k, []).get(k)!).push(r);
+    }
+    return m;
+  };
+
+  const zonesOf = byCode(
+    (zoneLinks.data ?? []) as { zone_id: string; employee_code: string }[],
+    (r) => r.employee_code
+  );
+  const rolesOf = byCode(
+    (roleLinks.data ?? []) as { employee_code: string; role_id: string }[],
+    (r) => r.employee_code
+  );
+  const privOf = new Map(
+    ((priv.data ?? []) as Record<string, unknown>[]).map((p) => [p.employee_code as string, p])
+  );
+
+  // Own row is always visible even without the permission, hence the union.
+  const me = (await getAuthContext())?.employeeCode ?? null;
+  const visibleCodes = new Set<string>([
+    ...(((visible.data ?? []) as (string | { visible_employee_codes: string })[]).map((v) =>
+      typeof v === "string" ? v : v.visible_employee_codes
+    ) ?? []),
+    ...(me ? [me] : []),
+  ]);
+
+  const effort = new Map<string, number>();
+  for (const a of (acts.data ?? []) as { employee_code: string; count: number | null }[]) {
+    effort.set(a.employee_code, (effort.get(a.employee_code) ?? 0) + (a.count ?? 0));
+  }
+
+  return ((hr.data ?? []) as unknown as Record<string, string | null>[]).map((e) => {
+    const code = e.employee_code as string;
+    const zoneCodes = (zonesOf.get(code) ?? []).map((z) => z.zone_id);
+    const p = privOf.get(code);
+    const commission = p?.commission == null ? null : Number(p.commission);
+    const team = e.team_id ? teamById.get(e.team_id) : undefined;
+    return {
+      code,
+      teamName: team?.name,
+      isTeamLeader: team ? team.leader_code === code : undefined,
+      status: asEmployeeStatus(e.status),
+      division: e.division ?? undefined,
+      position: e.position ?? "",
+      department: departmentOf(e.position, e.second_position),
+      zoneCodes,
+      zoneNames: zoneCodes.map((z) => zoneName.get(z) ?? z),
+      roleNames: (rolesOf.get(code) ?? []).map((r) => roleName.get(r.role_id) ?? r.role_id),
+      firstNameEn: e.first_name_en ?? undefined,
+      lastNameEn: e.last_name_en ?? undefined,
+      firstNameTh: e.first_name_th ?? undefined,
+      lastNameTh: e.last_name_th ?? undefined,
+      nickname: e.nickname ?? code,
+      gender: asGender(e.gender),
+      nationality: e.nationality ?? undefined,
+      phone: e.phone ?? undefined,
+      phoneAlt: e.additional_phone ?? undefined,
+      email: e.email ?? undefined,
+      workEmail: e.work_email ?? undefined,
+      lineUserId: e.line_userid ?? undefined,
+      birthday: e.birthday ?? undefined,
+      startDate: e.date_started ?? undefined,
+      emergencyContact: e.emergency_contact ?? undefined,
+      emergencyPhone: e.emergency_contact_phone ?? undefined,
+      emergencyRelation: e.emergency_contact_relationship ?? undefined,
+      remark: e.remark ?? undefined,
+      salesSheetUrl: e.sales_sheet_url ?? undefined,
+      effortThisMonth: visibleCodes.has(code) ? effort.get(code) ?? 0 : null,
+      // numeric arrives as a string over PostgREST.
+      salary: p?.salary == null ? null : Number(p.salary),
+      commissionRate: commission,
+      idCardNo: (p?.id_card_no as string | null) ?? null,
+      bankAccount: (p?.kbank_account as string | null) ?? null,
+      payslipDriveUrl: (p?.payslip_drive as string | null) ?? null,
+      agreementFilesUrl: (p?.agreement_files as string | null) ?? null,
+    } satisfies Employee;
+  });
+}
+
+/** Zone picker options, from the `zone` master (30 rows) — not `lib/zones.ts`, which is
+ *  still the design-phase sample and lists 1 agent per zone. */
+export async function getZoneOptions(): Promise<{ code: string; name: string }[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("zone").select("zone_id,name_thai").order("zone_id");
+  return ((data ?? []) as { zone_id: string; name_thai: string | null }[]).map((z) => ({
+    code: z.zone_id,
+    name: z.name_thai ?? z.zone_id,
+  }));
+}
+
+export async function getEmployee(code: string): Promise<Employee | null> {
+  const all = await getEmployees();
+  return all.find((e) => e.code === code) ?? null;
 }
 
 // ── Leave (Phase 6) ──────────────────────────────────────────────────────────

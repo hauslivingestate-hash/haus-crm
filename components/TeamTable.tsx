@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Pencil, Plus, Crown, Users } from "lucide-react";
+import { Search, Pencil, Plus, Crown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -11,49 +11,37 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { useRbac } from "@/components/RbacProvider";
-import { useActivities } from "@/components/ActivityProvider";
-import {
-  listEmployees,
-  effortThisMonth,
-  employeeFullName,
-  employeeZoneNames,
-  DEPARTMENT_LABEL,
-} from "@/lib/team";
-import { teamOf, visibleMemberIds } from "@/lib/teams";
+import { employeeFullName, DEPARTMENT_LABEL, type Employee } from "@/lib/team";
 
-export function TeamTable() {
+// ทีม / บุคคล — the roster, from main_1_hr (Phase 6; it was a seeded array with invented
+// salaries for real colleagues).
+//
+// No client-side team scoping any more. The old version filtered rows through the seeded
+// org store, comparing seed user ids that a real session never carries — so it either
+// showed everything or nothing by accident. main_1_hr's SELECT policy is `using (true)` by
+// design (the roster is public; pay and PII are cut at the GRANT level), so every signed-in
+// person legitimately sees every row.
+
+export function TeamTable({ employees }: { employees: Employee[] }) {
   const router = useRouter();
-  const { roles, users, teams, currentUser, can } = useRbac();
-  // LIVE log — the effort column is one of the surfaces people review activity on, so it
-  // must move when a Daily-Plan task is ticked (same as Targets / เซลล์ใหม่).
-  const { activities } = useActivities();
+  const { can } = useRbac();
   const [q, setQ] = React.useState("");
 
   const showMoney = can("financials.view_comp");
   const canManage = can("people.manage");
-
-  // Team scoping: org-wide viewers (CEO/HR) see everyone; a team leader who isn't org-wide
-  // sees only their own team. null = no scope (see all).
-  const isOrgWide = can("roles.manage") || can("people.manage");
-  const scopeIds = visibleMemberIds(teams, currentUser.id, isOrgWide);
-  const scopedTeam = scopeIds ? teams.find((t) => t.leaderId === currentUser.id) : undefined;
-
-  const roleNames = (uid: string) => {
-    const u = users.find((x) => x.id === uid);
-    if (!u || u.roleIds.length === 0) return [] as string[];
-    return u.roleIds.map((rid) => roles.find((r) => r.id === rid)?.name ?? rid);
-  };
+  // `user_roles` SELECT is own-row unless you hold roles.manage/people.manage, so an agent
+  // reads back nothing for their colleagues. Rendering that as "—" would say "no role
+  // assigned" when the truth is "not visible to you" — drop the column instead.
+  const showRoles = can("roles.manage") || can("people.manage");
 
   const query = q.trim().toLowerCase();
-  const list = listEmployees()
-    .filter((e) => !scopeIds || scopeIds.has(e.id))
-    .filter(
-      (e) =>
-        !query ||
-        e.nickname.toLowerCase().includes(query) ||
-        employeeFullName(e).toLowerCase().includes(query) ||
-        e.code.toLowerCase().includes(query)
-    );
+  const list = employees.filter(
+    (e) =>
+      !query ||
+      e.nickname.toLowerCase().includes(query) ||
+      employeeFullName(e).toLowerCase().includes(query) ||
+      e.code.toLowerCase().includes(query)
+  );
 
   return (
     <Card>
@@ -79,19 +67,12 @@ export function TeamTable() {
         )}
       </div>
 
-      {scopedTeam && (
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-2/60 text-small text-text-muted">
-          <Users size={14} strokeWidth={1.75} className="text-accent" />
-          แสดงเฉพาะ<span className="font-medium text-text">{scopedTeam.name}</span>ที่คุณเป็นหัวหน้า
-        </div>
-      )}
-
       <CardContent className="p-0">
         <Table className="min-w-[900px]">
           <THead>
             <TR>
               <TH>พนักงาน</TH>
-              <TH>บทบาท</TH>
+              {showRoles && <TH>บทบาท</TH>}
               <TH>ตำแหน่ง</TH>
               <TH>ทีม</TH>
               <TH>โซน</TH>
@@ -102,35 +83,29 @@ export function TeamTable() {
             </TR>
           </THead>
           <TBody>
-            {list.map((e) => {
-              const rnames = roleNames(e.id);
-              const zoneNames = employeeZoneNames(e);
-              return (
-                <TR
-                  key={e.id}
-                  className="cursor-pointer hover:bg-surface-hover transition-colors"
-                  onClick={() => router.push(`/team/${e.id}`)}
-                >
-                  <TD>
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={e.nickname} tone="crimson" src={e.avatarUrl} />
-                      <div className="min-w-0">
-                        <div className="font-medium flex items-center gap-1.5">
-                          {e.nickname}
-                          {/* Probation tag — rank derives live on the เซลล์ใหม่ board */}
-                          {e.probationStart && <Pill tone="green">เซลล์ใหม่</Pill>}
-                        </div>
-                        <div className="text-label text-text-subtle truncate">
-                          {employeeFullName(e)}
-                          {e.code ? ` · ${e.code}` : ""}
-                        </div>
+            {list.map((e) => (
+              <TR
+                key={e.code}
+                className="cursor-pointer hover:bg-surface-hover transition-colors"
+                onClick={() => router.push(`/team/${e.code}`)}
+              >
+                <TD>
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={e.nickname} tone="crimson" />
+                    <div className="min-w-0">
+                      <div className="font-medium">{e.nickname}</div>
+                      <div className="text-label text-text-subtle truncate">
+                        {employeeFullName(e)}
+                        {e.code ? ` · ${e.code}` : ""}
                       </div>
                     </div>
-                  </TD>
+                  </div>
+                </TD>
+                {showRoles && (
                   <TD>
                     <div className="flex flex-wrap gap-1">
-                      {rnames.length ? (
-                        rnames.map((n) => (
+                      {e.roleNames.length ? (
+                        e.roleNames.map((n) => (
                           <Pill key={n} tone="neutral">
                             {n}
                           </Pill>
@@ -140,56 +115,61 @@ export function TeamTable() {
                       )}
                     </div>
                   </TD>
-                  <TD className="text-small">
-                    <div className="text-text">{e.position || "—"}</div>
-                    <div className="text-label text-text-subtle">{DEPARTMENT_LABEL[e.department]}</div>
-                  </TD>
-                  <TD className="text-small">
-                    {(() => {
-                      const t = teamOf(teams, e.id);
-                      if (!t) return <span className="text-text-subtle">—</span>;
-                      const isLeader = t.leaderId === e.id;
-                      return (
-                        <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                          {isLeader && <Crown size={12} strokeWidth={2} className="text-amber shrink-0" />}
-                          <span className={isLeader ? "text-text font-medium" : "text-text-muted"}>{t.name}</span>
-                        </span>
-                      );
-                    })()}
-                  </TD>
-                  <TD className="text-small text-text-muted">
-                    {zoneNames.length ? zoneNames.join(", ") : "—"}
-                  </TD>
-                  <TD>
-                    {e.status === "active" ? (
-                      <Pill tone="green">ทำงานอยู่</Pill>
-                    ) : (
-                      <Pill tone="neutral">พ้นสภาพ</Pill>
-                    )}
-                  </TD>
-                  <TD className="num text-right text-text-muted">
-                    {effortThisMonth(e.nickname, undefined, activities)}
-                  </TD>
-                  {showMoney && (
-                    <TD className="num text-right font-medium">
-                      {e.commissionRate != null ? `${(e.commissionRate * 100).toFixed(1)}%` : "—"}
-                    </TD>
+                )}
+                <TD className="text-small">
+                  <div className="text-text">{e.position || "—"}</div>
+                  <div className="text-label text-text-subtle">{DEPARTMENT_LABEL[e.department]}</div>
+                </TD>
+                <TD className="text-small">
+                  {e.teamName ? (
+                    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                      {e.isTeamLeader && (
+                        <Crown size={12} strokeWidth={2} className="text-amber shrink-0" />
+                      )}
+                      <span className={e.isTeamLeader ? "text-text font-medium" : "text-text-muted"}>
+                        {e.teamName}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-text-subtle">—</span>
                   )}
-                  {canManage && (
-                    <TD className="text-right">
-                      <Link
-                        href={`/team/${e.id}?edit=1`}
-                        onClick={(ev) => ev.stopPropagation()}
-                        aria-label={`แก้ไข ${e.nickname}`}
-                        className="inline-grid place-items-center size-7 rounded-md text-text-muted hover:bg-surface-2 hover:text-text transition-colors"
-                      >
-                        <Pencil size={14} strokeWidth={1.75} />
-                      </Link>
-                    </TD>
+                </TD>
+                <TD className="text-small text-text-muted max-w-[220px]">
+                  <span className="line-clamp-1">
+                    {e.zoneNames.length ? e.zoneNames.join(", ") : "—"}
+                  </span>
+                </TD>
+                <TD>
+                  {e.status === "active" ? (
+                    <Pill tone="green">ทำงานอยู่</Pill>
+                  ) : (
+                    <Pill tone="neutral">พ้นสภาพ</Pill>
                   )}
-                </TR>
-              );
-            })}
+                </TD>
+                {/* null ≠ 0 — you are not allowed to see this person's activity log, which
+                    is a different statement from "they logged nothing". */}
+                <TD className="num text-right text-text-muted">
+                  {e.effortThisMonth ?? <span className="text-text-subtle">—</span>}
+                </TD>
+                {showMoney && (
+                  <TD className="num text-right font-medium">
+                    {e.commissionRate != null ? `${(e.commissionRate * 100).toFixed(1)}%` : "—"}
+                  </TD>
+                )}
+                {canManage && (
+                  <TD className="text-right">
+                    <Link
+                      href={`/team/${e.code}?edit=1`}
+                      onClick={(ev) => ev.stopPropagation()}
+                      aria-label={`แก้ไข ${e.nickname}`}
+                      className="inline-grid place-items-center size-7 rounded-md text-text-muted hover:bg-surface-2 hover:text-text transition-colors"
+                    >
+                      <Pencil size={14} strokeWidth={1.75} />
+                    </Link>
+                  </TD>
+                )}
+              </TR>
+            ))}
           </TBody>
         </Table>
       </CardContent>

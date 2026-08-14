@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Topbar } from "@/components/Topbar";
 import { EmployeeRecord } from "@/components/EmployeeRecord";
-import { getEmployee } from "@/lib/team";
+import { getEmployee, getZoneOptions } from "@/lib/queries";
 
 export default async function EmployeeDetailPage({
   params,
@@ -12,9 +12,14 @@ export default async function EmployeeDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ edit?: string }>;
 }) {
+  // `id` is the employee_code (S-002), not a seed user id — the roster is keyed on the
+  // same value permissions run on.
   const { id } = await params;
   const { edit } = await searchParams;
-  const employee = getEmployee(id);
+  const [employee, zones] = await Promise.all([
+    getEmployee(decodeURIComponent(id)),
+    getZoneOptions(),
+  ]);
   if (!employee) notFound();
 
   return (
@@ -27,7 +32,11 @@ export default async function EmployeeDetailPage({
         >
           <ArrowLeft size={14} strokeWidth={1.75} /> กลับไปทีม
         </Link>
-        <EmployeeRecord employee={employee} initialMode={edit ? "edit" : "view"} />
+        <EmployeeRecord
+          employee={employee}
+          initialMode={edit ? "edit" : "view"}
+          zones={zones}
+        />
       </div>
     </>
   );

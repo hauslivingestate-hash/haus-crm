@@ -7,13 +7,17 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { ConfirmDelete } from "@/components/ui/ConfirmDelete";
 import { Avatar } from "@/components/ui/Avatar";
-import { listEmployees, getEmployee, employeeFullName } from "@/lib/team";
+import { employeeFullName, type Employee } from "@/lib/team";
 import { cn } from "@/lib/cn";
 
 // Sales-team manager (Settings ▸ ทีม, gated teams.manage). Create teams, set a leader, a
 // monthly revenue goal, and assign members. Shares the org store (RbacProvider) so edits
 // live-update the roster scoping + everything else. Design-first: in-memory, not persisted.
-export function TeamsManager() {
+// `employees` is the real roster (main_1_hr), passed down from the settings page — the
+// seeded array this used to read is gone. Teams themselves are still in-memory: the
+// `teams` table is empty and nobody holds `sales_leader`, so there is nothing to persist
+// until the CEO names leads.
+export function TeamsManager({ employees = [] }: { employees?: Employee[] }) {
   const { teams, setTeams } = useRbac();
   const [selectedId, setSelectedId] = React.useState<string>(teams[0]?.id ?? "");
   const [seq, setSeq] = React.useState(1);
@@ -21,7 +25,7 @@ export function TeamsManager() {
   const selected = teams.find((t) => t.id === selectedId) ?? teams[0];
 
   // Selling roster = who can be on a sales team (active sales + the player-coach CEO).
-  const candidates = listEmployees().filter(
+  const candidates = employees.filter(
     (e) => e.status === "active" && (e.department === "sales" || e.department === "management")
   );
 
@@ -95,7 +99,7 @@ export function TeamsManager() {
         </div>
         <ul className="divide-y divide-border">
           {teams.map((t) => {
-            const leader = getEmployee(t.leaderId);
+            const leader = employees.find((e) => e.code === t.leaderId);
             return (
               <li key={t.id}>
                 <button
@@ -173,12 +177,12 @@ export function TeamsManager() {
           </div>
           <ul className="divide-y divide-border">
             {candidates.map((e) => {
-              const inTeam = selected.memberIds.includes(e.id);
-              const isLeader = selected.leaderId === e.id;
-              const other = otherTeamOf(e.id);
+              const inTeam = selected.memberIds.includes(e.code);
+              const isLeader = selected.leaderId === e.code;
+              const other = otherTeamOf(e.code);
               return (
-                <li key={e.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <Avatar name={e.nickname} src={e.avatarUrl} tone="crimson" />
+                <li key={e.code} className="flex items-center gap-3 px-4 py-2.5">
+                  <Avatar name={e.nickname} tone="crimson" />
                   <div className="min-w-0 flex-1">
                     <div className="text-body font-medium inline-flex items-center gap-1.5">
                       {e.nickname}
@@ -191,7 +195,7 @@ export function TeamsManager() {
                   </div>
                   {inTeam && (
                     <button
-                      onClick={() => setLeader(selected.id, e.id)}
+                      onClick={() => setLeader(selected.id, e.code)}
                       disabled={isLeader}
                       className={cn(
                         "text-label font-medium rounded-md px-2.5 h-8 border transition-colors inline-flex items-center gap-1",
@@ -202,7 +206,7 @@ export function TeamsManager() {
                     </button>
                   )}
                   <button
-                    onClick={() => toggleMember(selected.id, e.id)}
+                    onClick={() => toggleMember(selected.id, e.code)}
                     className={cn(
                       "text-small font-medium rounded-md px-3 h-8 border transition-colors inline-flex items-center gap-1",
                       inTeam ? "bg-text text-background border-text" : "border-border-strong text-text-muted hover:bg-surface-2"

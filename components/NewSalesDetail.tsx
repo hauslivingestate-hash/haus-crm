@@ -4,6 +4,7 @@ import * as React from "react";
 import { Medal, Trophy, Check, CalendarDays, History } from "lucide-react";
 import { useProbation } from "@/components/ProbationProvider";
 import { rankedNewSales, daysBetween } from "@/components/NewSalesBoard";
+import type { Employee } from "@/lib/team";
 import { currentRankName, WINDOW_LABEL } from "@/lib/probation";
 import { useActivities } from "@/components/ActivityProvider";
 import { TODAY } from "@/lib/momentum";
@@ -17,13 +18,19 @@ import { cn } from "@/lib/cn";
 // One new sale's full probation stats — the click-through from the เซลล์ใหม่ leaderboard.
 // Shows the whole ladder (achieved + upcoming ranks with per-criterion bars) and the
 // agent's recent logged activities. Same live derivation as the board (ProbationProvider).
-export function NewSalesDetail({ employeeId }: { employeeId: string }) {
+export function NewSalesDetail({
+  employeeCode,
+  employees = [],
+}: {
+  employeeCode: string;
+  employees?: Employee[];
+}) {
   const { ranks } = useProbation();
   // LIVE log — the ladder and the activity list below must both reflect work logged from
   // the Daily Plan, not the frozen sample.
   const { activities } = useActivities();
-  const rows = rankedNewSales(ranks, activities);
-  const idx = rows.findIndex((r) => r.employee.id === employeeId);
+  const rows = rankedNewSales(ranks, activities, employees);
+  const idx = rows.findIndex((r) => r.employee.code === employeeCode);
 
   if (idx === -1) {
     return (
@@ -54,7 +61,7 @@ export function NewSalesDetail({ employeeId }: { employeeId: string }) {
           >
             {idx + 1}
           </span>
-          <Avatar name={e.nickname} tone="crimson" src={e.avatarUrl} />
+          <Avatar name={e.nickname} tone="crimson" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-h2">{e.nickname}</span>

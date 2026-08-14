@@ -1,13 +1,19 @@
 "use client";
 
 // Employee record page — VIEW + in-place EDIT (the app-wide pattern for full records).
-// Mirrors the HR Sheet "Employee Lists" schema (A–AE). Design phase: Save is stubbed
-// (console.log, no persist). Sensitive sections gated: money on `financials.view_comp`,
-// PII/legal docs on `people.view_sensitive`. See DATA_MODEL.md → HR Sheet.
+// Mirrors the HR Sheet "Employee Lists" schema (A–AE).
+//
+// Phase 6 wired both halves: the record reads `main_1_hr` and Save writes it. The stub it
+// replaced (console.log) was survivable while the roster was sample data and is not now —
+// HR editing a real colleague's phone number would have been told nothing and lost it.
+//
+// Sensitive sections stay gated: money on `financials.view_comp`, PII/legal on
+// `people.view_sensitive`. The gate is repeated in lib/mutations/employees.ts, because
+// `update` on those columns was never revoked from `authenticated` — only `select` was.
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Lock, Check, X, MapPin, Camera, Trash2 } from "lucide-react";
+import { Pencil, Lock, Check, X, MapPin } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
@@ -15,7 +21,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Input } from "@/components/ui/Input";
 import { useRbac } from "@/components/RbacProvider";
 import { formatDate } from "@/lib/format";
-import { listZones } from "@/lib/zones";
+import { createEmployee, updateEmployee } from "@/lib/mutations/employees";
 import {
   employeeFullName,
   DEPARTMENT_LABEL,
@@ -34,9 +40,11 @@ const GENDER_LABEL: Record<Gender, string> = { male: "ชาย", female: "ห�
 export function EmployeeRecord({
   employee,
   initialMode,
+  zones = [],
 }: {
   employee: Employee | null;
   initialMode: "view" | "edit";
+  zones?: { code: string; name: string }[];
 }) {
   const router = useRouter();
   const { can } = useRbac();
@@ -46,7 +54,10 @@ export function EmployeeRecord({
   const isNew = employee === null;
 
   const [mode, setMode] = React.useState<"view" | "edit">(initialMode);
-  const zones = listZones();
+  const [saving, setSaving] = React.useState(false);
+  const [refreshing, startRefresh] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+  const busy = saving || refreshing;
 
   const seed = React.useCallback(() => {
     const e = employee;
@@ -55,13 +66,11 @@ export function EmployeeRecord({
       status: (e?.status ?? "active") as EmployeeStatus,
       position: e?.position ?? "",
       department: (e?.department ?? "sales") as Department,
-      zoneCodes: e?.zoneCodes ?? [],
       firstNameTh: e?.firstNameTh ?? "",
       lastNameTh: e?.lastNameTh ?? "",
       firstNameEn: e?.firstNameEn ?? "",
       lastNameEn: e?.lastNameEn ?? "",
       nickname: e?.nickname ?? "",
-      avatarUrl: e?.avatarUrl ?? "",
       gender: (e?.gender ?? "") as Gender | "",
       nationality: e?.nationality ?? "",
       birthday: e?.birthday ?? "",
@@ -91,107 +100,104 @@ export function EmployeeRecord({
   const editing = mode === "edit";
   const canSave = f.nickname.trim().length > 0;
 
-  const toggleZone = (zc: string) =>
-    setF((prev) => ({
-      ...prev,
-      zoneCodes: prev.zoneCodes.includes(zc)
-        ? prev.zoneCodes.filter((x) => x !== zc)
-        : [...prev.zoneCodes, zc],
-    }));
+  // Re-seed only when leaving edit mode, not on every new `employee` prop: router.refresh()
+  // hands down a fresh row mid-edit and would otherwise wipe what is being typed.
+  React.useEffect(() => {
+    if (mode === "view") setF(seed());
+  }, [mode, seed]);
 
-  // Avatar: design-first preview via an in-browser object URL (not persisted). Wiring =
-  // upload the picked File to a storage bucket and store the returned URL in avatarUrl.
-  const fileRef = React.useRef<HTMLInputElement>(null);
-  const objectUrlRef = React.useRef<string | null>(null);
-  const pickedFileRef = React.useRef<File | null>(null);
-  const revokePreview = () => {
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-  };
-  React.useEffect(() => revokePreview, []);
-
-  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file
-    if (!file) return;
-    revokePreview();
-    const url = URL.createObjectURL(file);
-    objectUrlRef.current = url;
-    pickedFileRef.current = file;
-    set("avatarUrl", url);
-  };
-  const removePhoto = () => {
-    revokePreview();
-    pickedFileRef.current = null;
-    set("avatarUrl", "");
-  };
-
-  const save = () => {
-    if (!canSave) return;
-    const draft = {
-      ...f,
-      gender: f.gender || undefined,
+  const save = async () => {
+    if (!canSave || busy) return;
+    // Commission is entered as a percentage and stored as a fraction (0.6 = a 60% split).
+    const draft: Record<string, unknown> = {
+      status: f.status,
+      position: f.position,
+      firstNameTh: f.firstNameTh,
+      lastNameTh: f.lastNameTh,
+      firstNameEn: f.firstNameEn,
+      lastNameEn: f.lastNameEn,
+      nickname: f.nickname,
+      gender: f.gender,
+      nationality: f.nationality,
+      birthday: f.birthday,
+      phone: f.phone,
+      phoneAlt: f.phoneAlt,
+      email: f.email,
+      workEmail: f.workEmail,
+      lineUserId: f.lineUserId,
+      startDate: f.startDate,
+      salesSheetUrl: f.salesSheetUrl,
+      remark: f.remark,
+      emergencyContact: f.emergencyContact,
+      emergencyPhone: f.emergencyPhone,
+      emergencyRelation: f.emergencyRelation,
       ...(canMoney
-        ? { salary: f.salary ? Number(f.salary) : undefined, commissionRate: f.commissionPct ? Number(f.commissionPct) / 100 : undefined }
+        ? {
+            salary: f.salary,
+            commissionRate: f.commissionPct === "" ? "" : Number(f.commissionPct) / 100,
+          }
         : {}),
-      ...(canPii ? {} : { idCardNo: undefined, bankAccount: undefined, payslipDriveUrl: undefined, agreementFilesUrl: undefined }),
+      ...(canPii
+        ? {
+            idCardNo: f.idCardNo,
+            bankAccount: f.bankAccount,
+            payslipDriveUrl: f.payslipDriveUrl,
+            agreementFilesUrl: f.agreementFilesUrl,
+          }
+        : {}),
     };
-    const avatarFile = pickedFileRef.current;
-    console.log(`[stub] ${isNew ? "create" : "update"} employee (no write):`, draft, {
-      avatarFile: avatarFile ? { name: avatarFile.name, size: avatarFile.size, type: avatarFile.type } : null,
-    });
-    if (isNew) router.push("/team");
-    else setMode("view");
+
+    setSaving(true);
+    setError(null);
+    try {
+      if (isNew) {
+        const res = await createEmployee(draft, f.department);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        // Land on the record under the code the trigger just minted.
+        router.push(`/team/${res.code}`);
+      } else {
+        const res = await updateEmployee(employee.code, draft);
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        setMode("view");
+        startRefresh(() => router.refresh());
+      }
+    } catch (e) {
+      // A rejected server action is not the same as `{ok:false}` — without this the record
+      // would close as though it had saved.
+      setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const cancel = () => {
-    revokePreview();
-    pickedFileRef.current = null;
     if (isNew) router.push("/team");
     else {
       setF(seed());
+      setError(null);
       setMode("view");
     }
   };
 
-  const zoneNames = f.zoneCodes
-    .map((c) => zones.find((z) => z.zone_id === c)?.name_thai)
-    .filter((n): n is string => !!n);
+  // Zones come from `zone_sales`, a separate many-to-many table — assigning them is not
+  // part of this record's write, so they are shown but not editable here.
+  const zoneNames = employee?.zoneNames ?? [];
 
   return (
     <div className="space-y-4">
       {/* Identity header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <div className="flex items-start gap-3 min-w-0">
+          {/* No photo upload: main_1_hr has no avatar column and there is no storage bucket
+              yet, so the old picker only ever produced a preview that vanished on save. */}
           <div className="relative shrink-0">
-            <Avatar
-              name={f.nickname || "?"}
-              tone="crimson"
-              src={f.avatarUrl || undefined}
-              className="h-16 w-16 text-h3"
-            />
-            {editing && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  aria-label="เปลี่ยนรูปโปรไฟล์"
-                  title="เปลี่ยนรูปโปรไฟล์"
-                  className="absolute -bottom-1 -right-1 size-7 grid place-items-center rounded-full bg-accent text-text-onaccent border-2 border-surface hover:bg-accent-hover transition-colors"
-                >
-                  <Camera size={14} strokeWidth={2} />
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={onPickFile}
-                  className="hidden"
-                />
-              </>
-            )}
+            <Avatar name={f.nickname || "?"} tone="crimson" className="h-16 w-16 text-h3" />
           </div>
           <div className="min-w-0">
             {editing ? (
@@ -215,24 +221,15 @@ export function EmployeeRecord({
               {f.position && <Pill tone="neutral">{f.position}</Pill>}
               <Pill tone="neutral">{DEPARTMENT_LABEL[f.department]}</Pill>
             </div>
-            {editing && f.avatarUrl && (
-              <button
-                type="button"
-                onClick={removePhoto}
-                className="mt-2 inline-flex items-center gap-1 text-label text-red hover:underline"
-              >
-                <Trash2 size={11} strokeWidth={1.75} /> ลบรูปโปรไฟล์
-              </button>
-            )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 sm:ml-auto">
           {editing ? (
             <>
-              <Button size="sm" onClick={save} disabled={!canSave}>
-                <Check size={15} strokeWidth={2} /> บันทึก
+              <Button size="sm" onClick={() => void save()} disabled={!canSave || busy}>
+                <Check size={15} strokeWidth={2} /> {busy ? "กำลังบันทึก…" : "บันทึก"}
               </Button>
-              <Button variant="secondary" size="sm" onClick={cancel}>
+              <Button variant="secondary" size="sm" onClick={cancel} disabled={busy}>
                 <X size={15} strokeWidth={2} /> ยกเลิก
               </Button>
             </>
@@ -246,15 +243,21 @@ export function EmployeeRecord({
         </div>
       </div>
 
-      {editing && (
-        <p className="text-label text-text-subtle">โหมดออกแบบ: การเปลี่ยนแปลงยังไม่ถูกบันทึกจริง</p>
+      {error && (
+        <Card className="p-3 text-small text-red bg-red-bg/50 border-red/30">{error}</Card>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {/* Role / placement */}
         <Section title="ข้อมูลงาน">
-          <F label="รหัสพนักงาน" view={f.code} edit={editing}>
-            <Input value={f.code} onChange={(e) => set("code", e.target.value)} placeholder="เช่น S-006" />
+          {/* The code is generated by the set_hr_employee_code trigger from แผนก/ตำแหน่ง and
+              is the key every permission runs on — not something to retype by hand. */}
+          <F
+            label="รหัสพนักงาน"
+            view={f.code || (isNew ? "ระบบออกให้อัตโนมัติหลังบันทึก" : "—")}
+            edit={false}
+          >
+            <span />
           </F>
           <F label="สถานะ" view={f.status === "active" ? "ทำงานอยู่" : "พ้นสภาพ"} edit={editing}>
             <select value={f.status} onChange={(e) => set("status", e.target.value as EmployeeStatus)} className={field}>
@@ -265,7 +268,9 @@ export function EmployeeRecord({
           <F label="ตำแหน่ง" view={f.position} edit={editing}>
             <Input value={f.position} onChange={(e) => set("position", e.target.value)} placeholder="เช่น Sales" />
           </F>
-          <F label="แผนก" view={DEPARTMENT_LABEL[f.department]} edit={editing}>
+          {/* Department only decides the code prefix, and only at creation — changing it
+              later would not (and must not) renumber an existing employee. */}
+          <F label="แผนก" view={DEPARTMENT_LABEL[f.department]} edit={editing && isNew}>
             <select value={f.department} onChange={(e) => set("department", e.target.value as Department)} className={field}>
               {DEPARTMENTS.map((d) => (
                 <option key={d} value={d}>{DEPARTMENT_LABEL[d]}</option>
@@ -274,25 +279,7 @@ export function EmployeeRecord({
           </F>
           <div className="flex flex-col gap-1.5">
             <span className="text-label text-text-muted">โซนที่ดูแล (ฝ่ายขาย)</span>
-            {editing ? (
-              <div className="flex flex-wrap gap-1.5">
-                {zones.map((z) => (
-                  <button
-                    key={z.zone_id}
-                    type="button"
-                    onClick={() => toggleZone(z.zone_id)}
-                    className={cn(
-                      "text-small rounded-md px-2.5 h-8 border transition-colors",
-                      f.zoneCodes.includes(z.zone_id)
-                        ? "bg-accent text-text-onaccent border-accent"
-                        : "border-border-strong text-text-muted hover:bg-surface-2"
-                    )}
-                  >
-                    {z.name_thai}
-                  </button>
-                ))}
-              </div>
-            ) : zoneNames.length ? (
+            {zoneNames.length ? (
               <div className="flex flex-wrap gap-1.5">
                 {zoneNames.map((n) => (
                   <Pill key={n} tone="neutral">
@@ -302,6 +289,11 @@ export function EmployeeRecord({
               </div>
             ) : (
               <span className="text-body text-text-subtle">—</span>
+            )}
+            {editing && (
+              <span className="text-label text-text-subtle">
+                โซนเก็บอยู่คนละตาราง (zone_sales) — แก้ที่หน้า “ตั้งค่า → โซน”
+              </span>
             )}
           </div>
           <p className="text-label text-text-subtle">บทบาท/สิทธิ์ (Role) กำหนดที่หน้า “ตั้งค่า → บทบาทและสิทธิ์”</p>

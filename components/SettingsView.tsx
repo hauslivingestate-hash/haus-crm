@@ -20,6 +20,7 @@ import { SalesRankManager } from "@/components/SalesRankManager";
 import { LeaveAllowanceManager } from "@/components/LeaveAllowanceManager";
 import { AccountsManager } from "@/components/AccountsManager";
 import type { AccountRow } from "@/lib/accounts";
+import type { Employee } from "@/lib/team";
 import { useRbac } from "@/components/RbacProvider";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -56,11 +57,14 @@ export function SettingsView({
   zones,
   propertyTypeUsage,
   accounts,
+  employees,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
   propertyTypeUsage?: Record<string, number>;
   accounts: AccountRow[];
+  /** Real roster (main_1_hr) — the team builder picks its members from this. */
+  employees: Employee[];
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
@@ -113,7 +117,7 @@ export function SettingsView({
         {section === "teams" && (
           <>
             <SectionHeader title="ทีมขาย" desc="สร้างทีม กำหนดหัวหน้า เป้ารายได้ และมอบหมายเซลเข้าทีม · จัดการโดย CEO" />
-            <TeamsManager />
+            <TeamsManager employees={employees} />
           </>
         )}
         {section === "zones" && <ZonesSection zones={zones} />}

@@ -7,7 +7,6 @@
 // New vs main_6_buyer_crm: `source` (ช่องทาง) and the `requirements` block are NOT columns
 // yet — add them at wiring (a `source` column + a `requirements` jsonb, or normalized cols).
 
-import { listEmployees, type Employee } from "@/lib/team";
 
 /** Today, as YYYY-MM-DD in local time — the default intake date. */
 export function todayISO(): string {
@@ -164,22 +163,6 @@ export const SAMPLE_INTEREST_LISTINGS: InterestListing[] = [
   { code: "TRP1001", label: "The Rich Rama 9 · พระราม 9", zone: "พระราม 9", sale: "Mhow" },
   { code: "CRPK003", label: "Ratchapruek Villa · ราชพฤกษ์", zone: "ราชพฤกษ์", sale: "Golf" },
 ];
-
-/** Default assignee = the interested listing's owner-sale (overridable by admin/CEO). */
-export function defaultAssignee(listingCode: string | undefined): string {
-  if (!listingCode) return "";
-  return SAMPLE_INTEREST_LISTINGS.find((l) => l.code === listingCode)?.sale ?? "";
-}
-
-// Agents who can receive a lead — the six selling agents, INCLUDING Stone the player-coach
-// CEO (the real Lead Submission "Sales Assigned" column shows Stone), which sales-dept-only
-// filtering would wrongly exclude.
-const SELLING_NICKNAMES = ["Stone", "Pup", "Game", "Q", "Mhow", "Golf"];
-export function assignableAgents(): Employee[] {
-  return listEmployees()
-    .filter((e) => SELLING_NICKNAMES.includes(e.nickname))
-    .sort((a, b) => SELLING_NICKNAMES.indexOf(a.nickname) - SELLING_NICKNAMES.indexOf(b.nickname));
-}
 
 /**
  * Blank draft for a fresh intake.
