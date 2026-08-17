@@ -15,7 +15,6 @@ import { formatBaht, formatRent, formatNumber, daysOnMarketLabel } from "@/lib/f
 import { listingStatusDot, potentialTone, potentialGroup, type PotentialGroup } from "@/lib/status";
 import { compareValues, orderIndex } from "@/lib/sort";
 import { cn } from "@/lib/cn";
-import { listingCoverImage } from "@/lib/placeholderImages"; // PREVIEW ONLY — fake listing photos
 
 // Stable, sensible chip order — only statuses actually present get a chip.
 const STATUS_ORDER = [
@@ -53,7 +52,15 @@ const SORT_VALUE: Record<string, (l: ListingRow) => number | string | null> = {
   dom: (l) => l.days_on_market,
 };
 
-export function ListingsBrowser({ listings }: { listings: ListingRow[] }) {
+export function ListingsBrowser({
+  listings,
+  covers = {},
+}: {
+  listings: ListingRow[];
+  /** listing_id → cover photo URL. Absent = no photo uploaded yet, which the Cover
+   *  component draws as a building icon rather than a stock photo of someone else's house. */
+  covers?: Record<string, string>;
+}) {
   const router = useRouter();
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState("all");
@@ -203,7 +210,7 @@ export function ListingsBrowser({ listings }: { listings: ListingRow[] }) {
                   </TD>
                   <TD>
                     <div className="flex items-center gap-2.5">
-                      <Cover src={listingCoverImage(l.listing_id)} />
+                      <Cover src={covers[l.listing_id]} />
                       <div className="min-w-0">
                         <div className="font-medium truncate">{l.listing_name ?? "—"}</div>
                         <div className="text-label text-text-subtle truncate">

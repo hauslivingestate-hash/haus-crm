@@ -18,7 +18,6 @@ import { listingStatusDot, potentialTone, potentialGroup } from "@/lib/status";
 import { compareValues, orderIndex } from "@/lib/sort";
 import type { StaffMember } from "@/lib/queries";
 import { cn } from "@/lib/cn";
-import { listingCoverImage } from "@/lib/placeholderImages"; // PREVIEW ONLY — fake listing photos
 
 const STATUS_ORDER = [
   "Posted", "Ready to Post", "Update", "Need Info",
@@ -60,9 +59,12 @@ const SORT_VALUE: Record<string, (l: Row) => number | string | null> = {
 export function CompanyListings({
   listings,
   agents,
+  covers = {},
 }: {
   listings: ListingRow[];
   agents: StaffMember[];
+  /** listing_id → cover photo URL; absent = no photo yet. */
+  covers?: Record<string, string>;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState("");
@@ -205,7 +207,7 @@ export function CompanyListings({
                   </TD>
                   <TD>
                     <div className="flex items-center gap-2.5">
-                      <Cover src={listingCoverImage(l.listing_id)} />
+                      <Cover src={covers[l.listing_id]} />
                       <div className="min-w-0">
                         <div className="font-medium truncate">{l.listing_name ?? "—"}</div>
                         <div className="text-label text-text-subtle truncate">{l.project_name_eng}</div>

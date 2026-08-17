@@ -459,6 +459,41 @@ export async function getActivitiesForLead(leadId: string | null | undefined): P
   return all.filter((a) => a.related_lead_id === leadId);
 }
 
+/** One listing's photos, cover first. */
+export async function getListingPhotos(listingId: string): Promise<
+  { photo_id: number; photo_url: string; sort_order: number | null }[]
+> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("main_8_listing_photo")
+    .select("photo_id,photo_url,sort_order")
+    .eq("listing_id", listingId)
+    .order("sort_order")
+    .order("photo_id");
+  return (data ?? []) as { photo_id: number; photo_url: string; sort_order: number | null }[];
+}
+
+/**
+ * Cover photo per listing, for the list views.
+ *
+ * One query for the whole page rather than one per row: the browser renders up to 511
+ * rows and a per-row lookup would be 511 round trips.
+ */
+export async function getListingCovers(): Promise<Record<string, string>> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("main_8_listing_photo")
+    .select("listing_id,photo_url,sort_order")
+    .order("sort_order")
+    .order("photo_id");
+  const out: Record<string, string> = {};
+  for (const r of (data ?? []) as { listing_id: string; photo_url: string }[]) {
+    // First row wins — the query is already ordered, so that is the cover.
+    if (!out[r.listing_id]) out[r.listing_id] = r.photo_url;
+  }
+  return out;
+}
+
 // ── People / ทีม (Phase 6) ───────────────────────────────────────────────────
 
 /**

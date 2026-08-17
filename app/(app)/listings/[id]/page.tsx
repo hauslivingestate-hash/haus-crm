@@ -34,9 +34,10 @@ import {
   getNicknameByAuthId,
   getStaffDirectory,
   getActivitiesForListing,
+  getListingPhotos,
 } from "@/lib/queries";
+import { ListingPhotoManager } from "@/components/ListingPhotoManager";
 import { getAuthContext } from "@/lib/auth";
-import { listingGallery } from "@/lib/placeholderImages"; // PREVIEW ONLY — fake listing photos
 import {
   formatBaht,
   formatRent,
@@ -81,6 +82,11 @@ export default async function ListingDetailPage({
   const isManager =
     !!auth?.employeeCode && auth.employeeCode === listing.effective_sale_id;
   const activities = await getActivitiesForListing(listing.listing_id);
+  const photos = await getListingPhotos(listing.listing_id);
+  // Same set the photo table's own policies ask for.
+  const canEditPhotos = !!auth?.permissions.some((p) =>
+    ["listings.edit", "listings.marketing", "listings.create", "roles.manage"].includes(p)
+  );
 
   // Price move (Listings cols J → K). Only meaningful when BOTH sides are present.
   const hasPriceMove = listing.old_price != null && listing.new_price != null;
@@ -137,31 +143,14 @@ export default async function ListingDetailPage({
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 items-start">
           {/* Main column */}
           <div className="flex flex-col gap-4 min-w-0">
-            {/* Gallery — PREVIEW ONLY fake photos until real storage is wired */}
-            <Card className="overflow-hidden">
-              {(() => {
-                const gallery = listingGallery(listing.listing_id);
-                return (
-                  <>
-                    <div className="h-64 bg-surface-2 border-b border-border">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={gallery[0]} alt="" className="size-full object-cover" />
-                    </div>
-                    <CardContent className="flex items-center gap-2">
-                      {gallery.slice(1).map((src) => (
-                        <span
-                          key={src}
-                          className="h-14 w-20 shrink-0 rounded-md overflow-hidden bg-surface-2 border border-border"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={src} alt="" className="size-full object-cover" />
-                        </span>
-                      ))}
-                    </CardContent>
-                  </>
-                );
-              })()}
-            </Card>
+            {/* Photos — real uploads (Supabase Storage), 20 max. The stock images that
+                used to sit here showed a house that was not this house, with nothing
+                saying so. */}
+            <ListingPhotoManager
+              listingId={listing.listing_id}
+              photos={photos}
+              canEdit={canEditPhotos}
+            />
 
             {/* Spec strip */}
             <Card>
