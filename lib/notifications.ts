@@ -26,11 +26,13 @@ import {
   TagIcon,
   type LucideIcon,
 } from "lucide-react";
-import { TODAY } from "@/lib/momentum";
 import { TH_MONTHS } from "@/lib/format";
 
-/** Stubbed "now" for the design build — same clock as the Momentum layer's TODAY. */
-export const NOW = `${TODAY}T16:20:00+07:00`;
+/** The real clock. This was a constant pinned to the design-phase TODAY, so every row read
+ *  "เมื่อสักครู่" for ever. Still injectable so the helpers below stay testable. */
+export function nowISO(): string {
+  return new Date().toISOString();
+}
 
 /** The `type` enum. Adding one = a new row in this union + NOTIFICATION_META. */
 export type NotificationType =
@@ -45,11 +47,11 @@ export type NotificationType =
 export type NotificationEntity = "lead" | "listing" | "task" | "target";
 
 export interface AppNotification {
-  id: string;
-  /** Recipient — mirrors rbac OrgUser.id / Employee.id (the login), NOT Employee.code.
-   *  Source rows key agents by `sale_id` (= Employee.code, e.g. "S-001"), so the wiring
-   *  must join sale_id → employees.code → employees.id to address a notification. */
-  userId: string;
+  /** `notifications.id` — a bigint, not a slug. */
+  id: number;
+  /** Recipient, as `main_1_hr.employee_code` (S-002). The seed keyed this on a login id
+   *  matched by display name, which is why the bell was empty for every real session. */
+  employeeCode: string;
   type: NotificationType;
   title: string;
   body?: string;
@@ -93,191 +95,6 @@ export function notificationHref(n: AppNotification): string | null {
   }
 }
 
-// Seeded against real leads/listings + each agent's real zoneCodes (lib/team.ts).
-// Benz (u_benz) and Pui (u_pui) intentionally have none — they exercise the empty state.
-const NOTIFICATIONS: AppNotification[] = [
-  // --- Pup (S-001) · zones BGY, SLY ---
-  {
-    id: "n_001",
-    userId: "u_pup",
-    type: "lead_assigned",
-    title: "คุณได้รับ Lead ใหม่",
-    body: "คุณกานดา · งบ 6 ล้าน · สนใจ เดอะ เนิน บางใหญ่",
-    entity: "lead",
-    entityId: "BC-006",
-    actor: "Stone",
-    createdAt: `${TODAY}T15:55:00+07:00`,
-  },
-  {
-    id: "n_002",
-    userId: "u_pup",
-    type: "task_due",
-    title: "งานวันนี้ยังไม่เสร็จ 3 รายการ",
-    body: "ตามงาน คุณอนันต์ · โทรหาเจ้าของ CBGY002",
-    entity: "task",
-    createdAt: `${TODAY}T09:00:00+07:00`,
-  },
-  {
-    id: "n_003",
-    userId: "u_pup",
-    type: "listing_new_in_zone",
-    title: "ทรัพย์ใหม่ในโซนบางใหญ่",
-    body: "เดอะ เนิน บางใหญ่ · ฿2.2 ล้าน · 2 นอน",
-    entity: "listing",
-    entityId: "CBGY002",
-    actor: "Benz",
-    createdAt: "2026-07-12T11:30:00+07:00",
-  },
-  {
-    id: "n_004",
-    userId: "u_pup",
-    type: "deal_won",
-    title: "ปิดการขายได้! คุณรัตนา",
-    body: "฿3.9 ล้าน · เดอะ เนิน บางใหญ่",
-    entity: "lead",
-    entityId: "BC-008",
-    createdAt: "2026-07-11T17:05:00+07:00",
-    readAt: "2026-07-11T17:40:00+07:00",
-  },
-
-  // --- Stone (C-001) · CEO + Agent · zones BGY, RP1 ---
-  {
-    id: "n_010",
-    userId: "u_stone",
-    type: "deal_won",
-    title: "Q ปิดการขายได้ คุณเมธา",
-    body: "฿3.65 ล้าน · ชัยพฤกษ์ ปาร์ค",
-    entity: "lead",
-    entityId: "BC-007",
-    actor: "Q",
-    createdAt: `${TODAY}T14:10:00+07:00`,
-  },
-  {
-    id: "n_011",
-    userId: "u_stone",
-    type: "target_milestone",
-    title: "ทีมทำยอดเดือนนี้ถึง 80% แล้ว",
-    body: "เหลืออีก 2 ดีลถึงเป้าเดือนกรกฎาคม",
-    entity: "target",
-    createdAt: `${TODAY}T08:00:00+07:00`,
-  },
-  {
-    id: "n_012",
-    userId: "u_stone",
-    type: "listing_price_changed",
-    title: "เจ้าของลดราคา บ้านกลางเมือง ราชพฤกษ์",
-    body: "฿7.2 ล้าน → ฿6.5 ล้าน · โซนราชพฤกษ์ต้น",
-    entity: "listing",
-    entityId: "TRP1001",
-    actor: "Benz",
-    createdAt: "2026-07-12T16:45:00+07:00",
-  },
-  {
-    id: "n_013",
-    userId: "u_stone",
-    type: "lead_stage_changed",
-    title: "คุณอนันต์ ขยับไปขั้น เจรจา",
-    body: "โดย Pup · งบ 4 ล้าน",
-    entity: "lead",
-    entityId: "BC-001",
-    actor: "Pup",
-    createdAt: "2026-07-10T13:20:00+07:00",
-    readAt: "2026-07-10T18:00:00+07:00",
-  },
-
-  // --- Game (S-002) · zones RM2, PKS ---
-  {
-    id: "n_020",
-    userId: "u_game",
-    type: "lead_stage_changed",
-    title: "คุณสุดา ขยับไปขั้น พาชม",
-    body: "งบ 13 ล้าน · แกรนด์ วิลล่า พระราม 2",
-    entity: "lead",
-    entityId: "BC-002",
-    createdAt: `${TODAY}T11:15:00+07:00`,
-  },
-  {
-    id: "n_021",
-    userId: "u_game",
-    type: "listing_new_in_zone",
-    title: "ทรัพย์ใหม่ในโซนพระราม 2",
-    body: "แกรนด์ วิลล่า พระราม 2 · ฿85,000/ด.",
-    entity: "listing",
-    entityId: "HRM2002",
-    actor: "Benz",
-    createdAt: "2026-07-12T10:05:00+07:00",
-  },
-
-  // --- Q (S-003) · zones CYP, RP1 ---
-  {
-    id: "n_030",
-    userId: "u_q",
-    type: "deal_won",
-    title: "ปิดการขายได้! คุณเมธา",
-    body: "฿3.65 ล้าน · ชัยพฤกษ์ ปาร์ค",
-    entity: "lead",
-    entityId: "BC-007",
-    createdAt: `${TODAY}T14:08:00+07:00`,
-  },
-  {
-    id: "n_031",
-    userId: "u_q",
-    type: "lead_assigned",
-    title: "คุณได้รับ Lead ใหม่",
-    body: "คุณพิมพ์ · งบ 3.3 ล้าน · สนใจ ชัยพฤกษ์ ปาร์ค",
-    entity: "lead",
-    entityId: "BC-004",
-    actor: "Stone",
-    createdAt: "2026-07-12T09:40:00+07:00",
-    readAt: "2026-07-12T10:00:00+07:00",
-  },
-
-  // --- Mhow (S-004) · zones ASK, BWK ---
-  {
-    id: "n_040",
-    userId: "u_mhow",
-    type: "lead_assigned",
-    title: "คุณได้รับ Lead ใหม่",
-    body: "คุณเจมส์ · งบ 35,000/ด. · สนใจ อโศก สกาย เรสซิเดนซ์",
-    entity: "lead",
-    entityId: "BC-003",
-    actor: "Stone",
-    createdAt: `${TODAY}T13:35:00+07:00`,
-  },
-  {
-    id: "n_041",
-    userId: "u_mhow",
-    type: "task_due",
-    title: "งานวันนี้ยังไม่เสร็จ 2 รายการ",
-    body: "ตามงาน คุณวีระ · นัดชม อโศก สกาย",
-    entity: "task",
-    createdAt: `${TODAY}T09:00:00+07:00`,
-  },
-
-  // --- Golf (S-005) · no zones yet ---
-  {
-    id: "n_050",
-    userId: "u_golf",
-    type: "target_milestone",
-    title: "เป้าเดือนนี้ยังเหลืออีก 40%",
-    body: "เหลือ 18 วัน · ทำได้ 6 จาก 10 ดีล",
-    entity: "target",
-    createdAt: `${TODAY}T08:00:00+07:00`,
-  },
-];
-
-/** All notifications (design phase). Wiring = select where user_id = auth.uid(). */
-export function listNotifications(): AppNotification[] {
-  return NOTIFICATIONS;
-}
-
-/** Recipient's feed, newest first. */
-export function notificationsFor(userId: string): AppNotification[] {
-  return NOTIFICATIONS.filter((n) => n.userId === userId).sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt)
-  );
-}
-
 export function unreadCount(items: AppNotification[]): number {
   return items.filter((n) => !n.readAt).length;
 }
@@ -289,7 +106,7 @@ export function unreadCount(items: AppNotification[]): number {
  *  as "1 วัน" while the panel groups it under ก่อนหน้า (2 calendar days back) — the row
  *  would contradict its own header. The day group already says which day, so the row shows
  *  a date instead of a rounded duration. `now` is injectable so this stays testable. */
-export function relativeTimeTh(iso: string, now: string = NOW): string {
+export function relativeTimeTh(iso: string, now: string = nowISO()): string {
   const diffMs = new Date(now).getTime() - new Date(iso).getTime();
   const mins = Math.floor(diffMs / 60000);
   if (mins < 1) return "เมื่อสักครู่";
@@ -310,7 +127,7 @@ export const DAY_BUCKET_LABEL: Record<DayBucket, string> = {
 /** Which day-group a notification falls in, relative to the stubbed clock.
  *  Compares the +07:00 calendar date, so the day math is anchored at noon UTC — using
  *  the raw Date would bucket by the UTC day and mis-group anything before 07:00 Thai. */
-export function dayBucket(iso: string, now: string = NOW): DayBucket {
+export function dayBucket(iso: string, now: string = nowISO()): DayBucket {
   const day = iso.slice(0, 10);
   const today = now.slice(0, 10);
   if (day === today) return "today";
@@ -322,7 +139,7 @@ export function dayBucket(iso: string, now: string = NOW): DayBucket {
 /** Group a feed into ordered day buckets, dropping empty ones. */
 export function groupByDay(
   items: AppNotification[],
-  now: string = NOW
+  now: string = nowISO()
 ): { bucket: DayBucket; items: AppNotification[] }[] {
   const order: DayBucket[] = ["today", "yesterday", "earlier"];
   return order

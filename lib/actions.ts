@@ -60,56 +60,12 @@ export interface Activity {
   remark: string | null;
 }
 
-// Sample log — references real listing IDs so listing-tagged rows resolve.
-const SAMPLE: Activity[] = [
-  { id: "a1", created_by: "Stone", action: "Show", attach: "lead", related_lead_id: "L-0007", related_lead_name: "คุณมีน", related_listing_id: null, related_listing_name: null, date: "2026-07-12", count: 1, remark: "พาชม 2 หลังในชัยพฤกษ์" },
-  { id: "a2", created_by: "Stone", action: "Owner Visit", attach: "listing", related_lead_id: null, related_lead_name: null, related_listing_id: "TCYP001", related_listing_name: "Chaiyaphruek Park", date: "2026-07-12", count: 1, remark: "คุยราคาใหม่กับเจ้าของ" },
-  { id: "a3", created_by: "Stone", action: "Call", attach: "lead", related_lead_id: "L-0011", related_lead_name: "คุณเบิร์ด", related_listing_id: null, related_listing_name: null, date: "2026-07-11", count: 1, remark: null },
-  { id: "a4", created_by: "Stone", action: "Survey", attach: "listing", related_lead_id: null, related_lead_name: null, related_listing_id: "HRM2001", related_listing_name: "Rama 2 Grand Villa", date: "2026-07-11", count: 1, remark: "สำรวจสภาพก่อนถ่ายรูป" },
-  { id: "a5", created_by: "Stone", action: "ประชุม", attach: "none", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-07-11", count: 1, remark: "ประชุมทีมเช้า" },
-  { id: "a6", created_by: "Stone", action: "Reels", attach: "listing", related_lead_id: null, related_lead_name: null, related_listing_id: "CBGY001", related_listing_name: "The Nern by Sansiri", date: "2026-07-10", count: 2, remark: null },
-  { id: "a7", created_by: "Stone", action: "Follow", attach: "lead", related_lead_id: "L-0007", related_lead_name: "คุณมีน", related_listing_id: null, related_listing_name: null, date: "2026-07-10", count: 1, remark: "ตามหลังพาชม ยังตัดสินใจอยู่" },
-  { id: "a8", created_by: "Stone", action: "Appoint", attach: "lead", related_lead_id: "L-0014", related_lead_name: "คุณเอส", related_listing_id: null, related_listing_name: null, date: "2026-07-09", count: 1, remark: null },
-  { id: "a9", created_by: "Stone", action: "ทำงานหน้าคอม", attach: "none", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-07-09", count: 1, remark: "ทำ presentation" },
-  { id: "a10", created_by: "Stone", action: "Owner Visit", attach: "listing", related_lead_id: null, related_lead_name: null, related_listing_id: "CASK001", related_listing_name: "Asoke Sky Residence", date: "2026-07-08", count: 1, remark: null },
-  { id: "a11", created_by: "Stone", action: "Sourcing", attach: "none", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-07-08", count: 3, remark: "หาทรัพย์ใหม่ย่านราชพฤกษ์" },
-  { id: "a12", created_by: "Stone", action: "Nego", attach: "lead", related_lead_id: "L-0011", related_lead_name: "คุณเบิร์ด", related_listing_id: null, related_listing_name: null, date: "2026-07-07", count: 1, remark: "ต่อรองราคา รอเจ้าของตอบ" },
-  { id: "a13", created_by: "Stone", action: "ถ่ายรูป", attach: "listing", related_lead_id: null, related_lead_name: null, related_listing_id: "HRM2002", related_listing_name: "Rama 2 Grand Villa", date: "2026-07-07", count: 1, remark: null },
-  { id: "a14", created_by: "Stone", action: "Call", attach: "lead", related_lead_id: "L-0014", related_lead_name: "คุณเอส", related_listing_id: null, related_listing_name: null, date: "2026-07-06", count: 2, remark: null },
-
-  // --- New-sales (probation) sample effort — Mhow & Golf, tallied by lib/probation ---
-  // Mhow: entered 2026-05-01 → cleared Rookie (Call 36 รวม, Survey 6), mid-Junior.
-  { id: "a15", created_by: "Mhow", action: "Call", attach: "lead", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-05-20", count: 12, remark: "โทรตามลีดโซนอโศก" },
-  { id: "a16", created_by: "Mhow", action: "Call", attach: "lead", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-06-18", count: 10, remark: null },
-  { id: "a17", created_by: "Mhow", action: "Call", attach: "lead", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-07-10", count: 14, remark: null },
-  { id: "a18", created_by: "Mhow", action: "Survey", attach: "listing", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-05-28", count: 6, remark: "สำรวจทรัพย์ใหม่บางแวก" },
-  { id: "a19", created_by: "Mhow", action: "Show", attach: "lead", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-06-25", count: 3, remark: null },
-  { id: "a20", created_by: "Mhow", action: "Owner Visit", attach: "listing", related_lead_id: null, related_lead_name: null, related_listing_id: "CASK001", related_listing_name: "Asoke Sky Residence", date: "2026-07-05", count: 2, remark: null },
-  // Golf: entered 2026-06-15 → mid-Rookie (Call 11/20, Survey 2/5).
-  { id: "a21", created_by: "Golf", action: "Call", attach: "lead", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-06-24", count: 5, remark: null },
-  { id: "a22", created_by: "Golf", action: "Call", attach: "lead", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-07-08", count: 6, remark: null },
-  { id: "a23", created_by: "Golf", action: "Survey", attach: "listing", related_lead_id: null, related_lead_name: null, related_listing_id: null, related_listing_name: null, date: "2026-07-03", count: 2, remark: "สำรวจกับพี่เบนซ์" },
-];
-
-export function listActivities(): Activity[] {
-  return [...SAMPLE].sort((a, b) => b.date.localeCompare(a.date));
-}
-
-/** Same rows, filtered to one listing — the entity-timeline view of the log. */
-export function getActivitiesForListing(listingId: string | null | undefined): Activity[] {
-  if (!listingId) return [];
-  return listActivities().filter((a) => a.related_listing_id === listingId);
-}
-
-/** Same rows, filtered to one lead. */
-export function getActivitiesForLead(leadId: string | null | undefined): Activity[] {
-  if (!leadId) return [];
-  return listActivities().filter((a) => a.related_lead_id === leadId);
-}
-
-// The design build's sample attach options (SAMPLE_LEAD_OPTIONS / SAMPLE_LISTING_OPTIONS)
-// were deleted in Phase 5 #6. Their ids ("L-0007", "TCYP001" …) exist in neither
-// main_6_buyer_crm nor main_4_listing_database, and both `tasks` and `activities` FK to
-// those tables — so every one of them would have failed the insert the moment the task
-// sheet started writing for real. The picker searches the live tables instead
-// (`searchLeads` / `searchListings` in lib/search.ts).
+// The sample log is gone. `activities` holds 2,334 real rows, read through
+// getActivityFeed / getActivitiesForListing / getActivitiesForLead in lib/queries.ts.
+// What stays here is the type and the pure helpers, which client components import.
+//
+// ⚠️ ACTION_GROUPS below is the design-phase vocabulary and is missing three rows the
+// `action_type` table actually has (Owner Talk, Update Price, เซ็นสัญญา). It has caused the
+// same bug three times — the task form, the rank editor, the activity-type editor — so
+// anything that must produce an FK-valid action name reads the table via getActionTypes()
+// instead. Only NOTE_ACTION and the AttachMode type are safe to use from here.

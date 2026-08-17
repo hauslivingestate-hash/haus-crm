@@ -28,10 +28,15 @@ import { ListingEditButton } from "@/components/ListingEditSheet";
 import { ExclusiveAgreementCard } from "@/components/ExclusiveAgreementCard";
 import { ListingChecklist } from "@/components/ListingChecklist";
 import { ListingCopyButton } from "@/components/ListingCopyButton";
-import { getListing, getProject, getNicknameByAuthId, getStaffDirectory } from "@/lib/queries";
+import {
+  getListing,
+  getProject,
+  getNicknameByAuthId,
+  getStaffDirectory,
+  getActivitiesForListing,
+} from "@/lib/queries";
 import { getAuthContext } from "@/lib/auth";
 import { listingGallery } from "@/lib/placeholderImages"; // PREVIEW ONLY — fake listing photos
-import { getActivitiesForListing } from "@/lib/actions";
 import {
   formatBaht,
   formatRent,
@@ -75,7 +80,7 @@ export default async function ListingDetailPage({
     staff.find((s) => s.code === listing.effective_sale_id) ?? null;
   const isManager =
     !!auth?.employeeCode && auth.employeeCode === listing.effective_sale_id;
-  const activities = getActivitiesForListing(listing.listing_id);
+  const activities = await getActivitiesForListing(listing.listing_id);
 
   // Price move (Listings cols J → K). Only meaningful when BOTH sides are present.
   const hasPriceMove = listing.old_price != null && listing.new_price != null;

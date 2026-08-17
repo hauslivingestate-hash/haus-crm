@@ -25,7 +25,8 @@ import {
 import { todayISO } from "@/lib/momentum";
 import type { Zone, ZoneSale } from "@/lib/zones";
 import type { ActivityTally, RankCriterion, SalesRank } from "@/lib/probation";
-import type { AttachMode } from "@/lib/actions";
+import type { Activity, AttachMode } from "@/lib/actions";
+import type { AppNotification, NotificationEntity, NotificationType } from "@/lib/notifications";
 
 // Page data reads run on the SESSION-AWARE server client. The old sessionless anon client
 // (lib/supabase.ts) is deleted, not merely unused: RLS filters every table below on
@@ -322,6 +323,140 @@ export async function getNicknameByAuthId(
     .eq("auth_user_id", authUserId)
     .maybeSingle();
   return (data?.nickname as string | undefined) ?? null;
+}
+
+/**
+ * The signed-in person's notification feed.
+ *
+ * RLS is own-row, but `roles.manage` widens it to every row — so this filters on
+ * employee_code explicitly. Without that an admin's bell would show the whole company's
+ * notifications, which is the same trap the /today task list hit in Phase 5.
+ */
+export async function getNotifications(limit = 50): Promise<AppNotification[]> {
+  const auth = await getAuthContext();
+  if (!auth?.employeeCode) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("notifications")
+    .select("id,employee_code,type,title,body,entity,entity_id,actor,created_at,read_at")
+    .eq("employee_code", auth.employeeCode)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  return ((data ?? []) as {
+    id: number;
+    employee_code: string;
+    type: string;
+    title: string;
+    body: string | null;
+    entity: string | null;
+    entity_id: string | null;
+    actor: string | null;
+    created_at: string;
+    read_at: string | null;
+  }[]).map((n) => ({
+    id: n.id,
+    employeeCode: n.employee_code,
+    type: n.type as NotificationType,
+    title: n.title,
+    body: n.body ?? undefined,
+    entity: (n.entity as NotificationEntity | null) ?? undefined,
+    entityId: n.entity_id ?? undefined,
+    actor: n.actor ?? undefined,
+    createdAt: n.created_at,
+    readAt: n.read_at,
+  }));
+}
+
+/**
+ * The logged activity feed — 2,334 real rows, where the page showed a sample of a dozen.
+ *
+ * ⚠️ RLS on `activities` is own-row unless the viewer holds `performance.view_team`, and
+ * `visible_employee_codes()` is "just me" until the CEO names a team. So this returns the
+ * viewer's own work for almost everyone today; that is the truth, not a filter bug.
+ */
+export async function getActivityFeed(limit = 200): Promise<Activity[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("activities")
+    .select("id,employee_code,action,activity_date,count,remark,related_lead_id,related_listing_id")
+    .order("activity_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`อ่านกิจกรรมไม่สำเร็จ: ${error.message}`);
+
+  const rows = (data ?? []) as {
+    id: number;
+    employee_code: string;
+    action: string;
+    activity_date: string;
+    count: number | null;
+    remark: string | null;
+    related_lead_id: string | null;
+    related_listing_id: string | null;
+  }[];
+
+  // Resolve the names the feed shows, in two batched lookups rather than per row.
+  const leadIds = [...new Set(rows.map((r) => r.related_lead_id).filter(Boolean))] as string[];
+  const listingIds = [...new Set(rows.map((r) => r.related_listing_id).filter(Boolean))] as string[];
+  const [staff, leads, listings, actionTypes] = await Promise.all([
+    getStaffDirectory(),
+    leadIds.length
+      ? supabase.from("main_6_buyer_crm").select("lead_id,lead_name").in("lead_id", leadIds)
+      : Promise.resolve({ data: [] }),
+    listingIds.length
+      ? supabase.from("v_main_listing").select("listing_id,listing_name").in("listing_id", listingIds)
+      : Promise.resolve({ data: [] }),
+    supabase.from("action_type").select("name,attach"),
+  ]);
+
+  const nickname = new Map(staff.map((s) => [s.code, s.nickname]));
+  const leadName = new Map(
+    ((leads.data ?? []) as { lead_id: string; lead_name: string | null }[]).map((l) => [
+      l.lead_id,
+      l.lead_name,
+    ])
+  );
+  const listingName = new Map(
+    ((listings.data ?? []) as { listing_id: string; listing_name: string | null }[]).map((l) => [
+      l.listing_id,
+      l.listing_name,
+    ])
+  );
+  const attachOf = new Map(
+    ((actionTypes.data ?? []) as { name: string; attach: string | null }[]).map((a) => [
+      a.name,
+      (a.attach as AttachMode | null) ?? "either",
+    ])
+  );
+
+  return rows.map((r) => ({
+    id: String(r.id),
+    created_by: nickname.get(r.employee_code) ?? r.employee_code,
+    action: r.action,
+    attach: attachOf.get(r.action) ?? "either",
+    related_lead_id: r.related_lead_id,
+    related_lead_name: r.related_lead_id ? leadName.get(r.related_lead_id) ?? null : null,
+    related_listing_id: r.related_listing_id,
+    related_listing_name: r.related_listing_id ? listingName.get(r.related_listing_id) ?? null : null,
+    date: r.activity_date,
+    count: r.count ?? 0,
+    remark: r.remark,
+  }));
+}
+
+/** One listing's logged activity, newest first — the timeline on the listing page. */
+export async function getActivitiesForListing(listingId: string | null | undefined): Promise<Activity[]> {
+  if (!listingId) return [];
+  const all = await getActivityFeed(500);
+  return all.filter((a) => a.related_listing_id === listingId);
+}
+
+/** One lead's logged activity, newest first. */
+export async function getActivitiesForLead(leadId: string | null | undefined): Promise<Activity[]> {
+  if (!leadId) return [];
+  const all = await getActivityFeed(500);
+  return all.filter((a) => a.related_lead_id === leadId);
 }
 
 // ── People / ทีม (Phase 6) ───────────────────────────────────────────────────
