@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/Input";
 import { STAGES } from "@/lib/pipeline";
 import { LEAD_POTENTIALS } from "@/lib/leads";
 import { updateLead } from "@/lib/mutations/leads";
+import { closeDeal } from "@/lib/mutations/lastMatch";
+import { CLOSED_STAGES } from "@/lib/pipeline";
 import { cn } from "@/lib/cn";
 
 const LEAD_TYPES = ["Buyer - Buy", "Buyer - Rent", "Co-Agent"];
@@ -23,6 +25,8 @@ export function LeadEditSheet({ open, lead, onClose }: { open: boolean; lead: Cr
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [done, setDone] = React.useState(false);
+  // The closing price, asked for the moment the stage moves into a closed state.
+  const [closePrice, setClosePrice] = React.useState("");
 
   // Reset on OPEN only, not on every `lead` prop update while already open — router.refresh()
   // after a successful save flows a fresher `lead` back down, and keying this on the object
@@ -35,6 +39,7 @@ export function LeadEditSheet({ open, lead, onClose }: { open: boolean; lead: Cr
       setBusy(false);
       setError(null);
       setDone(false);
+      setClosePrice("");
     }
   }, [open]);
 
@@ -53,6 +58,11 @@ export function LeadEditSheet({ open, lead, onClose }: { open: boolean; lead: Cr
   if (!open) return null;
   const set = (patch: Partial<ReturnType<typeof draftOf>>) => setF((x) => ({ ...x, ...patch }));
 
+  // Moving INTO a closed stage from an open one. Re-saving a lead that was already closed
+  // does not ask again — that deal is already in the ledger.
+  const justClosed =
+    CLOSED_STAGES.includes(f.pipeline_stage) && !CLOSED_STAGES.includes(lead.pipeline_stage ?? "");
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const original = draftOf(lead);
@@ -63,17 +73,40 @@ export function LeadEditSheet({ open, lead, onClose }: { open: boolean; lead: Cr
       }
     }
 
-    setBusy(true);
-    setError(null);
-    const result = await updateLead(lead.lead_id, patch);
-    setBusy(false);
-
-    if (!result.ok) {
-      setError(result.error);
+    // Closing price is required the first time this lead reaches a closed stage. It is the
+    // only place a sale price is recorded anywhere in the system, and asking later means
+    // asking someone to remember — which is how all 56 imported deals ended up with none.
+    const price = Number(closePrice.replace(/[^\d.]/g, ""));
+    if (justClosed && !(price > 0)) {
+      setError("กรอกราคาปิดก่อน — ตัวเลขนี้เป็นที่เดียวที่ระบบเก็บยอดขาย");
       return;
     }
-    setDone(true);
-    router.refresh();
+
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await updateLead(lead.lead_id, patch);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      if (justClosed) {
+        // The lead is saved either way; a failure here loses the deal row, not the stage.
+        const deal = await closeDeal({ leadId: lead.lead_id, price });
+        if (!deal.ok) {
+          setError(`บันทึกสเตจแล้ว แต่บันทึกดีลไม่สำเร็จ: ${deal.error}`);
+          return;
+        }
+      }
+      setDone(true);
+      router.refresh();
+    } catch (err) {
+      // A rejected server action is not the same as { ok: false } — without this the sheet
+      // would sit on "กำลังบันทึก…" with nothing said.
+      setError(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -115,6 +148,25 @@ export function LeadEditSheet({ open, lead, onClose }: { open: boolean; lead: Cr
             </select>
           </Field>
         </div>
+
+        {justClosed && (
+          <div className="rounded-md border border-green/30 bg-green-bg/40 p-3 flex flex-col gap-2">
+            <div className="text-small font-medium text-green">ปิดดีลได้! กรอกราคาปิดด้วย</div>
+            <Input
+              value={closePrice}
+              onChange={(e) => setClosePrice(e.target.value.replace(/[^\d.]/g, ""))}
+              inputMode="numeric"
+              placeholder="เช่น 3500000"
+              aria-label="ราคาปิด (บาท)"
+              className="num text-right"
+              autoFocus
+            />
+            <p className="text-label text-text-subtle">
+              บันทึกลงทะเบียนดีลที่ปิด (Last Match) พร้อมรายละเอียดทรัพย์ที่ลูกค้าสนใจ —
+              ถ้ายังไม่รู้ตัวเลขตอนนี้ ให้เปลี่ยนสเตจทีหลังตอนรู้ราคา
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Potential">
             <select value={f.potential} onChange={(e) => set({ potential: e.target.value })} className={field}>

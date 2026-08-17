@@ -14,6 +14,8 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
+import { useRouter } from "next/navigation";
+import { setMatchPrice } from "@/lib/mutations/lastMatch";
 import { SortHeader, useSort } from "@/components/ui/SortHeader";
 import { compareValues, orderIndex } from "@/lib/sort";
 import { formatBaht, formatDate } from "@/lib/format";
@@ -38,6 +40,9 @@ const SORT_VALUE: Record<string, (m: LastMatch) => number | string | null> = {
 };
 
 export function LastMatchBrowser({ matches }: { matches: LastMatch[] }) {
+  const router = useRouter();
+  const [, startRefresh] = React.useTransition();
+  const refresh = React.useCallback(() => startRefresh(() => router.refresh()), [router]);
   const [q, setQ] = React.useState("");
   const [close, setClose] = React.useState<"all" | CloseType>("all");
   const { sort, onSort } = useSort({ key: "date", dir: "desc" });
@@ -51,6 +56,10 @@ export function LastMatchBrowser({ matches }: { matches: LastMatch[] }) {
   // The client-side re-filter this replaced compared seed user ids against seed employee
   // codes; with real sessions it matched nothing and would have blanked the table.
   const scope = matchScope(can);
+  // Back-filling a closing price is the whole reason this page is editable: all 56 imported
+  // deals arrived with none, and that single blank column is what keeps the dashboard
+  // parked. Writing is gated on lastmatch.add, matching the table's policies.
+  const canEditPrice = can("lastmatch.add") || can("roles.manage");
 
   const query = q.trim().toLowerCase();
   const filtered = matches
@@ -166,7 +175,11 @@ export function LastMatchBrowser({ matches }: { matches: LastMatch[] }) {
                     {m.bed != null || m.bath != null ? `${m.bed ?? "—"}/${m.bath ?? "—"}` : "—"}
                   </TD>
                   <TD className="num text-right font-semibold whitespace-nowrap">
-                    {formatBaht(m.last_match_price)}
+                    {canEditPrice ? (
+                      <PriceCell match={m} onSaved={refresh} />
+                    ) : (
+                      formatBaht(m.last_match_price)
+                    )}
                   </TD>
                   <TD>
                     {m.close_type ? (
@@ -186,5 +199,62 @@ export function LastMatchBrowser({ matches }: { matches: LastMatch[] }) {
         </CardContent>
       )}
     </Card>
+  );
+}
+
+/**
+ * The price, editable in place.
+ *
+ * Committed on blur rather than per keystroke — "35" is not a price, and this number feeds
+ * the revenue figures. Shows "—" until one exists so a blank reads as missing rather than
+ * as zero.
+ */
+function PriceCell({ match, onSaved }: { match: LastMatch; onSaved: () => void }) {
+  const [value, setValue] = React.useState(
+    match.last_match_price != null ? String(match.last_match_price) : ""
+  );
+  const [busy, setBusy] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => {
+    setValue(match.last_match_price != null ? String(match.last_match_price) : "");
+  }, [match.last_match_price]);
+
+  const commit = async () => {
+    const raw = value.replace(/[^\d.]/g, "");
+    const next = raw === "" ? null : Number(raw);
+    if (next === match.last_match_price) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      const res = await setMatchPrice(match.last_match_id, next, match.last_match_remark);
+      if (!res.ok) {
+        setFailed(true);
+        setValue(match.last_match_price != null ? String(match.last_match_price) : "");
+      } else {
+        onSaved();
+      }
+    } catch {
+      setFailed(true);
+      setValue(match.last_match_price != null ? String(match.last_match_price) : "");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Input
+      value={value}
+      disabled={busy}
+      onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ""))}
+      onBlur={() => void commit()}
+      inputMode="numeric"
+      placeholder="—"
+      aria-label={`ราคาปิดของ ${match.project_name ?? match.last_match_id}`}
+      className={cn(
+        "num text-right h-8 w-32",
+        failed && "border-red",
+        match.last_match_price == null && "text-text-subtle"
+      )}
+    />
   );
 }

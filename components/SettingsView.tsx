@@ -5,7 +5,7 @@ import { ShieldCheck, Users, Map, Home, ListChecks, Activity, Target, Info, Lock
 import type { LucideIcon } from "lucide-react";
 import { type Zone } from "@/lib/zones";
 import { RolesManager } from "@/components/RolesManager";
-import { TeamsManager } from "@/components/TeamsManager";
+import { TeamsManager, type TeamRow } from "@/components/TeamsManager";
 import { ZonesAdmin } from "@/components/ZonesAdmin";
 import {
   PropertyTypesManager,
@@ -64,6 +64,7 @@ export function SettingsView({
   actionUsage,
   propertyTypeCodes,
   rbac,
+  teams,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
@@ -79,6 +80,8 @@ export function SettingsView({
   propertyTypeCodes: Record<string, string>;
   /** Roles, the permission catalogue and who holds what. */
   rbac: RbacConfig;
+  /** Sales teams — empty until the CEO names them. */
+  teams: TeamRow[];
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
@@ -131,7 +134,12 @@ export function SettingsView({
         {section === "teams" && (
           <>
             <SectionHeader title="ทีมขาย" desc="สร้างทีม กำหนดหัวหน้า เป้ารายได้ และมอบหมายเซลเข้าทีม · จัดการโดย CEO" />
-            <TeamsManager employees={employees} />
+            <Note>
+              ทีมไม่ใช่แค่ป้ายชื่อ — ขอบเขต “ทีม” ของทั้งระบบมาจากตรงนี้ ตราบใดที่ยังไม่มีทีม
+              <span className="text-text"> ทุกคนรวมทั้ง CEO จะเห็น “ทีม” เป็นตัวเองคนเดียว</span>{" "}
+              (คอลัมน์กิจกรรมในหน้าทีมขึ้น “—” · ตั้งเป้าให้ลูกทีมไม่ได้ · แดชบอร์ดทีมทำไม่ได้)
+            </Note>
+            <TeamsManager teams={teams} employees={employees} />
           </>
         )}
         {section === "zones" && <ZonesSection zones={zones} employees={employees} />}

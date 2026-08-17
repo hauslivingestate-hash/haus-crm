@@ -480,6 +480,41 @@ export async function getEmployees(): Promise<Employee[]> {
   });
 }
 
+/**
+ * Sales teams and their members (ตั้งค่า → ทีมขาย).
+ *
+ * Membership is `main_1_hr.team_id`, not a join table — one team per person, which is what
+ * `visible_employee_codes()` assumes when it resolves "team" scope.
+ */
+export async function getTeams(): Promise<
+  { id: string; name: string; leaderCode: string | null; revenueGoal: number | null; memberCodes: string[] }[]
+> {
+  const supabase = await createClient();
+  const [teams, members] = await Promise.all([
+    supabase.from("teams").select("id,name,leader_code,revenue_goal,sort_order").order("sort_order"),
+    supabase.from("main_1_hr").select("employee_code,team_id").not("team_id", "is", null),
+  ]);
+  if (teams.error) throw new Error(`อ่านข้อมูลทีมไม่สำเร็จ: ${teams.error.message}`);
+
+  const byTeam = new Map<string, string[]>();
+  for (const m of (members.data ?? []) as { employee_code: string; team_id: string }[]) {
+    byTeam.set(m.team_id, [...(byTeam.get(m.team_id) ?? []), m.employee_code]);
+  }
+  return ((teams.data ?? []) as {
+    id: string;
+    name: string;
+    leader_code: string | null;
+    revenue_goal: number | null;
+  }[]).map((t) => ({
+    id: t.id,
+    name: t.name,
+    leaderCode: t.leader_code,
+    // numeric arrives as a string over PostgREST.
+    revenueGoal: t.revenue_goal == null ? null : Number(t.revenue_goal),
+    memberCodes: byTeam.get(t.id) ?? [],
+  }));
+}
+
 // ── RBAC (ตั้งค่า → บทบาท & สิทธิ์) ──────────────────────────────────────────
 
 export interface RbacRole {

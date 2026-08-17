@@ -21,6 +21,15 @@ export const STAGES: StageMeta[] = [
   { key: "Win",     th: "ปิดได้",         dot: "bg-dot-green" },
 ];
 
+/**
+ * Stages that mean the deal is done and a price exists.
+ *
+ * Both are "closed" in the sheet's vocabulary — Close is the contract, Win is the transfer —
+ * and either one is the point at which someone knows the number. Reaching either without a
+ * price is what left all 56 imported deals blank.
+ */
+export const CLOSED_STAGES = ["Close", "Win"];
+
 export const STAGE_MAP: Record<string, StageMeta> = Object.fromEntries(
   STAGES.map((s) => [s.key, s])
 );
