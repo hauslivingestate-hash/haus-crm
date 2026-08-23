@@ -1,45 +1,40 @@
 "use client";
 
 import * as React from "react";
-import {
-  defaultTemplate,
-  defaultTemplateMap,
-  splitKey,
-  type CopyTemplate,
-} from "@/lib/listingCopy";
+import { defaultTemplateMap, type CopyTemplate } from "@/lib/listingCopy";
 
-// Shared LIVE store for the ad-copy ("คำประกาศโฆษณา") templates. Both the Settings matrix editor
-// (write) and the listing "สร้างคำโฆษณา" drawer (read) use it, so an edit in Settings changes the
-// generated copy everywhere. Seeded from the code defaults (lib/listingCopy.ts) — mirrors the
-// MasterDataProvider / ChecklistProvider pattern. In-memory, design-first, resets on reload.
-// Wire later = a `listing_templates` table of overrides keyed grade|type.
+// The ad-copy ("คำประกาศโฆษณา") templates, as the whole app sees them: the code defaults from
+// lib/listingCopy.ts with any saved overrides laid on top.
+//
+// READ-ONLY on purpose. This used to be a live store the Settings editor wrote into, which
+// meant an edit changed the generated copy everywhere the moment it was typed — and vanished
+// on reload. Now `listing_copy_template` holds the overrides, the editor saves to it and
+// refreshes, and this provider only distributes what the server sent. There is no longer a
+// state in which the app is generating copy from something the database does not have.
 
 interface CopyTemplatesValue {
   templates: Record<string, CopyTemplate>;
-  setTemplate: (key: string, patch: Partial<CopyTemplate>) => void;
-  resetTemplate: (key: string) => void;
+  /** Which combos are stored overrides — the editor marks them and enables คืนค่าเริ่มต้น. */
+  overriddenKeys: Set<string>;
 }
 
 const Ctx = React.createContext<CopyTemplatesValue | null>(null);
 
-export function CopyTemplatesProvider({ children }: { children: React.ReactNode }) {
-  const [templates, setTemplates] = React.useState<Record<string, CopyTemplate>>(() =>
-    defaultTemplateMap()
+export function CopyTemplatesProvider({
+  overrides = {},
+  children,
+}: {
+  /** Saved rows only — usually partial, and empty on a fresh install. */
+  overrides?: Record<string, CopyTemplate>;
+  children: React.ReactNode;
+}) {
+  const value = React.useMemo<CopyTemplatesValue>(
+    () => ({
+      templates: { ...defaultTemplateMap(), ...overrides },
+      overriddenKeys: new Set(Object.keys(overrides)),
+    }),
+    [overrides]
   );
-
-  const setTemplate = React.useCallback(
-    (key: string, patch: Partial<CopyTemplate>) =>
-      setTemplates((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } })),
-    []
-  );
-
-  const resetTemplate = React.useCallback(
-    (key: string) =>
-      setTemplates((prev) => ({ ...prev, [key]: defaultTemplate(...splitKey(key)) })),
-    []
-  );
-
-  const value: CopyTemplatesValue = { templates, setTemplate, resetTemplate };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

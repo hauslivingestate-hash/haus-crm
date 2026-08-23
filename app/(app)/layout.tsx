@@ -18,6 +18,7 @@ import {
   getSalesRanks,
   getNotifications,
   getActivityFeed,
+  getCopyTemplateOverrides,
 } from "@/lib/queries";
 import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
 
@@ -39,18 +40,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // seeds — which is right for design mode, where nothing is written anyway.
   // Leave is loaded here rather than on /leave alone: แผนวันนี้ shows an "on leave today"
   // banner from the same list, so both surfaces must see one queue.
-  const [lookups, agents, leaveRequests, leaveAllowances, salesRanks, notifications, activities] =
-    auth
-      ? await Promise.all([
-          getLookups(),
-          getAssignableAgents(),
-          getLeaveRequests(),
-          getLeaveAllowances(),
-          getSalesRanks(),
-          getNotifications(),
-          getActivityFeed(),
-        ])
-      : [undefined, [], [], undefined, undefined, [], []];
+  const [
+    lookups,
+    agents,
+    leaveRequests,
+    leaveAllowances,
+    salesRanks,
+    notifications,
+    activities,
+    copyOverrides,
+  ] = auth
+    ? await Promise.all([
+        getLookups(),
+        getAssignableAgents(),
+        getLeaveRequests(),
+        getLeaveAllowances(),
+        getSalesRanks(),
+        getNotifications(),
+        getActivityFeed(),
+        getCopyTemplateOverrides(),
+      ])
+    : [undefined, [], [], undefined, undefined, [], [], {}];
 
   return (
     <RbacProvider
@@ -67,7 +77,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* Inside RbacProvider — feeds/leads are scoped to the current viewer. */}
       <MasterDataProvider initial={lookups}>
         <ChecklistProvider>
-          <CopyTemplatesProvider>
+          <CopyTemplatesProvider overrides={copyOverrides}>
             <ProbationProvider initial={salesRanks}>
               <NotificationsProvider items={notifications}>
                 {/* Live activity log. Fed by Daily-Plan task completion — the +บันทึก FAB

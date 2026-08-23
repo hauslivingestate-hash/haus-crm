@@ -23,6 +23,7 @@ import type { AccountRow } from "@/lib/accounts";
 import type { Employee } from "@/lib/team";
 import type { AttachMode } from "@/lib/actions";
 import type { RbacConfig } from "@/lib/queries";
+import type { KpiTemplate } from "@/lib/masterdata";
 import { useRbac } from "@/components/RbacProvider";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -65,6 +66,7 @@ export function SettingsView({
   propertyTypeCodes,
   rbac,
   teams,
+  kpiTemplates,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
@@ -82,6 +84,8 @@ export function SettingsView({
   rbac: RbacConfig;
   /** Sales teams — empty until the CEO names them. */
   teams: TeamRow[];
+  /** KPI presets from `kpi_template`. */
+  kpiTemplates: KpiTemplate[];
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
@@ -171,8 +175,9 @@ export function SettingsView({
             />
             <Note>
               คำโฆษณาสร้างจากเทมเพลตเหล่านี้ โดยแทนค่า <code className="num">&lt;...&gt;</code> ด้วยข้อมูลของทรัพย์แต่ละรายการ
-              — ปุ่ม “สร้างคำโฆษณา” ในหน้าทรัพย์จะให้ Headline / โพสต์ / DDproperty พร้อมคัดลอก{" "}
-              <span className="text-amber">⚠️ ส่วนนี้ยังไม่มีตารางเก็บ — แก้แล้วรีเฟรชจะหาย</span>
+              — ปุ่ม “สร้างคำโฆษณา” ในหน้าทรัพย์จะให้ Headline / โพสต์ / DDproperty พร้อมคัดลอก ·
+              ช่องที่ยังไม่เคยแก้จะใช้ค่าตั้งต้นของระบบ (จุดสีส้ม = แก้แล้ว) กด
+              <span className="text-text"> คืนค่าเริ่มต้น</span> เพื่อกลับไปใช้ค่าตั้งต้น
             </Note>
             <CopyTemplateEditor />
           </>
@@ -226,10 +231,12 @@ export function SettingsView({
               desc="เทมเพลตเป้าหมายที่หัวหน้าใช้ตั้งเป้าให้ทีม (เชื่อมกับกิจกรรม/ไปป์ไลน์)"
             />
             <Note>
-              <span className="text-amber">⚠️ ส่วนนี้ยังไม่มีตารางเก็บ — แก้แล้วรีเฟรชจะหาย</span> ·
-              การตั้งเป้าจริงตอนนี้ทำได้ที่หน้า <span className="text-text">แผนวันนี้</span>
+              เป็นชุดเป้าหมายสำเร็จรูปให้หัวหน้าหยิบไปตั้งให้ลูกทีม · แก้แล้วต้องกด
+              <span className="text-text"> บันทึกเทมเพลต</span> ท้ายรายการ ·
+              <span className="text-amber"> ยังตั้งเป้าให้คนอื่นไม่ได้จนกว่า CEO จะตั้งทีม</span> —
+              ตอนนี้ตั้งเป้าของตัวเองได้ที่หน้า <span className="text-text">แผนวันนี้</span>
             </Note>
-            <KpiTemplatesManager actionTypes={actionTypes} />
+            <KpiTemplatesManager actionTypes={actionTypes} templates={kpiTemplates} />
           </>
         )}
         {section === "ranks" && (

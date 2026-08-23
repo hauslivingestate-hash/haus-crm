@@ -1,15 +1,16 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { X, RotateCcw, Pencil } from "lucide-react";
 import { useCopyTemplates } from "@/components/CopyTemplatesProvider";
+import { saveCopyTemplate, resetCopyTemplate } from "@/lib/mutations/copyTemplates";
 import {
   COPY_GRADES,
   COPY_TYPES,
   COPY_PLACEHOLDERS,
   comboKey,
   splitKey,
-  isDefaultTemplate,
   type CopyTemplate,
 } from "@/lib/listingCopy";
 import { Card } from "@/components/ui/Card";
@@ -17,14 +18,18 @@ import { cn } from "@/lib/cn";
 
 // Settings ▸ คำโฆษณา (gated copy.manage). A Grade × Type matrix; each cell opens an editor with
 // three fields — Headline / Normal (FB·LV·PropertyHub) / DDproperty — plus placeholder chips that
-// insert <tokens> at the cursor. An orange dot marks combos edited away from the code default.
-// Shares CopyTemplatesProvider so edits change generated copy everywhere. Design-first: in-memory.
+// insert <tokens> at the cursor. An orange dot marks combos saved away from the code default.
+//
+// The sheet edits a local draft and writes on บันทึก. The nine combos are not all stored:
+// `listing_copy_template` holds only the ones somebody changed, so คืนค่าเริ่มต้น deletes the
+// row rather than writing today's default into it — which keeps that combo following the code
+// default as it improves.
 
 const field =
   "w-full px-3 py-2 rounded-md border border-border-strong bg-surface text-body text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y";
 
 export function CopyTemplateEditor() {
-  const { templates } = useCopyTemplates();
+  const { templates, overriddenKeys } = useCopyTemplates();
   const [editing, setEditing] = React.useState<string | null>(null);
 
   return (
@@ -45,7 +50,7 @@ export function CopyTemplateEditor() {
             <div className="px-3 py-3 text-body font-medium flex items-center">{g.label}</div>
             {COPY_TYPES.map((t) => {
               const key = comboKey(g.key, t.key);
-              const edited = !isDefaultTemplate(key, templates[key]);
+              const edited = overriddenKeys.has(key);
               return (
                 <button
                   key={t.key}
@@ -72,12 +77,44 @@ export function CopyTemplateEditor() {
 }
 
 function EditSheet({ comboKey: key, onClose }: { comboKey: string; onClose: () => void }) {
-  const { templates, setTemplate, resetTemplate } = useCopyTemplates();
-  const tpl = templates[key];
+  const router = useRouter();
+  const { templates, overriddenKeys } = useCopyTemplates();
+  const [tpl, setTpl] = React.useState<CopyTemplate>(templates[key]);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [pending, start] = React.useTransition();
   const [grade, type] = splitKey(key);
   const gradeLabel = COPY_GRADES.find((g) => g.key === grade)?.label;
   const typeLabel = COPY_TYPES.find((t) => t.key === type)?.label;
-  const edited = !isDefaultTemplate(key, tpl);
+  const edited = overriddenKeys.has(key);
+  const working = busy || pending;
+
+  const setTemplate = (_k: string, patch: Partial<CopyTemplate>) =>
+    setTpl((prev) => ({ ...prev, ...patch }));
+
+  // Always try/catch: a rejected server action is not a { ok: false } result, and swallowing
+  // it would close the sheet on a save that never happened.
+  const run = async (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fn();
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      // Hold busy until the refresh lands, so the matrix behind the sheet is already
+      // showing the saved state when it closes.
+      start(() => {
+        router.refresh();
+        onClose();
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Track which field is focused so a placeholder chip inserts into the right textarea at cursor.
   const refs = {
@@ -186,16 +223,23 @@ function EditSheet({ comboKey: key, onClose }: { comboKey: string; onClose: () =
           />
         </FieldLabel>
 
+        {error && (
+          <div className="rounded-md border border-red/30 bg-red-bg/50 p-2.5 text-small text-red">
+            {error}
+          </div>
+        )}
+
         <div className="flex items-center gap-2 mt-1">
           <button
-            onClick={onClose}
-            className="flex-1 h-10 rounded-md bg-accent text-text-onaccent font-medium hover:bg-accent-hover transition-colors"
+            onClick={() => void run(() => saveCopyTemplate(key, tpl))}
+            disabled={working}
+            className="flex-1 h-10 rounded-md bg-accent text-text-onaccent font-medium hover:bg-accent-hover transition-colors disabled:opacity-60 disabled:pointer-events-none"
           >
-            เสร็จสิ้น
+            {working ? "กำลังบันทึก…" : "บันทึก"}
           </button>
           <button
-            onClick={() => resetTemplate(key)}
-            disabled={!edited}
+            onClick={() => void run(() => resetCopyTemplate(key))}
+            disabled={!edited || working}
             className="h-10 px-3 rounded-md border border-border text-text-muted hover:bg-surface-2 transition-colors disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5"
             title="คืนค่าเริ่มต้น"
           >

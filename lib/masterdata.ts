@@ -22,8 +22,12 @@ export const POTENTIALS: string[] = ["Exclusive", "A List", "Normal"];
 export type TemplateKind = "count" | "baht" | "check";
 export type TemplateSource = "activity" | "pipeline" | "manual";
 
+// The metric templates a manager picks from when assigning monthly targets — the
+// definitions behind the Momentum targets (lib/momentum.ts). Rows live in `kpi_template`;
+// the seed there matches the list this file used to hold.
 export interface KpiTemplate {
-  id: string;
+  /** DB-generated. null = a row the CEO just added that has not been saved yet. */
+  id: number | null;
   label: string;
   kind: TemplateKind;
   source: TemplateSource;
@@ -31,17 +35,6 @@ export interface KpiTemplate {
   activityType?: string;
   defaultTarget: number;
 }
-
-// The metric templates a manager picks from when assigning monthly targets — the
-// definitions behind the Momentum targets (lib/momentum.ts).
-export const KPI_TEMPLATES: KpiTemplate[] = [
-  { id: "kt_call", label: "โทรหาลูกค้า", kind: "count", source: "activity", activityType: "Call", defaultTarget: 30 },
-  { id: "kt_show", label: "พาชม", kind: "count", source: "activity", activityType: "Show", defaultTarget: 10 },
-  { id: "kt_owner", label: "เยี่ยมเจ้าของ", kind: "count", source: "activity", activityType: "Owner Visit", defaultTarget: 12 },
-  { id: "kt_reels", label: "ถ่าย Reels", kind: "count", source: "activity", activityType: "Reels", defaultTarget: 6 },
-  { id: "kt_win", label: "ปิดการขาย", kind: "count", source: "pipeline", defaultTarget: 3 },
-  { id: "kt_comm", label: "คอมมิชชั่น", kind: "baht", source: "pipeline", defaultTarget: 500000 },
-];
 
 export const KIND_LABEL: Record<TemplateKind, string> = {
   count: "นับจำนวน",

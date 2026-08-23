@@ -1,6 +1,6 @@
 import { Topbar } from "@/components/Topbar";
 import { SettingsView } from "@/components/SettingsView";
-import { getListings, getEmployees, getZones, getActionTypes, getActionUsage, getPropertyTypeCodes, getRbacConfig, getTeams } from "@/lib/queries";
+import { getListings, getEmployees, getZones, getActionTypes, getActionUsage, getPropertyTypeCodes, getRbacConfig, getTeams, getKpiTemplates } from "@/lib/queries";
 import { getAccounts } from "@/lib/accounts";
 
 export default async function SettingsPage() {
@@ -13,7 +13,7 @@ export default async function SettingsPage() {
     propertyTypeUsage[l.property_type] = (propertyTypeUsage[l.property_type] ?? 0) + 1;
   }
 
-  const [accounts, employees, zones, actionTypes, actionUsage, propertyTypeCodes, rbac, teams] =
+  const [accounts, employees, zones, actionTypes, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates] =
     await Promise.all([
     getAccounts(),
     getEmployees(),
@@ -23,6 +23,7 @@ export default async function SettingsPage() {
     getPropertyTypeCodes(),
     getRbacConfig(),
     getTeams(),
+    getKpiTemplates(),
   ]);
 
   return (
@@ -39,6 +40,7 @@ export default async function SettingsPage() {
           propertyTypeCodes={propertyTypeCodes}
           rbac={rbac}
           teams={teams}
+          kpiTemplates={kpiTemplates}
         />
       </div>
     </>

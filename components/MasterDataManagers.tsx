@@ -19,13 +19,13 @@ import {
   type LookupTable,
 } from "@/lib/mutations/reference";
 import {
-  KPI_TEMPLATES,
   KIND_LABEL,
   SOURCE_LABEL,
   type KpiTemplate,
   type TemplateKind,
   type TemplateSource,
 } from "@/lib/masterdata";
+import { saveKpiTemplates } from "@/lib/mutations/kpiTemplates";
 import { TAG_TONE_CLASS, TAG_TONE_ORDER, type LeadTag, type TagTone } from "@/lib/tags";
 import { cn } from "@/lib/cn";
 
@@ -506,19 +506,43 @@ export function ActionTypesManager({
 }
 
 // ---- KPI target templates ---------------------------------------------------
-// Loggable actions only — a KPI on the free-note action makes no sense (same rule as
-// the probation rank editor).
-// ⚠️ NO TABLE YET. Everything else on this screen writes to the database; this one still
-// edits React state, so a template added here is gone on reload. Left visible rather than
-// hidden because the shape is what a `kpi_template` table will need — but the section says
-// so, and nothing reads these templates yet.
+// Settings ▸ เป้าหมาย KPI (gated masterdata.govern — CEO). The presets a leader picks from
+// when setting a month's targets; each row is the shape of one `targets` row minus the
+// person and the month.
+//
+// Edited as a draft and committed with บันทึก, like the probation ladder: switching a row's
+// source to กิจกรรม leaves it without an action for a moment, and `kpi_template` refuses that
+// combination outright. Saving per keystroke would surface it as an error mid-typing.
+
+/** A draft row. `key` is client-only — a new row has no id until the DB gives it one. */
+type KpiDraft = KpiTemplate & { key: string };
 
 export function KpiTemplatesManager({
   actionTypes = [],
+  templates = [],
 }: {
   actionTypes?: { name: string; group: string }[];
+  templates?: KpiTemplate[];
 }) {
-  const [rows, setRows] = React.useState<KpiTemplate[]>(KPI_TEMPLATES);
+  const router = useRouter();
+  const toDraft = React.useCallback(
+    (list: KpiTemplate[]): KpiDraft[] =>
+      list.map((t, i) => ({ ...t, key: t.id != null ? `k${t.id}` : `new_${i}` })),
+    []
+  );
+  const [rows, setRows] = React.useState<KpiDraft[]>(() => toDraft(templates));
+  const [seq, setSeq] = React.useState(1);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [pending, start] = React.useTransition();
+
+  // The saved version, for the dirty flag and for ยกเลิกการแก้ไข.
+  const saved = React.useMemo(() => JSON.stringify(templates), [templates]);
+  const dirty = React.useMemo(
+    () => JSON.stringify(rows.map(({ key, ...t }) => t)) !== saved,
+    [rows, saved]
+  );
+
   // Loggable actions only — a KPI on the free-note action makes no sense (same rule as the
   // probation rank editor). From `action_type`, not the seed.
   const actionOptions = React.useMemo(() => {
@@ -532,43 +556,65 @@ export function KpiTemplatesManager({
     return [...m].map(([group, items]) => ({ group, items }));
   }, [actionTypes]);
 
-  const addRow = () =>
+  const addRow = () => {
+    setSeq((n) => n + 1);
     setRows((rs) => [
       ...rs,
       {
-        id: `kt_new_${rs.length}`,
+        key: `new_${seq}`,
+        id: null,
         label: "เป้าหมายใหม่",
         kind: "count",
         source: "activity",
-        activityType: "Call",
+        activityType: actionOptions[0]?.items[0] ?? "Call",
         defaultTarget: 0,
       },
     ]);
+  };
 
-  const patch = (id: string, p: Partial<KpiTemplate>) =>
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...p } : r)));
+  const patch = (key: string, p: Partial<KpiTemplate>) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
 
   // Source switch keeps activityType coherent: activity gets a default action;
   // pipeline/manual carry none.
-  const setSource = (r: KpiTemplate, source: TemplateSource) =>
-    patch(r.id, {
+  const setSource = (r: KpiDraft, source: TemplateSource) =>
+    patch(r.key, {
       source,
-      activityType: source === "activity" ? (r.activityType ?? "Call") : undefined,
+      activityType:
+        source === "activity" ? (r.activityType ?? actionOptions[0]?.items[0] ?? "Call") : undefined,
     });
+
+  // Always try/catch: a rejected action is not a { ok: false } result, and an uncaught one
+  // leaves the bar reading "กำลังบันทึก…" with nothing saved and nothing said.
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await saveKpiTemplates(rows.map(({ key, ...t }) => t));
+      if (!res.ok) setError(res.error);
+      else start(() => router.refresh());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const working = busy || pending;
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-2.5">
         {rows.map((r) => (
-          <div key={r.id} className="flex items-center gap-2 flex-wrap">
+          <div key={r.key} className="flex items-center gap-2 flex-wrap">
             <Input
               value={r.label}
-              onChange={(e) => patch(r.id, { label: e.target.value })}
+              onChange={(e) => patch(r.key, { label: e.target.value })}
               className="flex-1 min-w-[140px]"
             />
             <Select
               value={r.kind}
-              onChange={(e) => patch(r.id, { kind: e.target.value as TemplateKind })}
+              onChange={(e) => patch(r.key, { kind: e.target.value as TemplateKind })}
               aria-label="ชนิดการวัด"
               className="w-28"
             >
@@ -590,8 +636,8 @@ export function KpiTemplatesManager({
                 ประเภทกิจกรรม / Rank เซลล์ใหม่). Only for activity-sourced templates. */}
             {r.source === "activity" && (
               <Select
-                value={r.activityType ?? "Call"}
-                onChange={(e) => patch(r.id, { activityType: e.target.value })}
+                value={r.activityType ?? ""}
+                onChange={(e) => patch(r.key, { activityType: e.target.value })}
                 aria-label="กิจกรรมที่นับ"
                 className="w-36"
               >
@@ -606,22 +652,49 @@ export function KpiTemplatesManager({
             )}
             <Input
               value={String(r.defaultTarget)}
-              onChange={(e) => patch(r.id, { defaultTarget: Number(e.target.value) || 0 })}
+              onChange={(e) => patch(r.key, { defaultTarget: Number(e.target.value) || 0 })}
               className="w-24 num text-right"
               inputMode="numeric"
               aria-label="เป้าเริ่มต้น"
             />
             <ConfirmDelete
-              onDelete={() => setRows((rs) => rs.filter((x) => x.id !== r.id))}
+              onDelete={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}
               confirmLabel={`ลบ “${r.label}”?`}
               warning="เป้าหมายที่ตั้งจากเทมเพลตนี้ไว้แล้วจะไม่ถูกลบ แต่หัวหน้าจะตั้งเป้าจากเทมเพลตนี้ใหม่ไม่ได้อีก"
             />
           </div>
         ))}
         <div className="pt-1">
-          <Button variant="secondary" size="sm" onClick={addRow}>
+          <Button variant="secondary" size="sm" onClick={addRow} disabled={working}>
             <Plus size={13} strokeWidth={2} /> เพิ่มเทมเพลตเป้าหมาย
           </Button>
+        </div>
+
+        {error && (
+          <div className="rounded-md border border-red/30 bg-red-bg/50 p-2.5 text-small text-red">
+            {error}
+          </div>
+        )}
+
+        {/* Commit bar — the list is a draft until this is pressed. */}
+        <div className="flex items-center gap-2 pt-2 border-t border-border">
+          <Button size="sm" onClick={() => void save()} disabled={!dirty || working}>
+            {working ? "กำลังบันทึก…" : "บันทึกเทมเพลต"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setRows(toDraft(templates));
+              setError(null);
+            }}
+            disabled={!dirty || working}
+          >
+            ยกเลิกการแก้ไข
+          </Button>
+          <span className="text-label text-text-subtle ml-1">
+            {dirty ? "มีการแก้ไขที่ยังไม่บันทึก" : "บันทึกแล้ว"}
+          </span>
         </div>
       </CardContent>
     </Card>

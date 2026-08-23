@@ -23,6 +23,24 @@ import {
   type Employee,
 } from "@/lib/team";
 import { todayISO } from "@/lib/momentum";
+import type { KpiTemplate, TemplateKind, TemplateSource } from "@/lib/masterdata";
+import { comboKey, type CopyGrade, type CopyTemplate, type CopyType } from "@/lib/listingCopy";
+
+type KpiRow = {
+  id: number;
+  label: string;
+  kind: TemplateKind;
+  source: TemplateSource;
+  activity_type: string | null;
+  default_target: number | string;
+};
+type CopyRow = {
+  grade: CopyGrade;
+  copy_type: CopyType;
+  headline: string;
+  normal_body: string;
+  dd_body: string;
+};
 import type { Zone, ZoneSale } from "@/lib/zones";
 import type { ActivityTally, RankCriterion, SalesRank } from "@/lib/probation";
 import type { Activity, AttachMode } from "@/lib/actions";
@@ -891,6 +909,48 @@ export async function getActionUsage(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const a of (data ?? []) as { action: string }[]) {
     out[a.action] = (out[a.action] ?? 0) + 1;
+  }
+  return out;
+}
+
+/** KPI presets a leader picks from when setting targets — `kpi_template`. */
+export async function getKpiTemplates(): Promise<KpiTemplate[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("kpi_template")
+    .select("id, label, kind, source, activity_type, default_target")
+    .order("sort");
+  if (error) throw new Error(`getKpiTemplates: ${error.message}`);
+  return ((data ?? []) as KpiRow[]).map((r) => ({
+    id: r.id,
+    label: r.label,
+    kind: r.kind,
+    source: r.source,
+    activityType: r.activity_type ?? undefined,
+    defaultTarget: Number(r.default_target),
+  }));
+}
+
+/**
+ * Ad-copy overrides — `listing_copy_template`.
+ *
+ * Only combos somebody has edited are stored, so this map is usually partial (and empty on a
+ * fresh install). The caller layers it over defaultTemplateMap(); the code default keeps
+ * covering everything else.
+ */
+export async function getCopyTemplateOverrides(): Promise<Record<string, CopyTemplate>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("listing_copy_template")
+    .select("grade, copy_type, headline, normal_body, dd_body");
+  if (error) throw new Error(`getCopyTemplateOverrides: ${error.message}`);
+  const out: Record<string, CopyTemplate> = {};
+  for (const r of (data ?? []) as CopyRow[]) {
+    out[comboKey(r.grade, r.copy_type)] = {
+      headline: r.headline,
+      normalBody: r.normal_body,
+      ddBody: r.dd_body,
+    };
   }
   return out;
 }
