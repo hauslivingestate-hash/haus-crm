@@ -152,9 +152,11 @@ export function ListingForm({
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        className="w-full sm:max-w-2xl bg-surface rounded-t-xl sm:rounded-xl border border-border shadow-pop p-5 flex flex-col gap-3 max-h-[92vh] overflow-y-auto"
+        className="w-full sm:max-w-2xl bg-surface rounded-t-xl sm:rounded-xl border border-border shadow-pop flex flex-col max-h-[92vh]"
       >
-        <div className="flex items-center justify-between">
+        {/* Header and footer stay put; only the middle scrolls, so บันทึกทรัพย์ is always
+            reachable no matter how many sections are open. */}
+        <div className="flex items-center justify-between gap-3 p-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2.5">
             <span className="size-9 rounded-md bg-accent-wash grid place-items-center shrink-0">
               <Home size={16} strokeWidth={2} className="text-accent" />
@@ -169,8 +171,9 @@ export function ListingForm({
           </button>
         </div>
 
+        <div className="overflow-y-auto p-4 flex flex-col gap-3">
         {/* Filed under whoever is adding it — shown, not chosen. */}
-        <div className="h-9 px-3 rounded-md border border-border bg-surface-2 text-body text-text-muted flex items-center gap-2">
+        <div className="shrink-0 h-9 px-3 rounded-md border border-border bg-surface-2 text-body text-text-muted flex items-center gap-2">
           <UserRound size={14} strokeWidth={1.75} className="text-text-subtle" />
           ผู้ดูแล: {ownerName}
           <span className="text-label text-text-subtle ml-auto">บันทึกในชื่อคุณอัตโนมัติ</span>
@@ -225,7 +228,9 @@ export function ListingForm({
           </div>
         )}
 
-        <div className="flex gap-2 justify-end pt-1">
+        </div>
+
+        <div className="flex gap-2 justify-end p-4 border-t border-border shrink-0">
           <button type="button" onClick={onClose} className="h-10 px-4 rounded-md border border-border-strong text-text-muted font-medium hover:bg-surface-2 transition-colors">
             ปิด
           </button>

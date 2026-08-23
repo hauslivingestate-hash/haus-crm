@@ -166,7 +166,11 @@ export function ListingSectionBlock({
   }).length;
 
   return (
-    <div className="rounded-md border border-border overflow-hidden">
+    // ⚠️ `shrink-0` is load-bearing. These sit in a flex column with a capped height, so
+    // without it flex shrinks each section to fit and the rounded corners' overflow-hidden
+    // CLIPS the fields that no longer fit — you could not see or scroll to them
+    // (Ben, 2026-08-23: "เปิดแล้วเห็นไม่หมด"). The form scrolls; the sections do not.
+    <div className="shrink-0 rounded-md border border-border overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
