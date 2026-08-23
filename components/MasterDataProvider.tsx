@@ -47,6 +47,14 @@ interface MasterDataValue {
   sellReasons: RefItem[];
   listingPotentials: RefItem[];
   zones: RefItem[];
+  listingStatuses: RefItem[];
+  listingTypes: RefItem[];
+  directions: RefItem[];
+  viewTypes: RefItem[];
+  unitPositions: RefItem[];
+  unitConditions: RefItem[];
+  inOutProjects: RefItem[];
+  priceRemarks: RefItem[];
 }
 
 const Ctx = React.createContext<MasterDataValue | null>(null);
@@ -63,6 +71,14 @@ export interface MasterDataInitial {
   sellReasons?: RefItem[];
   listingPotentials?: RefItem[];
   zones?: RefItem[];
+  listingStatuses?: RefItem[];
+  listingTypes?: RefItem[];
+  directions?: RefItem[];
+  viewTypes?: RefItem[];
+  unitPositions?: RefItem[];
+  unitConditions?: RefItem[];
+  inOutProjects?: RefItem[];
+  priceRemarks?: RefItem[];
   leadTags?: LeadTag[];
 }
 
@@ -107,6 +123,16 @@ export function MasterDataProvider({
   // is the longer one (5 rows vs the seed 3).
   const listingPotentials = seeded(initial?.listingPotentials, () => POTENTIALS.map((p) => ({ id: p, label: p })));
   const zones = initial?.zones ?? [];
+  // FK-backed listing vocabularies — empty without a session, which is correct:
+  // a select with no options is better than one offering values the FK will reject.
+  const listingStatuses = initial?.listingStatuses ?? [];
+  const listingTypes = initial?.listingTypes ?? [];
+  const directions = initial?.directions ?? [];
+  const viewTypes = initial?.viewTypes ?? [];
+  const unitPositions = initial?.unitPositions ?? [];
+  const unitConditions = initial?.unitConditions ?? [];
+  const inOutProjects = initial?.inOutProjects ?? [];
+  const priceRemarks = initial?.priceRemarks ?? [];
 
   const value: MasterDataValue = {
     propertyTypes,
@@ -125,6 +151,14 @@ export function MasterDataProvider({
     sellReasons,
     listingPotentials,
     zones,
+    listingStatuses,
+    listingTypes,
+    directions,
+    viewTypes,
+    unitPositions,
+    unitConditions,
+    inOutProjects,
+    priceRemarks,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

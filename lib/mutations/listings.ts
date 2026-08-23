@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth";
+import { LISTING_COLUMN_FIELDS, type ListingField } from "@/lib/listingFields";
 
 // First write path in the app (Phase 5 #1) — see the plan this followed for the full design
 // rationale. Every Phase 5 mutation after this one should copy this shape: resolve identity
@@ -18,48 +19,25 @@ type FieldGroup = "core" | "marketing";
 // the project) and reach the app only through v_main_listing —
 // `listing_name = main_3.project_name_thai`. Listing them here would send an UPDATE naming a
 // column that does not exist, which Postgres rejects outright.
-const LISTING_FIELDS: Record<string, { type: FieldType; group: FieldGroup }> = {
-  listing_status: { type: "text", group: "core" },
-  potential: { type: "text", group: "core" },
-  listing_type: { type: "text", group: "core" },
-  owner_focus: { type: "boolean", group: "core" },
-  zone: { type: "text", group: "core" },
-  in_out_project: { type: "text", group: "core" },
-  road_soi: { type: "text", group: "core" },
-  link_location: { type: "text", group: "core" },
-  property_type: { type: "text", group: "core" },
-  unit_no: { type: "text", group: "core" },
-  bed: { type: "integer", group: "core" },
-  bath: { type: "numeric", group: "core" },
-  area_rai: { type: "numeric", group: "core" },
-  area_ngan: { type: "numeric", group: "core" },
-  area_wa: { type: "numeric", group: "core" },
-  area_sqm: { type: "numeric", group: "core" },
-  floor: { type: "text", group: "core" },
-  building: { type: "text", group: "core" },
-  direction: { type: "text", group: "core" },
-  view_type: { type: "text", group: "core" },
-  unit_position: { type: "text", group: "core" },
-  parking: { type: "integer", group: "core" },
-  unit_condition: { type: "text", group: "core" },
-  asking_price: { type: "numeric", group: "core" },
-  rental_price: { type: "numeric", group: "core" },
-  old_price: { type: "numeric", group: "core" },
-  new_price: { type: "numeric", group: "core" },
-  update_remark: { type: "text", group: "core" },
-  price_remark: { type: "text", group: "core" },
-  owner_talk_last_date: { type: "date", group: "core" },
-  activity_comment: { type: "text", group: "core" },
-  remark: { type: "text", group: "core" },
-  sign: { type: "boolean", group: "marketing" },
-  vdo: { type: "boolean", group: "marketing" },
-  ddproperty_link: { type: "text", group: "marketing" },
-  livinginsider_link: { type: "text", group: "marketing" },
-  livinginsider_date: { type: "date", group: "marketing" },
-  propertyhub_link: { type: "text", group: "marketing" },
-  shorts_reels_link: { type: "text", group: "marketing" },
-  hometour_link: { type: "text", group: "marketing" },
+/**
+ * Column → type + permission group, DERIVED from lib/listingFields.ts.
+ *
+ * It used to be hand-written here as well as in each form, which is how เพิ่มทรัพย์ ended up
+ * offering 14 fields against แก้ไข's 44. One list now feeds both forms and both mutations.
+ */
+const FIELD_TYPE: Record<ListingField["kind"], FieldType> = {
+  text: "text",
+  textarea: "text",
+  select: "text",
+  integer: "integer",
+  numeric: "numeric",
+  boolean: "boolean",
+  date: "date",
 };
+
+const LISTING_FIELDS: Record<string, { type: FieldType; group: FieldGroup }> = Object.fromEntries(
+  LISTING_COLUMN_FIELDS.map((f) => [f.key, { type: FIELD_TYPE[f.kind], group: f.group }])
+);
 
 const OWNER_FIELDS = ["owner_name", "owner_phone", "owner_line"] as const;
 
@@ -290,21 +268,19 @@ export async function createProject(
   return { ok: true, projectId: data.project_id };
 }
 
+/**
+ * Everything the add form can send: the same column set the edit sheet writes, keyed by
+ * column name, plus the project it belongs to.
+ *
+ * Ben, 2026-08-23: the two screens must offer the same fields. They now share
+ * lib/listingFields.ts, so this takes a map rather than a hand-listed shape — adding a
+ * column there needs no change here.
+ */
 export interface NewListingInput {
+  /** main_3_property_detail.project_id — chosen or created in the form. */
   project_id: string;
-  property_type: string;
-  zone: string;
-  listing_status: string;
-  potential: string;
-  unit_no: string;
-  bed: string;
-  bath: string;
-  area_sqm: string;
-  asking_price: string;
-  rental_price: string;
-  owner_name: string;
-  owner_phone: string;
-  remark: string;
+  /** Column → value, as strings/booleans straight off the form. */
+  values: Record<string, string | boolean | null>;
 }
 
 export async function createListing(
@@ -316,25 +292,30 @@ export async function createListing(
   if (!(perms.has("listings.create") || perms.has("roles.manage"))) {
     return { ok: false, error: "ไม่มีสิทธิ์เพิ่มทรัพย์" };
   }
+  const str = (k: string) => {
+    const v = input.values[k];
+    return typeof v === "string" ? v.trim() : "";
+  };
 
   // The listing_id trigger builds the code from the property type's letter + the zone, and
   // RAISES if either is missing. Catch it here so the user gets a sentence instead of a
   // Postgres exception.
-  if (!input.property_type) return { ok: false, error: "ต้องเลือกประเภททรัพย์ (ใช้สร้างรหัสทรัพย์)" };
-  if (!input.zone) return { ok: false, error: "ต้องเลือกโซน (ใช้สร้างรหัสทรัพย์)" };
+  if (!str("property_type")) return { ok: false, error: "ต้องเลือกประเภททรัพย์ (ใช้สร้างรหัสทรัพย์)" };
+  if (!str("zone")) return { ok: false, error: "ต้องเลือกโซน (ใช้สร้างรหัสทรัพย์)" };
 
   const supabase = await createClient();
 
   // Owner first — the listing carries the FK, and create_owner exists because a fresh owner
   // row isn't visible to its own creator under main_2_owner's SELECT policy (Phase 5 #1).
   let ownerId: number | null = null;
-  const ownerName = input.owner_name.trim();
-  const ownerPhone = input.owner_phone.trim();
-  if (ownerName || ownerPhone) {
+  const ownerName = str("owner_name");
+  const ownerPhone = str("owner_phone");
+  const ownerLine = str("owner_line");
+  if (ownerName || ownerPhone || ownerLine) {
     const { data: newOwnerId, error: ownerError } = await supabase.rpc("create_owner", {
       p_name: ownerName || null,
       p_phone: ownerPhone || null,
-      p_line: null,
+      p_line: ownerLine || null,
     });
     if (ownerError || newOwnerId == null) {
       return { ok: false, error: ownerError?.message ?? "สร้างเจ้าของไม่สำเร็จ" };
@@ -342,36 +323,27 @@ export async function createListing(
     ownerId = newOwnerId as number;
   }
 
-  const num = (v: string) => {
-    const n = Number(v);
-    return v.trim() !== "" && Number.isFinite(n) ? n : null;
-  };
-  const int = (v: string) => {
-    const n = parseInt(v, 10);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  const row = {
+  const row: Record<string, unknown> = {
     project_id: input.project_id || null,
-    property_type: input.property_type,
-    zone: input.zone,
-    listing_status: input.listing_status || null,
-    potential: input.potential || null,
-    // ⚠️ NOT taken from the form any more (Ben, 2026-08-17): whoever creates the listing
-    // is the agent on it. The old dropdown let anyone file a listing under a colleague's
-    // name, and defaulted to "— ไม่ระบุ —", which left it owned by nobody until someone
-    // noticed. `effective_sale_id` still falls back to the zone's เจ้าภาพ if this is ever
-    // cleared later.
+    // ⚠️ NOT taken from the form (Ben, 2026-08-17): whoever creates the listing is the agent
+    // on it. The old dropdown let anyone file a listing under a colleague's name, and
+    // defaulted to "— ไม่ระบุ —", which left it owned by nobody until someone noticed.
     sale_id: auth.employeeCode,
-    unit_no: input.unit_no.trim() || null,
-    bed: int(input.bed),
-    bath: num(input.bath),
-    area_sqm: num(input.area_sqm),
-    asking_price: num(input.asking_price),
-    rental_price: num(input.rental_price),
-    remark: input.remark.trim() || null,
     owner_id: ownerId,
   };
+
+  // Same field map, same permission split and same coercion as updateListing — a marketing
+  // field sent by someone without `listings.marketing` is dropped rather than written.
+  for (const f of LISTING_COLUMN_FIELDS) {
+    if (!(f.key in input.values)) continue;
+    if (f.group === "marketing" && !(perms.has("listings.marketing") || perms.has("roles.manage"))) {
+      continue;
+    }
+    if (f.group === "core" && !(perms.has("listings.create") || perms.has("listings.edit") || perms.has("roles.manage"))) {
+      continue;
+    }
+    row[f.key] = coerce(FIELD_TYPE[f.kind], input.values[f.key] ?? null);
+  }
 
   const { data, error } = await supabase
     .from("main_4_listing_database")

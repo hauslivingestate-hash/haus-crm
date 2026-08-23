@@ -23,6 +23,14 @@ export interface Lookups {
   sellReasons: RefItem[];
   /** listing_potential — NOT the same vocabulary as a lead's `potential` (A/B/C/New Lead). */
   listingPotentials: RefItem[];
+  listingStatuses: RefItem[];
+  listingTypes: RefItem[];
+  directions: RefItem[];
+  viewTypes: RefItem[];
+  unitPositions: RefItem[];
+  unitConditions: RefItem[];
+  inOutProjects: RefItem[];
+  priceRemarks: RefItem[];
   /** Zones are id + name (ASK · อโศก) rather than a bare name, unlike the other lookups. */
   zones: RefItem[];
   leadTags: LeadTag[];
@@ -39,6 +47,17 @@ const NAME_TABLES = {
   purposes: "lead_purpose",
   sellReasons: "sell_reason",
   listingPotentials: "listing_potential",
+  // ⚠️ These eight are FOREIGN KEYS on main_4_listing_database, and both listing forms used
+  // to render them as free text — typing "ทิศเหนือ" into ทิศ failed the save with a raw
+  // Postgres FK error (found 2026-08-23). They have to come from their tables.
+  listingStatuses: "listing_status",
+  listingTypes: "listing_type",
+  directions: "direction",
+  viewTypes: "view_type",
+  unitPositions: "unit_position",
+  unitConditions: "unit_condition",
+  inOutProjects: "in_out_project",
+  priceRemarks: "price_remark",
 } as const;
 
 export async function getLookups(): Promise<Lookups> {

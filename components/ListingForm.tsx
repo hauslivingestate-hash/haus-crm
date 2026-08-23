@@ -5,12 +5,16 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { X, Check, Home, Search, Plus, AlertCircle, UserRound, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
-// LIVE vocabularies (DB-backed via getLookups) — same source the lead intake form uses, so a
-// value removed in Settings really disappears here too, and every option is FK-valid.
+import { useRbac } from "@/components/RbacProvider";
 import { useMasterData } from "@/components/MasterDataProvider";
 import { searchProjects, type ProjectHit } from "@/lib/search";
 import { createListing, createProject } from "@/lib/mutations/listings";
-import { emptyListing, NEW_LISTING_STATUSES, type NewListing } from "@/lib/newListing";
+import {
+  LISTING_SECTIONS,
+  emptyListingDraft,
+  type ListingFieldGroup,
+} from "@/lib/listingFields";
+import { ListingSectionBlock, type DraftValue } from "@/components/ListingFieldInput";
 import {
   ListingPhotoPicker,
   uploadStaged,
@@ -21,15 +25,21 @@ import { cn } from "@/lib/cn";
 const field =
   "w-full h-9 px-3 rounded-md border border-border-strong bg-surface text-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
-// "Add Listing" intake — twin of LeadForm (same bottom-sheet surface, widened for a longer
-// form).
+// เพิ่มทรัพย์ — the same field set as แก้ไขทรัพย์, from lib/listingFields.ts.
 //
-// Two constraints from the schema drive this form's shape:
-//   • There is no listing_name column. A listing's displayed name is its PROJECT's Thai name
-//     (v_main_listing joins it), so the project picker is what gives a listing a name — hence
-//     a real search over the 308 projects, plus inline creation for a village not yet on file.
-//   • The listing_id trigger builds the code from the property type's letter + the zone and
-//     RAISES without them, so both are required here rather than optional.
+// Ben, 2026-08-23: the two screens were missing thirty fields' worth of each other because
+// each kept its own hand-written list. They share one now, so a new column appears on both.
+//
+// Sections fold: ข้อมูลหลัก is open and the rest start closed. Forty-four inputs in one
+// column is unusable on a phone, and about a third of them (portal links, price history)
+// cannot be known at the moment a listing is sourced. A folded section that already holds
+// something says so in its header rather than hiding it.
+//
+// Still bespoke rather than generated:
+//   • the project picker — a search over 308 projects with inline creation, and the only
+//     thing that gives a listing a name (v_main_listing.listing_name = the project's Thai name)
+//   • the photo picker — files are staged and uploaded after the insert, since the storage
+//     path needs the listing_id the trigger mints
 export function ListingForm({
   open,
   onClose,
@@ -41,24 +51,26 @@ export function ListingForm({
   ownerName: string;
 }) {
   const router = useRouter();
-  const { propertyTypes, zones, listingPotentials } = useMasterData();
-  const [f, setF] = React.useState<NewListing>(() => emptyListing());
+  const { can } = useRbac();
+  const [draft, setDraft] = React.useState<Record<string, DraftValue>>(() => emptyListingDraft());
+  const [projectId, setProjectId] = React.useState("");
+  const [projectLabel, setProjectLabel] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [createdId, setCreatedId] = React.useState<string | null>(null);
-  // Photos are held here and uploaded after the insert — the storage path needs the
-  // listing_id, which the trigger does not mint until the row exists.
   const [photos, setPhotos] = React.useState<StagedPhoto[]>([]);
   const [progress, setProgress] = React.useState<string | null>(null);
   // Portal to <body>: this form is triggered from a button inside the backdrop-blur Topbar,
-  // and backdrop-filter establishes a containing block for position:fixed — without the portal
-  // the overlay would be positioned relative to the header, not the viewport.
+  // and backdrop-filter establishes a containing block for position:fixed — without the
+  // portal the overlay would be positioned relative to the header, not the viewport.
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
   React.useEffect(() => {
     if (open) {
-      setF(emptyListing());
+      setDraft(emptyListingDraft());
+      setProjectId("");
+      setProjectLabel("");
       setBusy(false);
       setError(null);
       setCreatedId(null);
@@ -81,54 +93,58 @@ export function ListingForm({
 
   if (!open || !mounted) return null;
 
-  const set = (patch: Partial<NewListing>) => setF((x) => ({ ...x, ...patch }));
+  const setField = (key: string, value: DraftValue) =>
+    setDraft((d) => ({ ...d, [key]: value }));
+
+  // Presentation only — the same split is enforced in createListing.
+  const canEditGroup = (group: ListingFieldGroup) =>
+    group === "marketing"
+      ? can("listings.marketing") || can("roles.manage")
+      : can("listings.create") || can("listings.edit") || can("roles.manage");
+
   // Type + zone are what the listing code is built from, so they are the real minimum.
-  const canSave = !!f.property_type && !!f.zone_id && !busy;
+  const canSave = !!draft.property_type && !!draft.zone && !busy;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSave) return;
     setBusy(true);
     setError(null);
-    const result = await createListing({
-      project_id: f.project_id,
-      property_type: f.property_type,
-      zone: f.zone_id,
-      listing_status: f.listing_status,
-      potential: f.potential,
-      unit_no: f.unit_no,
-      bed: f.bed,
-      bath: f.bath,
-      area_sqm: f.area_sqm,
-      asking_price: f.asking_price,
-      rental_price: f.rental_price,
-      owner_name: f.owner_name,
-      owner_phone: f.owner_phone,
-      remark: f.remark,
-    });
-    if (!result.ok) {
-      setBusy(false);
-      setError(result.error);
-      return;
-    }
 
-    // The listing is saved from here on. A photo failure costs photos, not the listing —
-    // saying "failed" would invite a duplicate submission.
-    if (photos.length) {
-      const up = await uploadStaged(result.listingId, photos, setProgress);
-      setProgress(null);
-      if (up.error) {
-        setError(
-          `บันทึกทรัพย์ ${result.listingId} แล้ว แต่อัปโหลดรูปได้ ${up.uploaded}/${photos.length} — เพิ่มรูปที่เหลือได้ที่หน้าทรัพย์ (${up.error})`
-        );
+    try {
+      const result = await createListing({ project_id: projectId, values: draft });
+      if (!result.ok) {
+        setError(result.error);
+        return;
       }
-    }
 
-    setBusy(false);
-    setCreatedId(result.listingId);
-    setF(emptyListing());
-    setPhotos([]);
-    router.refresh();
+      // The listing is saved from here on. A photo failure costs photos, not the listing —
+      // saying "failed" would invite a duplicate submission.
+      if (photos.length) {
+        const up = await uploadStaged(result.listingId, photos, setProgress);
+        setProgress(null);
+        if (up.error) {
+          setError(
+            `บันทึกทรัพย์ ${result.listingId} แล้ว แต่อัปโหลดรูปได้ ${up.uploaded}/${photos.length} — เพิ่มรูปที่เหลือได้ที่หน้าทรัพย์ (${up.error})`
+          );
+        }
+      }
+
+      setCreatedId(result.listingId);
+      setDraft(emptyListingDraft());
+      setProjectId("");
+      setProjectLabel("");
+      setPhotos([]);
+      router.refresh();
+    } catch (err) {
+      // A rejected server action is not the same as { ok: false }. Without this the form
+      // sat on "กำลังบันทึก…" with nothing saved and nothing said — which is exactly what
+      // it did the first time this rewrite was tested.
+      setError(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
   }
 
   return createPortal(
@@ -136,7 +152,7 @@ export function ListingForm({
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        className="w-full sm:max-w-2xl bg-surface rounded-t-xl sm:rounded-xl border border-border shadow-pop p-5 flex flex-col gap-4 max-h-[92vh] overflow-y-auto"
+        className="w-full sm:max-w-2xl bg-surface rounded-t-xl sm:rounded-xl border border-border shadow-pop p-5 flex flex-col gap-3 max-h-[92vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -153,109 +169,45 @@ export function ListingForm({
           </button>
         </div>
 
-        {/* ── ข้อมูลทรัพย์ ── */}
-        <Section title="ข้อมูลทรัพย์" first>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="ประเภททรัพย์ *">
-              <select value={f.property_type} onChange={(e) => set({ property_type: e.target.value })} className={field}>
-                <option value="">— เลือกประเภท —</option>
-                {propertyTypes.map((t) => (
-                  <option key={t.id} value={t.label}>{t.label}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="ทำเล / โซน *">
-              <select value={f.zone_id} onChange={(e) => set({ zone_id: e.target.value })} className={field}>
-                <option value="">— เลือกโซน —</option>
-                {zones.map((z) => (
-                  <option key={z.id} value={z.id}>{z.label}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
+        {/* Filed under whoever is adding it — shown, not chosen. */}
+        <div className="h-9 px-3 rounded-md border border-border bg-surface-2 text-body text-text-muted flex items-center gap-2">
+          <UserRound size={14} strokeWidth={1.75} className="text-text-subtle" />
+          ผู้ดูแล: {ownerName}
+          <span className="text-label text-text-subtle ml-auto">บันทึกในชื่อคุณอัตโนมัติ</span>
+        </div>
 
-          <Field label="โครงการ / หมู่บ้าน">
-            <ProjectCombobox
-              value={f.project_label}
-              propertyType={f.property_type}
-              zone={f.zone_id}
-              onPick={(projectId, label) => set({ project_id: projectId, project_label: label })}
-              onError={setError}
-            />
-            <span className="text-label text-text-subtle mt-0.5">
-              ชื่อทรัพย์ที่โชว์ในระบบคือชื่อโครงการ — ถ้าไม่เลือก ทรัพย์นี้จะไม่มีชื่อ
-            </span>
-          </Field>
-
-          <div className="grid grid-cols-4 gap-3">
-            <Field label="บ้านเลขที่ / ยูนิต"><Input value={f.unit_no} onChange={(e) => set({ unit_no: e.target.value })} /></Field>
-            <Field label="นอน"><Input value={f.bed} onChange={(e) => set({ bed: e.target.value })} inputMode="numeric" className="num" /></Field>
-            <Field label="น้ำ"><Input value={f.bath} onChange={(e) => set({ bath: e.target.value })} inputMode="numeric" className="num" /></Field>
-            <Field label="ตร.ม."><Input value={f.area_sqm} onChange={(e) => set({ area_sqm: e.target.value })} inputMode="decimal" className="num" /></Field>
-          </div>
-        </Section>
-
-        {/* ── ราคา ── */}
-        <Section title="ราคา">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="ราคาขาย (฿)">
-              <Input value={f.asking_price} onChange={(e) => set({ asking_price: e.target.value })} placeholder="เช่น 6500000" inputMode="numeric" className="num" />
-            </Field>
-            <Field label="ค่าเช่า / เดือน (฿)">
-              <Input value={f.rental_price} onChange={(e) => set({ rental_price: e.target.value })} placeholder="เช่น 25000" inputMode="numeric" className="num" />
-            </Field>
-          </div>
-          <p className="text-label text-text-subtle">ประเภทดีล (ขาย / เช่า / ทั้งคู่) กำหนดจากราคาที่กรอก</p>
-        </Section>
-
-        {/* ── การจัดการ & เจ้าของ ── */}
-        <Section title="การจัดการ & เจ้าของ">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Potential">
-              <select value={f.potential} onChange={(e) => set({ potential: e.target.value })} className={field}>
-                {listingPotentials.map((p) => (<option key={p.id} value={p.label}>{p.label}</option>))}
-              </select>
-            </Field>
-            <Field label="สถานะประกาศ">
-              <select value={f.listing_status} onChange={(e) => set({ listing_status: e.target.value })} className={field}>
-                {NEW_LISTING_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
-              </select>
-            </Field>
-          </div>
-
-          {/* No agent picker (Ben, 2026-08-17): the listing is filed under whoever is adding
-              it. The dropdown let one rep file a listing under another's name and defaulted
-              to "ไม่ระบุ", which left it owned by nobody. Shown, not chosen. */}
-          <Field label="ผู้ดูแล (เซล)">
-            <div className="h-9 px-3 rounded-md border border-border bg-surface-2 text-body text-text-muted flex items-center gap-2">
-              <UserRound size={14} strokeWidth={1.75} className="text-text-subtle" />
-              {ownerName}
-              <span className="text-label text-text-subtle ml-auto">บันทึกในชื่อคุณอัตโนมัติ</span>
-            </div>
-          </Field>
-
-          <ListingPhotoPicker photos={photos} onChange={setPhotos} disabled={busy} />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="ชื่อเจ้าของ">
-              <Input value={f.owner_name} onChange={(e) => set({ owner_name: e.target.value })} placeholder="ชื่อเจ้าของทรัพย์" />
-            </Field>
-            <Field label="เบอร์โทรเจ้าของ">
-              <Input value={f.owner_phone} onChange={(e) => set({ owner_phone: e.target.value })} placeholder="08x-xxx-xxxx" inputMode="tel" className="num" />
-            </Field>
-          </div>
-        </Section>
-
-        {/* ── หมายเหตุ ── */}
-        <Section title="หมายเหตุ">
-          <textarea
-            value={f.remark}
-            onChange={(e) => set({ remark: e.target.value })}
-            rows={2}
-            placeholder="รายละเอียดเพิ่มเติม / เงื่อนไข / จุดเด่น…"
-            className={cn(field, "h-auto py-2 resize-none")}
-          />
-        </Section>
+        {LISTING_SECTIONS.map((section) => (
+          <ListingSectionBlock
+            key={section.key}
+            section={section}
+            draft={draft}
+            onChange={setField}
+            canEditGroup={canEditGroup}
+            defaultOpen={section.openOnCreate}
+          >
+            {section.key === "basics" && (
+              <>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-label text-text-muted">โครงการ / หมู่บ้าน</span>
+                  <ProjectCombobox
+                    value={projectLabel}
+                    propertyType={String(draft.property_type ?? "")}
+                    zone={String(draft.zone ?? "")}
+                    onPick={(id, label) => {
+                      setProjectId(id);
+                      setProjectLabel(label);
+                    }}
+                    onError={setError}
+                  />
+                  <span className="text-label text-text-subtle">
+                    ชื่อทรัพย์ที่โชว์ในระบบคือชื่อโครงการ — ถ้าไม่เลือก ทรัพย์นี้จะไม่มีชื่อ
+                  </span>
+                </label>
+                <ListingPhotoPicker photos={photos} onChange={setPhotos} disabled={busy} />
+              </>
+            )}
+          </ListingSectionBlock>
+        ))}
 
         {progress && (
           <div className="rounded-md px-3 py-2 text-small border bg-surface-2 text-text-muted border-border inline-flex items-center gap-1.5">
