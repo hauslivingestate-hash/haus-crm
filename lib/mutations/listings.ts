@@ -296,7 +296,6 @@ export interface NewListingInput {
   zone: string;
   listing_status: string;
   potential: string;
-  sale_id: string;
   unit_no: string;
   bed: string;
   bath: string;
@@ -358,7 +357,12 @@ export async function createListing(
     zone: input.zone,
     listing_status: input.listing_status || null,
     potential: input.potential || null,
-    sale_id: input.sale_id || null,
+    // ⚠️ NOT taken from the form any more (Ben, 2026-08-17): whoever creates the listing
+    // is the agent on it. The old dropdown let anyone file a listing under a colleague's
+    // name, and defaulted to "— ไม่ระบุ —", which left it owned by nobody until someone
+    // noticed. `effective_sale_id` still falls back to the zone's เจ้าภาพ if this is ever
+    // cleared later.
+    sale_id: auth.employeeCode,
     unit_no: input.unit_no.trim() || null,
     bed: int(input.bed),
     bath: num(input.bath),

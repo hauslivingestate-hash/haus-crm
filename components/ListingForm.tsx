@@ -3,15 +3,19 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { X, Check, Home, Search, Plus, AlertCircle } from "lucide-react";
+import { X, Check, Home, Search, Plus, AlertCircle, UserRound, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 // LIVE vocabularies (DB-backed via getLookups) — same source the lead intake form uses, so a
 // value removed in Settings really disappears here too, and every option is FK-valid.
 import { useMasterData } from "@/components/MasterDataProvider";
-import type { AgentOption } from "@/components/LeadForm";
 import { searchProjects, type ProjectHit } from "@/lib/search";
 import { createListing, createProject } from "@/lib/mutations/listings";
 import { emptyListing, NEW_LISTING_STATUSES, type NewListing } from "@/lib/newListing";
+import {
+  ListingPhotoPicker,
+  uploadStaged,
+  type StagedPhoto,
+} from "@/components/ListingPhotoPicker";
 import { cn } from "@/lib/cn";
 
 const field =
@@ -29,11 +33,12 @@ const field =
 export function ListingForm({
   open,
   onClose,
-  agents,
+  ownerName,
 }: {
   open: boolean;
   onClose: () => void;
-  agents: AgentOption[];
+  /** Nickname of the signed-in person — the listing is filed under them, no picker. */
+  ownerName: string;
 }) {
   const router = useRouter();
   const { propertyTypes, zones, listingPotentials } = useMasterData();
@@ -41,6 +46,10 @@ export function ListingForm({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [createdId, setCreatedId] = React.useState<string | null>(null);
+  // Photos are held here and uploaded after the insert — the storage path needs the
+  // listing_id, which the trigger does not mint until the row exists.
+  const [photos, setPhotos] = React.useState<StagedPhoto[]>([]);
+  const [progress, setProgress] = React.useState<string | null>(null);
   // Portal to <body>: this form is triggered from a button inside the backdrop-blur Topbar,
   // and backdrop-filter establishes a containing block for position:fixed — without the portal
   // the overlay would be positioned relative to the header, not the viewport.
@@ -53,6 +62,8 @@ export function ListingForm({
       setBusy(false);
       setError(null);
       setCreatedId(null);
+      setPhotos([]);
+      setProgress(null);
     }
   }, [open]);
 
@@ -85,7 +96,6 @@ export function ListingForm({
       zone: f.zone_id,
       listing_status: f.listing_status,
       potential: f.potential,
-      sale_id: f.agent_id,
       unit_no: f.unit_no,
       bed: f.bed,
       bath: f.bath,
@@ -96,13 +106,28 @@ export function ListingForm({
       owner_phone: f.owner_phone,
       remark: f.remark,
     });
-    setBusy(false);
     if (!result.ok) {
+      setBusy(false);
       setError(result.error);
       return;
     }
+
+    // The listing is saved from here on. A photo failure costs photos, not the listing —
+    // saying "failed" would invite a duplicate submission.
+    if (photos.length) {
+      const up = await uploadStaged(result.listingId, photos, setProgress);
+      setProgress(null);
+      if (up.error) {
+        setError(
+          `บันทึกทรัพย์ ${result.listingId} แล้ว แต่อัปโหลดรูปได้ ${up.uploaded}/${photos.length} — เพิ่มรูปที่เหลือได้ที่หน้าทรัพย์ (${up.error})`
+        );
+      }
+    }
+
+    setBusy(false);
     setCreatedId(result.listingId);
     setF(emptyListing());
+    setPhotos([]);
     router.refresh();
   }
 
@@ -198,13 +223,18 @@ export function ListingForm({
             </Field>
           </div>
 
+          {/* No agent picker (Ben, 2026-08-17): the listing is filed under whoever is adding
+              it. The dropdown let one rep file a listing under another's name and defaulted
+              to "ไม่ระบุ", which left it owned by nobody. Shown, not chosen. */}
           <Field label="ผู้ดูแล (เซล)">
-            {/* Values are employee codes — sale_id is a foreign key, not a nickname. */}
-            <select value={f.agent_id} onChange={(e) => set({ agent_id: e.target.value })} className={field}>
-              <option value="">— ไม่ระบุ —</option>
-              {agents.map((a) => (<option key={a.employeeCode} value={a.employeeCode}>{a.nickname}</option>))}
-            </select>
+            <div className="h-9 px-3 rounded-md border border-border bg-surface-2 text-body text-text-muted flex items-center gap-2">
+              <UserRound size={14} strokeWidth={1.75} className="text-text-subtle" />
+              {ownerName}
+              <span className="text-label text-text-subtle ml-auto">บันทึกในชื่อคุณอัตโนมัติ</span>
+            </div>
           </Field>
+
+          <ListingPhotoPicker photos={photos} onChange={setPhotos} disabled={busy} />
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="ชื่อเจ้าของ">
@@ -227,6 +257,11 @@ export function ListingForm({
           />
         </Section>
 
+        {progress && (
+          <div className="rounded-md px-3 py-2 text-small border bg-surface-2 text-text-muted border-border inline-flex items-center gap-1.5">
+            <Loader2 size={14} strokeWidth={2} className="animate-spin" /> {progress}
+          </div>
+        )}
         {error && (
           <div className="rounded-md px-3 py-2 text-small border bg-red-bg text-red border-red/30 inline-flex items-start gap-1.5">
             <AlertCircle size={14} strokeWidth={2} className="mt-0.5 shrink-0" /> {error}

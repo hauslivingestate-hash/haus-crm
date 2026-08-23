@@ -22,8 +22,6 @@ export interface NewListing {
   rental_price: string;
   potential: string;
   listing_status: string;
-  /** employee_code (main_1_hr), NOT a nickname — sale_id is a foreign key. */
-  agent_id: string;
   owner_name: string;
   owner_phone: string;
   remark: string;
@@ -48,7 +46,6 @@ export function emptyListing(): NewListing {
     rental_price: "",
     potential: "Normal",
     listing_status: "Ready to Post",
-    agent_id: "",
     owner_name: "",
     owner_phone: "",
     remark: "",
