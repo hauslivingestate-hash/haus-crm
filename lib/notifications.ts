@@ -24,6 +24,10 @@ import {
   Target,
   Building2,
   TagIcon,
+  Clock,
+  CalendarOff,
+  Banknote,
+  ImageOff,
   type LucideIcon,
 } from "lucide-react";
 import { TH_MONTHS } from "@/lib/format";
@@ -34,7 +38,12 @@ export function nowISO(): string {
   return new Date().toISOString();
 }
 
-/** The `type` enum. Adding one = a new row in this union + NOTIFICATION_META. */
+/**
+ * The `type` enum. Adding one means THREE places, not two:
+ * this union, NOTIFICATION_META, and the `notifications_type_check` CHECK constraint in the
+ * database — the constraint is what actually rejects an unknown value (found 2026-08-23,
+ * when the first cron run failed on it).
+ */
 export type NotificationType =
   | "lead_assigned"
   | "lead_stage_changed"
@@ -42,7 +51,13 @@ export type NotificationType =
   | "task_due"
   | "target_milestone"
   | "listing_new_in_zone"
-  | "listing_price_changed";
+  | "listing_price_changed"
+  // Daily reminders (pg_cron → run_daily_notifications). Each is a once-a-day SUMMARY per
+  // person, never one per row: there are ~925 stale leads, and a per-row bell is a dead bell.
+  | "lead_stale"
+  | "leave_pending"
+  | "deal_missing_price"
+  | "listing_no_photo";
 
 export type NotificationEntity = "lead" | "listing" | "task" | "target";
 
@@ -76,6 +91,10 @@ export const NOTIFICATION_META: Record<
   target_milestone: { label: "เป้าหมาย", icon: Target, tone: "violet" },
   listing_new_in_zone: { label: "ทรัพย์ใหม่ในโซน", icon: Building2, tone: "blue" },
   listing_price_changed: { label: "ราคาเปลี่ยน", icon: TagIcon, tone: "amber" },
+  lead_stale: { label: "ลีดค้าง", icon: Clock, tone: "amber" },
+  leave_pending: { label: "ใบลารออนุมัติ", icon: CalendarOff, tone: "violet" },
+  deal_missing_price: { label: "ยังไม่กรอกราคาปิด", icon: Banknote, tone: "amber" },
+  listing_no_photo: { label: "ทรัพย์ยังไม่มีรูป", icon: ImageOff, tone: "blue" },
 };
 
 /** Where a notification navigates. Task/target have no detail route — they land on the
@@ -83,13 +102,16 @@ export const NOTIFICATION_META: Record<
 export function notificationHref(n: AppNotification): string | null {
   switch (n.entity) {
     case "lead":
-      return n.entityId ? `/leads/${n.entityId}` : null;
+      return n.entityId ? `/leads/${n.entityId}` : "/leads";
     case "listing":
-      return n.entityId ? `/listings/${n.entityId}` : null;
+      // A summary carries no entityId — send it to the list it is about.
+      return n.entityId ? `/listings/${n.entityId}` : "/listings";
     case "task":
-      return "/today";
+      // ใบลารออนุมัติ lands on the leave queue, not the daily plan.
+      return n.type === "leave_pending" ? "/leave" : "/today";
     case "target":
-      return "/today"; // targets/KPI progress live in the TargetsBoard on แผนวันนี้
+      // The missing-price summary is actionable on the ledger, not the plan.
+      return n.type === "deal_missing_price" ? "/last-match" : "/today";
     default:
       return null;
   }
