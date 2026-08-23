@@ -35,6 +35,8 @@ import {
   getStaffDirectory,
   getActivitiesForListing,
   getListingPhotos,
+  getListingChecklistProgress,
+  getRoleOptions,
 } from "@/lib/queries";
 import { ListingPhotoManager } from "@/components/ListingPhotoManager";
 import { getAuthContext } from "@/lib/auth";
@@ -86,6 +88,19 @@ export default async function ListingDetailPage({
   // Same set the photo table's own policies ask for.
   const canEditPhotos = !!auth?.permissions.some((p) =>
     ["listings.edit", "listings.marketing", "listings.create", "roles.manage"].includes(p)
+  );
+
+  // Checklist progress + the role roster for its responsibility chips. Loaded here rather
+  // than in a layout provider: holding every listing's ticks app-wide would mean fetching the
+  // whole company's checklist state on every page.
+  const [checklistProgress, roleOptions] = await Promise.all([
+    getListingChecklistProgress(listing.listing_id),
+    getRoleOptions(),
+  ]);
+  // Same set the checklist table's own policies ask for. Checklist work is cross-team, so
+  // this is deliberately wider than "the agent who owns this listing".
+  const canEditChecklist = !!auth?.permissions.some((p) =>
+    ["listings.edit", "listings.marketing", "checklists.manage", "roles.manage"].includes(p)
   );
 
   // Price move (Listings cols J → K). Only meaningful when BOTH sides are present.
@@ -372,7 +387,15 @@ export default async function ListingDetailPage({
             </Card>
 
             {/* Exclusive agreement window — renders only for Exclusive listings (null otherwise) */}
-            <ExclusiveAgreementCard listingId={listing.listing_id} potential={listing.potential} />
+            <ExclusiveAgreementCard
+              listingId={listing.listing_id}
+              potential={listing.potential}
+              agreement={{
+                start: listing.agreement_start ?? null,
+                end: listing.agreement_end ?? null,
+              }}
+              canEdit={canEditChecklist}
+            />
 
             {/* Project knowledge — links to the full project page */}
             <Card>
@@ -493,7 +516,13 @@ export default async function ListingDetailPage({
         </div>
 
         {/* Value-add checklist — full-width, last block. A-List / Exclusive only (null otherwise). */}
-        <ListingChecklist listingId={listing.listing_id} potential={listing.potential} />
+        <ListingChecklist
+          listingId={listing.listing_id}
+          potential={listing.potential}
+          progress={checklistProgress}
+          roles={roleOptions}
+          canEdit={canEditChecklist}
+        />
       </div>
     </>
   );

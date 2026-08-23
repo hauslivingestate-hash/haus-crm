@@ -24,6 +24,7 @@ import type { Employee } from "@/lib/team";
 import type { AttachMode } from "@/lib/actions";
 import type { RbacConfig } from "@/lib/queries";
 import type { KpiTemplate } from "@/lib/masterdata";
+import type { ChecklistTemplate } from "@/lib/checklists";
 import { useRbac } from "@/components/RbacProvider";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -67,6 +68,8 @@ export function SettingsView({
   rbac,
   teams,
   kpiTemplates,
+  checklistTemplates,
+  roleOptions,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
@@ -86,6 +89,10 @@ export function SettingsView({
   teams: TeamRow[];
   /** KPI presets from `kpi_template`. */
   kpiTemplates: KpiTemplate[];
+  /** Value-add checklist definitions. */
+  checklistTemplates: ChecklistTemplate[];
+  /** Roles a checklist step can be assigned to. */
+  roleOptions: { id: string; name: string }[];
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
@@ -161,10 +168,11 @@ export function SettingsView({
             />
             <Note>
               ทรัพย์ A-List / Exclusive จะแสดงเช็คลิสต์นี้อัตโนมัติในหน้าทรัพย์ ตั้งค่า “ใช้กับ” เป็น Exclusive
-              หรือ A-List (หรือทั้งคู่) เพื่อคุมว่าเทมเพลตไหนใช้กับระดับใด{" "}
-              <span className="text-amber">⚠️ ส่วนนี้ยังไม่มีตารางเก็บ — แก้แล้วรีเฟรชจะหาย</span>
+              หรือ A-List (หรือทั้งคู่) เพื่อคุมว่าเทมเพลตไหนใช้กับระดับใด · แก้แล้วต้องกด
+              <span className="text-text"> บันทึกเช็คลิสต์</span> ท้ายหน้า ·
+              ลบขั้นตอนออก = ความคืบหน้าของขั้นตอนนั้นในทุกทรัพย์หายไปด้วย
             </Note>
-            <ChecklistTemplatesManager />
+            <ChecklistTemplatesManager templates={checklistTemplates} roles={roleOptions} />
           </>
         )}
         {section === "copy" && (

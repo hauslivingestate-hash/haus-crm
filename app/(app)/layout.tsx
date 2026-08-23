@@ -19,6 +19,7 @@ import {
   getNotifications,
   getActivityFeed,
   getCopyTemplateOverrides,
+  getChecklistTemplates,
 } from "@/lib/queries";
 import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
 
@@ -49,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     notifications,
     activities,
     copyOverrides,
+    checklistTemplates,
   ] = auth
     ? await Promise.all([
         getLookups(),
@@ -59,8 +61,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         getNotifications(),
         getActivityFeed(),
         getCopyTemplateOverrides(),
+        getChecklistTemplates(),
       ])
-    : [undefined, [], [], undefined, undefined, [], [], {}];
+    : [undefined, [], [], undefined, undefined, [], [], {}, []];
 
   return (
     <RbacProvider
@@ -76,7 +79,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     >
       {/* Inside RbacProvider — feeds/leads are scoped to the current viewer. */}
       <MasterDataProvider initial={lookups}>
-        <ChecklistProvider>
+        <ChecklistProvider templates={checklistTemplates}>
           <CopyTemplatesProvider overrides={copyOverrides}>
             <ProbationProvider initial={salesRanks}>
               <NotificationsProvider items={notifications}>

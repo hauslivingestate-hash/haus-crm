@@ -1,6 +1,6 @@
 import { Topbar } from "@/components/Topbar";
 import { SettingsView } from "@/components/SettingsView";
-import { getListings, getEmployees, getZones, getActionTypes, getActionUsage, getPropertyTypeCodes, getRbacConfig, getTeams, getKpiTemplates } from "@/lib/queries";
+import { getListings, getEmployees, getZones, getActionTypes, getActionUsage, getPropertyTypeCodes, getRbacConfig, getTeams, getKpiTemplates, getChecklistTemplates, getRoleOptions } from "@/lib/queries";
 import { getAccounts } from "@/lib/accounts";
 
 export default async function SettingsPage() {
@@ -13,7 +13,7 @@ export default async function SettingsPage() {
     propertyTypeUsage[l.property_type] = (propertyTypeUsage[l.property_type] ?? 0) + 1;
   }
 
-  const [accounts, employees, zones, actionTypes, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates] =
+  const [accounts, employees, zones, actionTypes, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates, checklistTemplates, roleOptions] =
     await Promise.all([
     getAccounts(),
     getEmployees(),
@@ -24,6 +24,8 @@ export default async function SettingsPage() {
     getRbacConfig(),
     getTeams(),
     getKpiTemplates(),
+    getChecklistTemplates(),
+    getRoleOptions(),
   ]);
 
   return (
@@ -41,6 +43,8 @@ export default async function SettingsPage() {
           rbac={rbac}
           teams={teams}
           kpiTemplates={kpiTemplates}
+          checklistTemplates={checklistTemplates}
+          roleOptions={roleOptions}
         />
       </div>
     </>

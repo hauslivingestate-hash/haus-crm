@@ -25,6 +25,12 @@ import {
 import { todayISO } from "@/lib/momentum";
 import type { KpiTemplate, TemplateKind, TemplateSource } from "@/lib/masterdata";
 import { comboKey, type CopyGrade, type CopyTemplate, type CopyType } from "@/lib/listingCopy";
+import type {
+  ChecklistItemType,
+  ChecklistTemplate,
+  FocusTier,
+  ProgressMap,
+} from "@/lib/checklists";
 
 type KpiRow = {
   id: number;
@@ -40,6 +46,30 @@ type CopyRow = {
   headline: string;
   normal_body: string;
   dd_body: string;
+};
+type ChecklistTemplateRow = {
+  id: number;
+  name: string;
+  applies_to: string[] | null;
+  sort: number;
+  checklist_template_item:
+    | {
+        id: number;
+        label: string;
+        item_type: ChecklistItemType;
+        role: string | null;
+        repeat_days: number | null;
+        sort: number;
+      }[]
+    | null;
+};
+type ProgressRow = {
+  template_item_id: number;
+  completed_at: string | null;
+  completed_by: string | null;
+  due_date: string | null;
+  url: string | null;
+  note: string | null;
 };
 import type { Zone, ZoneSale } from "@/lib/zones";
 import type { ActivityTally, RankCriterion, SalesRank } from "@/lib/probation";
@@ -107,6 +137,10 @@ export interface ListingRow {
   created_at: string | null;
   updated_at: string | null;
   days_on_market: number | null;
+  /** Signed Exclusive-agreement window. On the listing itself, not main_10 — that row is
+   *  deleted the moment the listing drops out of the A-List criteria. */
+  agreement_start: string | null;
+  agreement_end: string | null;
   /** Managing agent. Present in the view but NULL in the live rows — until the import
    *  backfills it, `lib/listings.ts` seeds a stand-in. Delete that seed once populated. */
   created_by: string | null;
@@ -178,6 +212,7 @@ export interface ListingRow {
 const LISTING_COLUMNS = [
   "listing_id", "listing_name", "listing_status", "potential", "listing_type", "owner_focus",
   "date_created", "created_at", "updated_at", "days_on_market", "created_by",
+  "agreement_start", "agreement_end",
   "sale_id", "effective_sale_id",
   "project_id", "project_name_eng", "zone", "zone_name_thai", "zone_name_eng",
   "in_out_project", "road_soi", "link_location",
@@ -909,6 +944,62 @@ export async function getActionUsage(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const a of (data ?? []) as { action: string }[]) {
     out[a.action] = (out[a.action] ?? 0) + 1;
+  }
+  return out;
+}
+
+/** Roles, id + display name — for the checklist's responsibility chips and dropdown. */
+export async function getRoleOptions(): Promise<{ id: string; name: string }[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("roles").select("id, name").order("sort_order");
+  if (error) throw new Error(`getRoleOptions: ${error.message}`);
+  return (data ?? []) as { id: string; name: string }[];
+}
+
+/** Value-add checklist definitions — `checklist_template` + its items. */
+export async function getChecklistTemplates(): Promise<ChecklistTemplate[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("checklist_template")
+    .select(
+      "id, name, applies_to, sort, checklist_template_item(id, label, item_type, role, repeat_days, sort)"
+    )
+    .order("sort");
+  if (error) throw new Error(`getChecklistTemplates: ${error.message}`);
+  return ((data ?? []) as ChecklistTemplateRow[]).map((t) => ({
+    id: t.id,
+    name: t.name,
+    appliesTo: (t.applies_to ?? []) as FocusTier[],
+    // The nested select does not honour the child's `order`, so sort here.
+    items: [...(t.checklist_template_item ?? [])]
+      .sort((a, b) => a.sort - b.sort)
+      .map((i) => ({
+        id: i.id,
+        label: i.label,
+        type: i.item_type,
+        role: i.role,
+        repeatDays: i.repeat_days ?? undefined,
+      })),
+  }));
+}
+
+/** One listing's checklist progress, keyed by template_item_id. */
+export async function getListingChecklistProgress(listingId: string): Promise<ProgressMap> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("listing_checklist_item")
+    .select("template_item_id, completed_at, completed_by, due_date, url, note")
+    .eq("listing_id", listingId);
+  if (error) throw new Error(`getListingChecklistProgress: ${error.message}`);
+  const out: ProgressMap = {};
+  for (const r of (data ?? []) as ProgressRow[]) {
+    out[r.template_item_id] = {
+      completedAt: r.completed_at,
+      completedBy: r.completed_by,
+      dueDate: r.due_date,
+      url: r.url,
+      note: r.note,
+    };
   }
   return out;
 }

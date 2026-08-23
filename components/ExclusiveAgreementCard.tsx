@@ -1,28 +1,57 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { FileSignature, CalendarClock } from "lucide-react";
-import { useChecklists } from "@/components/ChecklistProvider";
+import { setExclusiveAgreement } from "@/lib/mutations/checklists";
+import { daysSince, type ExclusiveAgreement } from "@/lib/checklists";
 import { potentialGroup } from "@/lib/status";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 
 // Exclusive-listing agreement window — the signed contract's start/end term. We commit to
 // selling before it expires, so the end date drives an expiry warning (and, later, renewal
-// reminders). Renders ONLY for Exclusive listings. Design-first: state lives in ChecklistProvider
-// (in-memory, resets on reload); wire later = agreement_start / agreement_end columns.
+// reminders). Renders ONLY for Exclusive listings.
+//
+// The dates live on the listing (agreement_start / agreement_end), not on
+// main_10_potential_listing — the A-List sync trigger deletes a listing's main_10 row the
+// moment it drops out of the criteria, which would take the signed contract's dates with it.
 export function ExclusiveAgreementCard({
   listingId,
   potential,
+  agreement,
+  canEdit,
 }: {
   listingId: string;
   potential: string | null | undefined;
+  agreement: ExclusiveAgreement;
+  /** Read-only for anyone who cannot edit the listing. */
+  canEdit: boolean;
 }) {
-  const { exclusiveAgreementFor, setExclusiveAgreement } = useChecklists();
+  const router = useRouter();
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [, start_] = React.useTransition();
+
+  const save = (patch: Partial<ExclusiveAgreement>) => {
+    setBusy(true);
+    setError(null);
+    void (async () => {
+      try {
+        const res = await setExclusiveAgreement(listingId, patch);
+        if (!res.ok) setError(res.error);
+        else start_(() => router.refresh());
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
 
   if (potentialGroup(potential) !== "exclusive") return null; // Exclusive tier only
 
-  const { start, end } = exclusiveAgreementFor(listingId);
+  const { start, end } = agreement;
 
   return (
     <Card>
@@ -38,14 +67,17 @@ export function ExclusiveAgreementCard({
           label="เริ่มสัญญา"
           value={start}
           max={end ?? undefined}
-          onChange={(v) => setExclusiveAgreement(listingId, { start: v })}
+          disabled={!canEdit || busy}
+          onChange={(v) => save({ start: v })}
         />
         <DateRow
           label="สิ้นสุดสัญญา"
           value={end}
           min={start ?? undefined}
-          onChange={(v) => setExclusiveAgreement(listingId, { end: v })}
+          disabled={!canEdit || busy}
+          onChange={(v) => save({ end: v })}
         />
+        {error && <div className="text-small text-red">{error}</div>}
         {start && end && (
           <div className="flex items-center justify-between border-t border-border pt-2.5 text-text-subtle">
             <span>ระยะสัญญา</span>
@@ -62,12 +94,14 @@ function DateRow({
   value,
   min,
   max,
+  disabled,
   onChange,
 }: {
   label: string;
   value: string | null;
   min?: string;
   max?: string;
+  disabled: boolean;
   onChange: (value: string | null) => void;
 }) {
   return (
@@ -78,8 +112,9 @@ function DateRow({
         value={value ?? ""}
         min={min}
         max={max}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value || null)}
-        className="h-7 rounded-md border border-border-strong bg-surface px-2 num text-small text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        className="h-7 rounded-md border border-border-strong bg-surface px-2 num text-small text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-60"
       />
     </div>
   );
@@ -102,14 +137,6 @@ function ExpiryBadge({ end }: { end: string | null }) {
       <CalendarClock size={11} strokeWidth={1.75} /> {text}
     </Pill>
   );
-}
-
-// Whole days between `dateStr` (YYYY-MM-DD) and today. Positive = in the past.
-function daysSince(dateStr: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = new Date(`${dateStr}T00:00:00`);
-  return Math.round((today.getTime() - d.getTime()) / 86_400_000);
 }
 
 // Human term from start→end: prefers whole-month/year granularity (agreements are typically 6mo/1yr).
