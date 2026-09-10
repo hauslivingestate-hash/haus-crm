@@ -3,7 +3,10 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Topbar } from "@/components/Topbar";
 import { EmployeeRecord } from "@/components/EmployeeRecord";
+import { RevenueTargetEditor } from "@/components/RevenueTargetEditor";
 import { getEmployee, getZoneOptions } from "@/lib/queries";
+import { getAuthContext } from "@/lib/auth";
+import { getStandingRevenueTargets } from "@/lib/salesDashboard";
 
 export default async function EmployeeDetailPage({
   params,
@@ -16,11 +19,23 @@ export default async function EmployeeDetailPage({
   // same value permissions run on.
   const { id } = await params;
   const { edit } = await searchParams;
-  const [employee, zones] = await Promise.all([
-    getEmployee(decodeURIComponent(id)),
+  const code = decodeURIComponent(id);
+  const [employee, zones, auth, standingTargets] = await Promise.all([
+    getEmployee(code),
     getZoneOptions(),
+    getAuthContext(),
+    getStandingRevenueTargets(code),
   ]);
   if (!employee) notFound();
+
+  // Ben, 2026-09-10: the CEO sets the sale's target, not the sale. Gated on the
+  // permission rather than on "is CEO", so handing it to a Sales Leader later is a
+  // switch in ตั้งค่า and not a code change. Never shown on your own record — setting
+  // your own official number is the exact thing this is meant to prevent.
+  const canSetTargets =
+    !!auth &&
+    auth.employeeCode !== code &&
+    (auth.permissions.includes("targets.set") || auth.permissions.includes("roles.manage"));
 
   return (
     <>
@@ -37,6 +52,13 @@ export default async function EmployeeDetailPage({
           initialMode={edit ? "edit" : "view"}
           zones={zones}
         />
+        {canSetTargets && (
+          <RevenueTargetEditor
+            employeeCode={code}
+            nickname={employee.nickname || code}
+            standing={standingTargets}
+          />
+        )}
       </div>
     </>
   );

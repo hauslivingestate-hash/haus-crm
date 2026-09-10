@@ -96,6 +96,7 @@ export function TargetsBoard({
           label="ทางการ (ตั้งโดยหัวหน้า)"
           targets={official}
           totals={plan.activityTotals}
+          monthRevenue={plan.monthRevenue}
           week={week}
           busy={busy}
           note={`โฟกัสสัปดาห์ที่ ${week}`}
@@ -111,6 +112,7 @@ export function TargetsBoard({
           label="เป้าหมายส่วนตัว"
           targets={stretch}
           totals={plan.activityTotals}
+          monthRevenue={plan.monthRevenue}
           week={week}
           busy={busy}
           emptyNote="ยังไม่มีเป้าหมายส่วนตัว"
@@ -140,6 +142,7 @@ function Group({
   label,
   targets,
   totals,
+  monthRevenue,
   week,
   busy,
   action,
@@ -151,6 +154,8 @@ function Group({
   label: string;
   targets: Target[];
   totals: ActivityTotals;
+  /** This month's signed commission — what a revenue-source goal measures itself against. */
+  monthRevenue: number;
   week: number;
   busy: boolean;
   action?: React.ReactNode;
@@ -179,6 +184,7 @@ function Group({
               key={t.id}
               target={t}
               totals={totals}
+              monthRevenue={monthRevenue}
               week={week}
               busy={busy}
               onBump={() => onBump(t.id)}
@@ -194,6 +200,7 @@ function Group({
 function TargetRow({
   target: t,
   totals,
+  monthRevenue,
   week,
   busy,
   onBump,
@@ -203,12 +210,14 @@ function TargetRow({
   /** This month's real activity totals — an activity-source goal moves the moment a linked
    *  Daily-Plan task is ticked, because the tick writes the row these totals sum. */
   totals: ActivityTotals;
+  /** This month's signed commission — what a revenue-source goal measures itself against. */
+  monthRevenue: number;
   week: number;
   busy: boolean;
   onBump: () => void;
   onDelete?: () => void;
 }) {
-  const { current, denom, pct } = targetProgress(t, totals);
+  const { current, denom, pct } = targetProgress(t, totals, monthRevenue);
   const auto = isAutoTarget(t);
   const focus = isFocusWeek(t, week);
   const fmt = (n: number) => (t.kind === "baht" ? formatBaht(n) : String(n));

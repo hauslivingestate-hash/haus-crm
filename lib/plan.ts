@@ -50,6 +50,10 @@ export interface PlanData {
   quickActions: QuickActionRow[];
   /** This month's activity totals per action, for activity-source targets. */
   activityTotals: ActivityTotals;
+  /** This month's SIGNED commission, for revenue-source targets. Counted on closing_date
+   *  and excluding statuses flagged counts_as_revenue = false — the same rule the
+   *  dashboard uses, via the same RPC, so the two screens cannot disagree. */
+  monthRevenue: number;
   /** The governed action vocabulary, from `action_type` — NOT the seed list, which is
    *  missing three rows that exist in the table and are FK-valid (Owner Talk, Update
    *  Price, เซ็นสัญญา). `tasks.activity_type` and `activities.action` are both FKs to it. */
@@ -243,7 +247,7 @@ export async function getPlanData(month?: string): Promise<PlanData | null> {
   const { from, to } = monthBounds(ym);
 
   const supabase = await createClient();
-  const [taskRes, targetRes, quickRes, actionRes, activityRes] = await Promise.all([
+  const [taskRes, targetRes, quickRes, actionRes, activityRes, revenueRes] = await Promise.all([
     // ± a day so stepping off either end of the month still renders before the client
     // fetches the neighbouring month.
     supabase
@@ -278,10 +282,29 @@ export async function getPlanData(month?: string): Promise<PlanData | null> {
       .eq("employee_code", employeeCode)
       .gte("activity_date", from)
       .lte("activity_date", to),
+    // The same RPC the dashboard's revenue card calls, over the same month. Sharing the
+    // read is the point: "how much did I sign this month" must be one number, computed
+    // once, or แผนวันนี้ and แดชบอร์ด quietly disagree about the same goal.
+    supabase.rpc("dash_revenue_monthly", {
+      p_sale_id: employeeCode,
+      p_from: from,
+      p_to: to,
+      // Explicit, not defaulted: a revenue goal on แผนวันนี้ measures what was SOLD this
+      // month, which is the same basis the dashboard opens on. Leaning on the function's
+      // default would leave this screen silently following a change made for that one.
+      p_basis: "close",
+    }),
   ]);
 
   const taskRows = (taskRes.data ?? []) as TaskRow[];
   const { leadNames, listingNames } = await resolveEntityNames(supabase, taskRows);
+
+  // One row per month; the window is one month, so this is a sum of at most one row.
+  // Written as a reduce anyway so a widened window cannot silently read only the first.
+  const monthRevenue = ((revenueRes.data ?? []) as { total: number }[]).reduce(
+    (sum, r) => sum + Number(r.total ?? 0),
+    0
+  );
 
   const activityTotals: ActivityTotals = {};
   for (const a of (activityRes.data ?? []) as { action: string; count: number }[]) {
@@ -312,6 +335,7 @@ export async function getPlanData(month?: string): Promise<PlanData | null> {
     month: ym,
     tasks: taskRows.map((r) => toTask(r, leadNames, listingNames)),
     targets: ((targetRes.data ?? []) as TargetRow[]).map(toTarget),
+    monthRevenue,
     quickActions: ((quickRes.data ?? []) as {
       id: number;
       label: string;

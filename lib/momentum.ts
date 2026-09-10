@@ -17,10 +17,21 @@
  */
 export const TODAY = "2026-07-13";
 
-/** Real today, in the local timezone, as YYYY-MM-DD. */
+/**
+ * Real today in BANGKOK, as YYYY-MM-DD.
+ *
+ * ⚠️ Not the server's local date. This used to read the runtime clock, which is correct
+ * on a laptop in Thailand and wrong on Vercel, which runs in UTC: between 00:00 and
+ * 07:00 ICT a UTC "today" is still yesterday. That silently mis-dated everything keyed
+ * off it — a plan opened at 1am showed the previous day's tasks, "เดือนนี้" on the 1st
+ * covered the whole of last month, and leave-year arithmetic rolled over seven hours
+ * late. Every caller is a Thai company's calendar, so all of them want this.
+ *
+ * `en-CA` is the locale whose short date format IS ISO 8601, which is why it appears
+ * here rather than any string surgery.
+ */
 export function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
 }
 
 /** The YYYY-MM a date belongs to. */
@@ -62,7 +73,9 @@ export type TargetKind = "count" | "baht" | "check" | "ratio";
 // "kpi" = one of the leadership-defined sales-process KPIs. Its value is entered/rolled up
 // rather than counted from the raw activity log — ratio KPIs need a denominator the
 // activity count alone can't give.
-export type TargetSource = "activity" | "pipeline" | "manual" | "kpi";
+// "revenue" = commission on this person's signed deals. Computed live like "activity",
+// not typed in — the number on แดชบอร์ด and the number on แผนวันนี้ must be one number.
+export type TargetSource = "activity" | "pipeline" | "manual" | "kpi" | "revenue";
 export type TargetOwner = "official" | "stretch";
 
 export interface Target {
@@ -141,9 +154,16 @@ export const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon-first display
  *  Built server-side (lib/plan.ts) so the whole activity log never reaches the browser. */
 export type ActivityTotals = Record<string, number>;
 
-/** Activity-source targets read their `current` live from the activity totals. Everything
- *  else (pipeline/manual/kpi) returns the stored value — for kpi/ratio that's the numerator. */
-export function targetCurrent(t: Target, totals: ActivityTotals): number {
+/** Activity- and revenue-source targets read their `current` live. Everything else
+ *  (pipeline/manual/kpi) returns the stored value — for kpi/ratio that's the numerator.
+ *
+ *  `revenue` is the month's signed commission, which the caller has to supply: this file
+ *  is pure and does not read the database. A caller that has no figure to hand passes
+ *  nothing and gets 0, which is the honest reading of "we have not counted" — never the
+ *  stored `manualCurrent`, because a revenue target has no manual progress to store and
+ *  showing one would be a number somebody typed pretending to be one the system knows. */
+export function targetCurrent(t: Target, totals: ActivityTotals, revenue = 0): number {
+  if (t.source === "revenue") return revenue;
   if (t.source !== "activity" || !t.activityType) return t.manualCurrent;
   return totals[t.activityType] ?? 0;
 }
@@ -158,9 +178,11 @@ export function isAutoTarget(t: Target): boolean {
  *  otherwise denom is the goal number and pct = current ÷ target. */
 export function targetProgress(
   t: Target,
-  totals: ActivityTotals
+  totals: ActivityTotals,
+  /** The month's signed commission, for revenue-source targets. See targetCurrent. */
+  revenue = 0
 ): { current: number; denom: number; pct: number } {
-  const current = targetCurrent(t, totals);
+  const current = targetCurrent(t, totals, revenue);
   const denom = t.kind === "ratio" ? t.denominator ?? 0 : t.target;
   const pct = denom > 0 ? Math.min(100, Math.round((current / denom) * 100)) : 0;
   return { current, denom, pct };

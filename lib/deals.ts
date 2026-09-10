@@ -59,7 +59,7 @@ export interface DealFacts {
     is effectively unused — 8 leads sit in it carrying no money, no dates and no commission,
     because the team jumps straight to `Win`. Which is exactly why nothing below decides
     anything from the stage alone. */
-const CLOSED_STAGES = new Set(["Win", "Close"]);
+export const CLOSED_DEAL_STAGES = new Set(["Win", "Close"]);
 
 /**
  * Is this a closed deal?
@@ -83,7 +83,7 @@ const CLOSED_STAGES = new Set(["Win", "Close"]);
  */
 export function isClosed(d: DealFacts): boolean {
   return (
-    CLOSED_STAGES.has(d.pipeline_stage ?? "") ||
+    CLOSED_DEAL_STAGES.has(d.pipeline_stage ?? "") ||
     d.commission != null ||
     d.closing_price != null ||
     d.closing_date != null ||
@@ -121,25 +121,60 @@ export function isAwaitingTransfer(d: DealFacts): boolean {
 }
 
 /**
- * The two revenue answers.
+ * The two revenue answers. Ben, 2026-09-10: the dashboard toggles between them, default
+ * `close`, "so that the sales or anyone can see both forecast and actual revenue".
  *
- *   signed       — counted on `closing_date`. The sales scoreboard: what the team sold.
- *   transferred  — counted on `transfer_date`. The money: what actually completed.
+ *   close  — counted on `closing_date`. The sales scoreboard: what the team sold, and
+ *            the FORECAST — work finished, money not yet in.
+ *   win    — counted on `transfer_date`. The money: what actually completed.
+ *
+ * Today that is ฿3,008,700 across 12 deals against ฿1,791,000 across 7 — the ฿1.2M
+ * between contract and land office is the whole point of showing both.
  *
  * They differ by design and must never be reconciled into one number. A deal signed in
  * April and transferred in July belongs to April on one and July on the other, and both
  * are correct.
  */
-export type RevenueBasis = "signed" | "transferred";
+export type RevenueBasis = "close" | "win";
 
+/* ── WHOSE MONEY `commission` IS (Ben, 2026-09-10) ───────────────────────────────
+   The FULL commission the company receives from the owner — gross, before VAT, before
+   the agent's share, before the 3% withholding. Never the salesperson's take-home.
+
+   The accounting workbook "Revenue & Accounting Haus-Living" carries the payout chain on
+   its Commission Sale tab: commission → strip VAT → the agent's rate (60% for most, 50%
+   for some) → less 3% → less ฿750 → Final. Ben's call is that NONE of that belongs in the
+   CRM: agents work out their own take-home, and the app speaks one number so that two
+   screens cannot quote different "revenue" for the same deal.
+
+   Every surface that shows this figure must therefore say whose it is — a salesperson
+   reading ฿120,000 as their own is the failure mode. See the footer of
+   components/dashboard/TargetRevenueCard.tsx. */
+
+/* Named for the pipeline stages the team already says out loud, not for "signed" and
+   "transferred" — lib/pipeline.ts keeps the buyer pipeline in English because that is
+   what the company calls it, and a dashboard toggle that invents a second vocabulary for
+   the same two events is a toggle people have to translate before they can use it. */
 export const REVENUE_BASIS_LABEL: Record<RevenueBasis, string> = {
-  signed: "เซ็นแล้ว",
-  transferred: "โอนแล้ว",
+  close: "Close",
+  win: "Win",
 };
+
+/** What each basis means, for the card's own footer. */
+export const REVENUE_BASIS_HINT: Record<RevenueBasis, string> = {
+  close: "นับจากวันเซ็นสัญญา — ยอดที่ทำได้แล้ว แต่ยังไม่ได้รับเงิน (คาดการณ์)",
+  win: "นับจากวันโอน — เงินที่เข้าจริงแล้ว",
+};
+
+/** Guards a value off the URL, where anyone can type anything. */
+export function asRevenueBasis(v: string | string[] | undefined): RevenueBasis {
+  const one = Array.isArray(v) ? v[0] : v;
+  return one === "win" ? "win" : "close";
+}
 
 /** The date a deal counts on, for a given basis. null = it does not count yet. */
 export function revenueDate(d: DealFacts, basis: RevenueBasis): string | null {
-  return (basis === "signed" ? d.closing_date : d.transfer_date) ?? null;
+  return (basis === "close" ? d.closing_date : d.transfer_date) ?? null;
 }
 
 /**

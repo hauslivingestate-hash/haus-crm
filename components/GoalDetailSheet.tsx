@@ -17,8 +17,13 @@ export interface GoalDraft {
   kind: Extract<TargetKind, "count" | "baht">;
   target: number;
   /** count: auto from the activity log, or a manual +1 tally.
-   *  baht: auto from the agent's actual revenue in the system (pipeline-derived). */
-  source: "activity" | "pipeline" | "manual";
+   *  baht: auto from the agent's own signed commission.
+   *
+   *  ⚠️ A baht goal used to be saved as source "pipeline", which `targetCurrent()` reads
+   *  as a STORED number — and nothing ever wrote that number, so every baht goal sat at
+   *  ฿0 for ever. It is now "revenue", which is computed live from the same query the
+   *  dashboard's เป้ารายได้ card uses. */
+  source: "activity" | "revenue" | "manual";
   activityType?: string;
 }
 
@@ -76,7 +81,7 @@ export function GoalDetailSheet({
     onSubmit(
       kind === "baht"
         ? // Revenue tracks actual system revenue — no activity link, no manual tally.
-          { label: label.trim(), kind, target: targetNum, source: "pipeline" }
+          { label: label.trim(), kind, target: targetNum, source: "revenue" }
         : {
             label: label.trim(),
             kind,
