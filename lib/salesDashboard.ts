@@ -14,7 +14,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { CLOSED_DEAL_STAGES, dealGaps, type DealGap, type RevenueBasis } from "@/lib/deals";
+import { caseGaps, toClosedCase, type CaseStatus, type DealGap, type RevenueBasis } from "@/lib/deals";
 import { periodKeyOf, periodMultiple, type PeriodLength, type Range } from "@/lib/range";
 import { todayISO } from "@/lib/momentum";
 import { slaFor, type SlaWindows } from "@/lib/sla";
@@ -95,56 +95,53 @@ export async function getActivityTotals(employeeCode: string, range: Range): Pro
 /* ---------- closed deals with no numbers ----------------------------------------- */
 
 export interface UnpricedClose {
-  leadId: string;
-  leadName: string | null;
-  stage: string | null;
-  /** What is missing, worst first. Never empty — a complete deal is not listed. */
+  caseId: string;
+  /** Null for a case the register could not tie to a lead (ลูกค้านอก). */
+  leadId: string | null;
+  title: string;
+  status: CaseStatus;
+  /** What is missing, worst first. Never empty — a complete case is not listed. */
   gaps: DealGap[];
 }
 
 /**
- * This person's closed deals that are missing their money.
+ * This person's live cases that are missing their numbers.
  *
- * A closed case with no commission is revenue the whole app cannot see: it is absent
- * from the revenue card, from any target, and from the company's own idea of how the
- * month went. Today that is every closed deal in the database — 29 leads sit at
- * Win/Close and not one carries a closing price.
+ * A case with no figure is revenue the whole app cannot see: absent from the revenue
+ * card, from any target, and from the company's own idea of how the month went.
  *
- * ── ONE DEFINITION OF "CLOSED", AND IT IS NOT THIS FILE'S ───────────────────────
- * lib/deals.ts owns it (`isClosed` — five independent facts, because the stage
- * dropdown is the least reliable signal on the row). The `.or()` below is only a
- * PREFILTER that keeps the read small, and it is deliberately built from the same
- * exported set so it can never become narrower than the check that follows it. The
- * authoritative filter is `dealGaps()` in JS.
+ * Read from closed_case, credited to this person; `caseGaps()` in lib/deals.ts is the one
+ * definition of "missing" — a pending case is short its signing facts, a successful one
+ * also its transfer facts, and a failed one is never listed because it is over.
  */
 export async function getUnpricedCloses(employeeCode: string): Promise<UnpricedClose[]> {
   const supabase = await createClient();
-
-  const stages = [...CLOSED_DEAL_STAGES].join(",");
   const { data, error } = await supabase
-    .from("main_6_buyer_crm")
-    .select("lead_id,lead_name,pipeline_stage,closing_price,closing_date,transfer_date,commission")
-    .eq("sale_id", employeeCode)
-    .or(
-      `pipeline_stage.in.(${stages}),commission.not.is.null,closing_price.not.is.null,` +
-        `closing_date.not.is.null,transfer_date.not.is.null`
-    );
+    .from("closed_case")
+    .select(
+      "case_id,lead_id,listing_id,deal_type,status,closing_date,transfer_date,closing_price,forecast_revenue,real_revenue,remark,buyer_name," +
+        "agents:closed_case_agent!inner(employee_code,is_primary,forecast_share,real_share)"
+    )
+    .eq("agents.employee_code", employeeCode)
+    .neq("status", "fail");
 
   // A failed read is reported as "nothing outstanding" rather than throwing: this is a
   // banner above someone's dashboard, and taking the whole page down over it would be a
   // worse outcome than the banner being briefly absent.
   if (error || !data) return [];
 
-  return data
-    .map((r) => ({
-      leadId: r.lead_id as string,
-      leadName: (r.lead_name as string | null) ?? null,
-      stage: (r.pipeline_stage as string | null) ?? null,
-      gaps: dealGaps(r),
+  return (data as unknown as Record<string, unknown>[])
+    .map(toClosedCase)
+    .map((c) => ({
+      caseId: c.case_id,
+      leadId: c.lead_id,
+      title: c.buyer_name ?? c.listing_id ?? c.case_id,
+      status: c.status,
+      gaps: caseGaps(c),
     }))
     .filter((r) => r.gaps.length > 0)
-    // Most incomplete first — a deal missing all three is the one worth opening.
-    .sort((a, b) => b.gaps.length - a.gaps.length || a.leadId.localeCompare(b.leadId));
+    // Most incomplete first — a case missing everything is the one worth opening.
+    .sort((a, b) => b.gaps.length - a.gaps.length || a.caseId.localeCompare(b.caseId));
 }
 
 /* ---------- revenue -------------------------------------------------------------- */

@@ -33,17 +33,23 @@ export type DealGap =
   /** The number the commission was taken from. Nothing else in the DB records it. */
   | "closing_price"
   /** Dated, but no commission — the deal earns nothing on paper. */
-  | "commission";
+  | "commission"
+  /** A case marked SUCCESS with no transfer date — "the money arrived" with no when. */
+  | "transfer_date"
+  /** A case marked SUCCESS with no real figure — the forecast is standing in for cash. */
+  | "real_revenue";
 
 /** What each gap is called, and why it matters, for the reminder copy. */
 export const DEAL_GAP_LABEL: Record<DealGap, string> = {
   closing_date: "วันที่ปิด",
   closing_price: "ราคาปิด",
   commission: "คอมมิชชั่น",
+  transfer_date: "วันที่โอน",
+  real_revenue: "ยอดที่ได้รับจริง",
 };
 
 /** The order gaps are reported in — a deal missing several leads with the worst. */
-export const DEAL_GAPS: DealGap[] = ["closing_date", "closing_price", "commission"];
+export const DEAL_GAPS: DealGap[] = ["closing_date", "closing_price", "commission", "transfer_date", "real_revenue"];
 
 /** The shape any completeness check needs. A subset of main_6_buyer_crm, so both a full
     CrmRow and a bare query result satisfy it. */
@@ -189,3 +195,148 @@ export const SOLD_LISTING_STATUS = "Sold Completed";
 
 /** The stage a closed deal implies. Set on close so the dropdown stops drifting. */
 export const CLOSED_PIPELINE_STAGE = "Win";
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   THE CASE — a closed deal as its own record (2026-09-10)
+   ══════════════════════════════════════════════════════════════════════════════
+   Everything above this line was written when a deal was five columns on the lead. It
+   is kept because the leads grid and the notifications still reason about a lead's
+   closing facts — but those facts now come FROM a case, through `withCase()` below,
+   rather than from the lead's own columns, which are no longer written.
+
+   Why the case exists is on the table itself (closed_case). The short version: the
+   company's register carries a STATUS, two revenue figures, co-broke splits and one lead
+   with two deals, and five columns on a lead can hold none of that. */
+
+export type CaseStatus = "pending" | "success" | "fail";
+export type DealKind = "sale" | "rent";
+
+export const CASE_STATUS_LABEL: Record<CaseStatus, string> = {
+  pending: "เซ็นแล้ว รอโอน",
+  success: "โอนแล้ว",
+  fail: "ดีลไม่จบ",
+};
+
+export const DEAL_KIND_LABEL: Record<DealKind, string> = { sale: "ขาย", rent: "เช่า" };
+
+/** Default forecast commission on a SALE. Every one of the register's 47 sale cases works
+    out to exactly 3% of the closing price, so the form offers it rather than asking for
+    a number the person is about to compute by hand. Rent has no fixed rule and is asked. */
+export const SALE_COMMISSION_RATE = 0.03;
+
+export interface CaseAgent {
+  employee_code: string;
+  is_primary: boolean;
+  forecast_share: number | null;
+  real_share: number | null;
+}
+
+export interface ClosedCase {
+  case_id: string;
+  lead_id: string | null;
+  listing_id: string | null;
+  deal_type: DealKind;
+  status: CaseStatus;
+  closing_date: string | null;
+  transfer_date: string | null;
+  closing_price: number | null;
+  /** FULL company commission — see the header of this file. */
+  forecast_revenue: number | null;
+  real_revenue: number | null;
+  remark: string | null;
+  buyer_name: string | null;
+  agents: CaseAgent[];
+}
+
+/** PostgREST returns numeric columns as strings; the model wants numbers. */
+export function toClosedCase(raw: Record<string, unknown>): ClosedCase {
+  const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
+  const agents = Array.isArray(raw.agents) ? (raw.agents as Record<string, unknown>[]) : [];
+  return {
+    case_id: String(raw.case_id),
+    lead_id: (raw.lead_id as string | null) ?? null,
+    listing_id: (raw.listing_id as string | null) ?? null,
+    deal_type: raw.deal_type === "rent" ? "rent" : "sale",
+    status: raw.status === "success" ? "success" : raw.status === "fail" ? "fail" : "pending",
+    closing_date: (raw.closing_date as string | null) ?? null,
+    transfer_date: (raw.transfer_date as string | null) ?? null,
+    closing_price: num(raw.closing_price),
+    forecast_revenue: num(raw.forecast_revenue),
+    real_revenue: num(raw.real_revenue),
+    remark: (raw.remark as string | null) ?? null,
+    buyer_name: (raw.buyer_name as string | null) ?? null,
+    agents: agents.map((a) => ({
+      employee_code: String(a.employee_code),
+      is_primary: !!a.is_primary,
+      forecast_share: num(a.forecast_share),
+      real_share: num(a.real_share),
+    })),
+  };
+}
+
+/**
+ * The case a lead's screens show. The live one, and failing that the latest — a lead
+ * whose only deal fell through should say so, not look untouched. L26-655 is the case
+ * that made this a function: one failed case, then a successful one on the same lead.
+ */
+export function primaryCase(cases: ClosedCase[] | null | undefined): ClosedCase | null {
+  if (!cases?.length) return null;
+  const sorted = [...cases].sort(
+    (a, b) =>
+      (b.closing_date ?? "").localeCompare(a.closing_date ?? "") || b.case_id.localeCompare(a.case_id)
+  );
+  return sorted.find((c) => c.status !== "fail") ?? sorted[0];
+}
+
+/**
+ * What a case is still missing, by what its status claims.
+ *   pending  the signing facts — date, price, forecast commission.
+ *   success  those, plus the transfer date and the real figure: "the money arrived"
+ *            with no when or how much is a claim, not a record.
+ *   fail     nothing. It is over, and nagging about a dead deal's price is noise.
+ */
+export function caseGaps(c: ClosedCase): DealGap[] {
+  if (c.status === "fail") return [];
+  const gaps: DealGap[] = [];
+  if (c.closing_date == null) gaps.push("closing_date");
+  if (c.closing_price == null) gaps.push("closing_price");
+  if (c.forecast_revenue == null) gaps.push("commission");
+  if (c.status === "success") {
+    if (c.transfer_date == null) gaps.push("transfer_date");
+    if (c.real_revenue == null) gaps.push("real_revenue");
+  }
+  return gaps;
+}
+
+/**
+ * A lead row with its closing facts filled in FROM its case.
+ *
+ * This is how the leads grid, `isClosed()` and every older reader keep working
+ * unchanged: they still see `commission`, `closing_date` and the rest on the row — but
+ * the values come from closed_case, not from the lead's own columns. One source, one
+ * code path, no consumer had to learn a new shape.
+ *
+ * `commission` is the REAL figure once the case is success and one is recorded, else the
+ * forecast; a failed case carries no commission at all, whatever was forecast.
+ */
+export function withCase<T extends { closed_case?: unknown }>(
+  row: T
+): T & DealFacts & { case_closing_remark: string | null; primary_case: ClosedCase | null } {
+  const raw = Array.isArray(row.closed_case) ? (row.closed_case as Record<string, unknown>[]) : [];
+  const c = primaryCase(raw.map(toClosedCase));
+  return {
+    ...row,
+    primary_case: c,
+    closing_price: c?.closing_price ?? null,
+    closing_date: c?.closing_date ?? null,
+    transfer_date: c?.transfer_date ?? null,
+    commission:
+      c == null || c.status === "fail"
+        ? null
+        : c.status === "success" && c.real_revenue != null
+          ? c.real_revenue
+          : c.forecast_revenue,
+    case_closing_remark: c?.remark ?? null,
+  };
+}

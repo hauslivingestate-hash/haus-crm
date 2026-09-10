@@ -115,16 +115,14 @@ export async function LeadDetail({ id, inDrawer = false }: { id: string; inDrawe
               only the button that starts one (lib/deals.ts `isClosed`). */}
           <CloseDealCard
             leadId={lead.lead_id}
-            closingPrice={lead.closing_price}
-            closingDate={lead.closing_date}
-            transferDate={lead.transfer_date}
-            commission={lead.commission}
-            remark={lead.case_closing_remark}
+            leadSaleId={lead.sale_id}
+            deal={lead.primary_case ?? null}
             pipelineStage={lead.pipeline_stage}
             listingCode={lead.listing_code}
             askingPrice={listingCtx?.asking_price ?? null}
             listingStatus={listingCtx?.listing_status ?? null}
             lastMatch={lead.last_match?.[0] ?? null}
+            agents={agents}
           />
 
           {/* ทรัพย์ที่สนใจ — many per lead, editable here. Was a read-only link to the

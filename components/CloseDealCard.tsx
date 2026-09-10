@@ -3,91 +3,107 @@
 /* การปิดการขาย — where a sale records a deal, and the only place the company's revenue
    is entered.
 
-   This card replaced a read-only pair of rows (commission + closing date) that displayed
-   numbers nothing in the app could write. The data got in by spreadsheet import, which is
-   the "old way" this is meant to end: close the deal, fill four boxes, done — no message to
-   admin, no second system.
+   Since 2026-09-10 a deal is a CASE (closed_case), not five columns on the lead. The card
+   shows the lead's live case — or its latest failed one, so a lead whose deal fell
+   through says so — and the form writes a case back.
 
-   WHAT IT ASKS FOR IS DELIBERATELY SHORT. Only the four things the person closing actually
-   knows. Everything else on this card is READ-ONLY CONTEXT pulled from the listing — the
-   asking price to compare against, who the listing says is selling it. Asking a sale to
-   retype a number the database already holds is how the two copies start to disagree.
+   WHAT IT ASKS FOR IS DELIBERATELY SHORT. Only what the person closing actually knows.
+   Everything else is READ-ONLY CONTEXT pulled from the listing, or worked out: the case
+   id, who is credited, the status. Asking a sale to retype a number the database already
+   holds is how the two copies start to disagree.
 
-   THE ASKING PRICE SITS NEXT TO THE CLOSING PRICE on purpose (Ben, 2026-09-06: "the closing
-   price might not be the same as the asking price"). Seeing the gap as you type it is the
-   cheapest possible check against a typo, and the gap itself is a number the company has
-   never been able to see. */
+   STATUS IS NEVER A DROPDOWN. Entering a transfer date IS saying the money arrived; the
+   card tells you what it is about to record instead of asking twice. The one exception is
+   ดีลไม่จบ — nothing in the data can know a deal fell through, so that is a button, with
+   a confirmation, because it is the one click on this card that cannot be undone by
+   re-saving.
+
+   THE ASKING PRICE SITS NEXT TO THE CLOSING PRICE on purpose (Ben, 2026-09-06). Seeing
+   the gap as you type it is the cheapest possible check against a typo. */
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Banknote, Check, AlertTriangle, Hourglass, LoaderCircle } from "lucide-react";
+import { Banknote, Check, AlertTriangle, Hourglass, LoaderCircle, XCircle } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useRbac } from "@/components/RbacProvider";
 import { saveDealClose } from "@/lib/mutations/deals";
 import { removeLeadLastMatch } from "@/lib/mutations/lastMatch";
-import { dealGaps, isAwaitingTransfer, isClosed, DEAL_GAP_LABEL, SOLD_LISTING_STATUS } from "@/lib/deals";
+import {
+  CASE_STATUS_LABEL,
+  CLOSED_DEAL_STAGES,
+  DEAL_GAP_LABEL,
+  DEAL_KIND_LABEL,
+  SALE_COMMISSION_RATE,
+  SOLD_LISTING_STATUS,
+  caseGaps,
+  type ClosedCase,
+  type DealKind,
+} from "@/lib/deals";
 import { formatBaht, formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 interface Props {
   leadId: string;
-  closingPrice: number | null;
-  closingDate: string | null;
-  transferDate: string | null;
-  commission: number | null;
-  remark: string | null;
+  /** Who the lead belongs to — the primary agent on a new case. */
+  leadSaleId: string | null;
+  /** The case to show and edit. Null = this lead has never closed. */
+  deal: ClosedCase | null;
   pipelineStage: string | null;
-  /** Context from the linked listing. Null when no listing is linked. */
   listingCode: string | null;
   askingPrice: number | null;
-  /** The listing's own status. Used only to point out the reverse mismatch — a deal that
-      closed under a listing still marked Posted. Four listings look like that today. */
   listingStatus: string | null;
-  /** The market-log entry this lead's close created, if one exists. Null when the deal was
-      never recorded there — or when the viewer may not read main_7_last_match, which reads
-      the same way here: nothing to offer. */
   lastMatch: { last_match_id: string; last_match_price: number | null } | null;
+  /** For the co-agent picker. */
+  agents: { employeeCode: string; nickname: string }[];
 }
 
 const label = "text-small text-text-muted mb-1.5";
+const field =
+  "w-full h-9 px-3 rounded-md border border-border-strong bg-surface text-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
 export function CloseDealCard(props: Props) {
   const router = useRouter();
   const { can } = useRbac();
   const editable = can("leads.edit") || can("leads.assign");
+  const { deal } = props;
 
-  const facts = {
-    pipeline_stage: props.pipelineStage,
-    closing_price: props.closingPrice,
-    closing_date: props.closingDate,
-    transfer_date: props.transferDate,
-    commission: props.commission,
-  };
-  const closed = isClosed(facts);
-  const gaps = dealGaps(facts);
-  const awaiting = isAwaitingTransfer(facts);
+  const closed = !!deal || CLOSED_DEAL_STAGES.has(props.pipelineStage ?? "");
+  const gaps = deal ? caseGaps(deal) : [];
 
   const [open, setOpen] = React.useState(false);
-  const [price, setPrice] = React.useState(props.closingPrice == null ? "" : String(props.closingPrice));
-  const [closingDate, setClosingDate] = React.useState(props.closingDate ?? "");
-  const [transferDate, setTransferDate] = React.useState(props.transferDate ?? "");
-  const [commission, setCommission] = React.useState(props.commission == null ? "" : String(props.commission));
-  const [remark, setRemark] = React.useState(props.remark ?? "");
+  const [confirmFail, setConfirmFail] = React.useState(false);
+  const [dealType, setDealType] = React.useState<DealKind>(deal?.deal_type ?? "sale");
+  const [price, setPrice] = React.useState(deal?.closing_price == null ? "" : String(deal.closing_price));
+  const [closingDate, setClosingDate] = React.useState(deal?.closing_date ?? "");
+  const [forecast, setForecast] = React.useState(deal?.forecast_revenue == null ? "" : String(deal.forecast_revenue));
+  const [transferDate, setTransferDate] = React.useState(deal?.transfer_date ?? "");
+  const [real, setReal] = React.useState(deal?.real_revenue == null ? "" : String(deal.real_revenue));
+  const [remark, setRemark] = React.useState(deal?.remark ?? "");
+  const co = deal?.agents.find((a) => !a.is_primary) ?? null;
+  const [coCode, setCoCode] = React.useState(co?.employee_code ?? "");
+  const [coForecast, setCoForecast] = React.useState(co?.forecast_share == null ? "" : String(co.forecast_share));
+  const [coReal, setCoReal] = React.useState(co?.real_share == null ? "" : String(co.real_share));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [note, setNote] = React.useState<string | null>(null);
 
-  // Re-sync when the server sends fresh values (after router.refresh, or a grid edit
-  // elsewhere). Without this the form keeps showing what was typed before the last save.
+  // Re-seed from the server after a save or a navigation, so a cancelled edit shows
+  // what is stored and not what was half-typed.
   React.useEffect(() => {
-    setPrice(props.closingPrice == null ? "" : String(props.closingPrice));
-    setClosingDate(props.closingDate ?? "");
-    setTransferDate(props.transferDate ?? "");
-    setCommission(props.commission == null ? "" : String(props.commission));
-    setRemark(props.remark ?? "");
-  }, [props.closingPrice, props.closingDate, props.transferDate, props.commission, props.remark]);
+    setDealType(deal?.deal_type ?? "sale");
+    setPrice(deal?.closing_price == null ? "" : String(deal.closing_price));
+    setClosingDate(deal?.closing_date ?? "");
+    setForecast(deal?.forecast_revenue == null ? "" : String(deal.forecast_revenue));
+    setTransferDate(deal?.transfer_date ?? "");
+    setReal(deal?.real_revenue == null ? "" : String(deal.real_revenue));
+    setRemark(deal?.remark ?? "");
+    const c = deal?.agents.find((a) => !a.is_primary) ?? null;
+    setCoCode(c?.employee_code ?? "");
+    setCoForecast(c?.forecast_share == null ? "" : String(c.forecast_share));
+    setCoReal(c?.real_share == null ? "" : String(c.real_share));
+  }, [deal]);
 
   // An open lead nobody has closed shows nothing at all — a blank closing form on every
   // live lead in the company is noise, and it invites a half-filled row.
@@ -96,17 +112,31 @@ export function CloseDealCard(props: Props) {
   const priceNum = Number(price.replace(/,/g, ""));
   const showGap = Number.isFinite(priceNum) && priceNum > 0 && props.askingPrice != null;
   const gapAmount = showGap ? priceNum - (props.askingPrice ?? 0) : 0;
+  const suggestedForecast =
+    dealType === "sale" && Number.isFinite(priceNum) && priceNum > 0
+      ? Math.round(priceNum * SALE_COMMISSION_RATE)
+      : null;
+  const willBe = transferDate ? "success" : "pending";
 
-  async function save() {
+  const primaryCode = deal?.agents.find((a) => a.is_primary)?.employee_code ?? props.leadSaleId;
+  const nameOf = (code: string | null | undefined) =>
+    code ? props.agents.find((a) => a.employeeCode === code)?.nickname ?? code : "—";
+
+  async function save(markFailed = false) {
     setBusy(true);
     setError(null);
     setNote(null);
     const res = await saveDealClose(props.leadId, {
+      caseId: deal?.case_id ?? null,
+      dealType,
       closingPrice: price,
       closingDate,
+      forecastRevenue: forecast,
       transferDate,
-      commission,
+      realRevenue: real,
       remark,
+      coAgent: coCode ? { employeeCode: coCode, forecastShare: coForecast, realShare: coReal } : null,
+      markFailed,
     });
     setBusy(false);
     if (!res.ok) {
@@ -115,6 +145,7 @@ export function CloseDealCard(props: Props) {
     }
     if (res.listingUpdated) setNote(`อัปเดตทรัพย์ ${props.listingCode} เป็น Sold Completed แล้ว`);
     setOpen(false);
+    setConfirmFail(false);
     router.refresh();
   }
 
@@ -143,21 +174,16 @@ export function CloseDealCard(props: Props) {
         <CardTitle className="flex items-center gap-2">
           <Banknote size={16} strokeWidth={1.75} className="text-green" />
           การปิดการขาย
+          {deal && <span className="num text-small font-normal text-text-subtle">{deal.case_id}</span>}
         </CardTitle>
         {editable && !open && (
           <Button size="sm" variant={gaps.length ? "primary" : "secondary"} onClick={() => setOpen(true)}>
-            {closed ? "แก้ไข" : "บันทึกการปิด"}
+            {deal ? "แก้ไข" : "บันทึกการปิด"}
           </Button>
         )}
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        {/* ── THE UNDO ────────────────────────────────────────────────────────────
-            A banner rather than a popup on the moment the stage is reopened, for two
-            reasons: a popup is gone the instant it is mis-clicked and the wrong entry
-            would then stay forever, and the answer is often not knowable yet — a buyer
-            wobbling is not the same as a deal that is dead. This waits until it is.
-            It disappears on its own if the lead is closed again. */}
         {orphanedMatch && editable && (
           <div className="flex flex-col gap-2 rounded-md border border-amber/40 bg-amber/10 px-3 py-2.5">
             <div className="flex items-start gap-2">
@@ -165,8 +191,7 @@ export function CloseDealCard(props: Props) {
               <div className="text-small">
                 <div className="font-medium">ดีลนี้เปิดใหม่แล้ว แต่ยังมีบันทึกใน Last Match</div>
                 <div className="text-text-muted">
-                  บันทึก{" "}
-                  <span className="num">{orphanedMatch.last_match_id}</span>
+                  บันทึก <span className="num">{orphanedMatch.last_match_id}</span>
                   {orphanedMatch.last_match_price != null && (
                     <> ราคา <span className="num">{formatBaht(orphanedMatch.last_match_price)}</span></>
                   )}{" "}
@@ -184,7 +209,7 @@ export function CloseDealCard(props: Props) {
         )}
 
         {/* The nag, in place. The bell tells you a deal is short; this says which part. */}
-        {gaps.length > 0 && (
+        {gaps.length > 0 && !open && (
           <div className="flex items-start gap-2 rounded-md border border-amber/40 bg-amber/10 px-3 py-2">
             <AlertTriangle size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-amber" />
             <div className="text-small">
@@ -197,19 +222,33 @@ export function CloseDealCard(props: Props) {
         {open ? (
           <div className="flex flex-col gap-3">
             <div>
+              <div className={label}>ประเภทดีล</div>
+              <div className="inline-flex items-center gap-0.5 rounded-md bg-surface-2 p-0.5">
+                {(["sale", "rent"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setDealType(k)}
+                    aria-pressed={dealType === k}
+                    className={cn(
+                      "h-7 rounded-[7px] px-3 text-small transition-colors",
+                      dealType === k ? "bg-surface text-text shadow-card" : "text-text-muted hover:text-text"
+                    )}
+                  >
+                    {DEAL_KIND_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
               <div className={label}>
                 ราคาปิดจริง (บาท)
                 {props.askingPrice != null && (
                   <span className="text-text-subtle"> · ตั้งขาย {formatBaht(props.askingPrice)}</span>
                 )}
               </div>
-              <Input
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                inputMode="numeric"
-                placeholder="เช่น 6500000"
-                className="w-full num"
-              />
+              <Input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="numeric" placeholder="เช่น 6500000" className="w-full num" />
               {showGap && gapAmount !== 0 && (
                 <div className={cn("mt-1 text-label num", gapAmount < 0 ? "text-red" : "text-green")}>
                   {gapAmount < 0 ? "ต่ำกว่าตั้งขาย " : "สูงกว่าตั้งขาย "}
@@ -221,35 +260,68 @@ export function CloseDealCard(props: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className={label}>วันที่ปิด (เซ็นสัญญา)</div>
-                <Input
-                  type="date"
-                  value={closingDate}
-                  onChange={(e) => setClosingDate(e.target.value)}
-                  className="w-full"
-                />
+                <Input type="date" value={closingDate} onChange={(e) => setClosingDate(e.target.value)} className="w-full" />
               </div>
               <div>
                 <div className={label}>
-                  วันที่โอน <span className="text-text-subtle">· ยังไม่โอนเว้นว่าง</span>
+                  คอมมิชชั่นที่คาดว่าจะได้ (บาท)
+                  {suggestedForecast != null && !forecast && (
+                    <span className="text-text-subtle"> · 3% = {formatBaht(suggestedForecast)}</span>
+                  )}
                 </div>
                 <Input
-                  type="date"
-                  value={transferDate}
-                  onChange={(e) => setTransferDate(e.target.value)}
-                  className="w-full"
+                  value={forecast}
+                  onChange={(e) => setForecast(e.target.value)}
+                  inputMode="numeric"
+                  placeholder={suggestedForecast != null ? String(suggestedForecast) : "เช่น 195000"}
+                  className="w-full num"
                 />
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className={label}>
+                  วันที่โอน <span className="text-text-subtle">· ยังไม่โอนเว้นว่าง</span>
+                </div>
+                <Input type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} className="w-full" />
+              </div>
+              <div>
+                <div className={label}>
+                  ยอดที่ได้รับจริง (บาท) <span className="text-text-subtle">· ถ้าต่างจากที่คาด</span>
+                </div>
+                <Input value={real} onChange={(e) => setReal(e.target.value)} inputMode="numeric" placeholder={forecast || "เท่าที่คาด"} className="w-full num" />
+              </div>
+            </div>
+
+            {/* Co-broke. A second agent and their share of each figure, in baht — the
+                register's own splits are not always even. Blank shares = half each. */}
             <div>
-              <div className={label}>คอมมิชชั่น (บาท)</div>
-              <Input
-                value={commission}
-                onChange={(e) => setCommission(e.target.value)}
-                inputMode="numeric"
-                placeholder="เช่น 195000"
-                className="w-full num"
-              />
+              <div className={label}>
+                โคเอเจนต์ <span className="text-text-subtle">· ถ้าปิดร่วมกับคนอื่นในบริษัท</span>
+              </div>
+              <select value={coCode} onChange={(e) => setCoCode(e.target.value)} className={field}>
+                <option value="">— ไม่มี —</option>
+                {props.agents
+                  .filter((a) => a.employeeCode !== primaryCode)
+                  .map((a) => (
+                    <option key={a.employeeCode} value={a.employeeCode}>
+                      {a.nickname}
+                    </option>
+                  ))}
+              </select>
+              {coCode && (
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <div className={label}>ส่วนแบ่งของ {nameOf(coCode)} (บาท)</div>
+                    <Input value={coForecast} onChange={(e) => setCoForecast(e.target.value)} inputMode="numeric" placeholder="เว้นว่าง = ครึ่งหนึ่ง" className="w-full num" />
+                  </div>
+                  <div>
+                    <div className={label}>จากยอดที่ได้รับจริง</div>
+                    <Input value={coReal} onChange={(e) => setCoReal(e.target.value)} inputMode="numeric" placeholder="เว้นว่าง = ครึ่งหนึ่ง" className="w-full num" />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -259,16 +331,40 @@ export function CloseDealCard(props: Props) {
 
             {error && <div className="text-small text-red">{error}</div>}
 
-            <div className="flex items-center gap-2">
-              <Button onClick={save} disabled={busy}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => void save(false)} disabled={busy}>
                 {busy && <LoaderCircle size={14} className="animate-spin" />}
-                บันทึก
+                บันทึกเป็น &quot;{CASE_STATUS_LABEL[willBe]}&quot;
               </Button>
-              <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+              <Button variant="ghost" onClick={() => { setOpen(false); setConfirmFail(false); }} disabled={busy}>
                 ยกเลิก
               </Button>
+              {deal && deal.status !== "fail" && !confirmFail && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmFail(true)}
+                  disabled={busy}
+                  className="ml-auto inline-flex items-center gap-1 text-small text-text-muted transition-colors hover:text-red"
+                >
+                  <XCircle size={13} strokeWidth={1.75} /> ดีลไม่จบ
+                </button>
+              )}
             </div>
-            {props.listingCode && (
+            {confirmFail && (
+              <div className="flex flex-col gap-2 rounded-md border border-red/30 bg-red-bg/50 px-3 py-2.5 text-small">
+                <div>
+                  <div className="font-medium">บันทึกว่าดีลนี้ไม่จบ?</div>
+                  <div className="text-text-muted">
+                    เคส {deal?.case_id} จะไม่ถูกนับเป็นรายได้อีก ทั้งที่คาดและที่รับจริง · ขั้นตอนของลีดและสถานะทรัพย์จะไม่ถูกเปลี่ยนให้อัตโนมัติ
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 self-end">
+                  <Button size="sm" variant="secondary" onClick={() => setConfirmFail(false)} disabled={busy}>ไม่ใช่</Button>
+                  <Button size="sm" onClick={() => void save(true)} disabled={busy}>ใช่ ดีลไม่จบ</Button>
+                </div>
+              </div>
+            )}
+            {props.listingCode && willBe !== "pending" ? null : props.listingCode && (
               <p className="text-label text-text-subtle">
                 เมื่อบันทึก ระบบจะตั้งสเตจเป็น Win และอัปเดตทรัพย์ {props.listingCode} เป็น Sold Completed ให้อัตโนมัติ
               </p>
@@ -276,32 +372,49 @@ export function CloseDealCard(props: Props) {
           </div>
         ) : (
           <div className="flex flex-col gap-3 text-body">
+            {deal && (
+              <Row label="สถานะ">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-small font-medium",
+                    deal.status === "success" && "bg-green-bg text-green",
+                    deal.status === "pending" && "bg-amber-bg text-amber",
+                    deal.status === "fail" && "bg-red-bg text-red"
+                  )}
+                >
+                  {deal.status === "pending" && <Hourglass size={12} strokeWidth={1.75} />}
+                  {CASE_STATUS_LABEL[deal.status]}
+                  {deal.deal_type === "rent" && " · เช่า"}
+                </span>
+              </Row>
+            )}
             <Row label="ราคาปิด">
-              {props.closingPrice != null ? (
-                <span className="num font-semibold">{formatBaht(props.closingPrice)}</span>
-              ) : (
-                <Missing />
-              )}
+              {deal?.closing_price != null ? <span className="num font-semibold">{formatBaht(deal.closing_price)}</span> : <Missing />}
             </Row>
             {props.askingPrice != null && (
               <Row label="ตั้งขาย">
                 <span className="num text-text-muted">{formatBaht(props.askingPrice)}</span>
               </Row>
             )}
-            <Row label="คอมมิชชั่น">
-              {props.commission != null ? (
-                <span className="num font-semibold text-green">{formatBaht(props.commission)}</span>
-              ) : (
-                <Missing />
-              )}
+            <Row label="คอมมิชชั่นที่คาด">
+              {deal?.forecast_revenue != null ? <span className="num font-semibold">{formatBaht(deal.forecast_revenue)}</span> : <Missing />}
             </Row>
+            {deal?.status === "success" && (
+              <Row label="ได้รับจริง">
+                {deal.real_revenue != null ? (
+                  <span className="num font-semibold text-green">{formatBaht(deal.real_revenue)}</span>
+                ) : (
+                  <Missing />
+                )}
+              </Row>
+            )}
             <Row label="วันที่ปิด">
-              {props.closingDate ? <span className="num">{formatDate(props.closingDate)}</span> : <Missing />}
+              {deal?.closing_date ? <span className="num">{formatDate(deal.closing_date)}</span> : <Missing />}
             </Row>
             <Row label="วันที่โอน">
-              {props.transferDate ? (
-                <span className="num">{formatDate(props.transferDate)}</span>
-              ) : awaiting ? (
+              {deal?.transfer_date ? (
+                <span className="num">{formatDate(deal.transfer_date)}</span>
+              ) : deal?.status === "pending" ? (
                 <span className="inline-flex items-center gap-1 text-small text-text-muted">
                   <Hourglass size={12} strokeWidth={1.75} /> รอโอน
                 </span>
@@ -309,17 +422,23 @@ export function CloseDealCard(props: Props) {
                 <span className="text-text-subtle">—</span>
               )}
             </Row>
-            {props.remark && (
-              <Row label="หมายเหตุ">
-                <span className="text-text-muted">{props.remark}</span>
+            {deal && deal.agents.length > 1 && (
+              <Row label="แบ่งคอม">
+                <span className="num text-text-muted">
+                  {deal.agents
+                    .map((a) => `${nameOf(a.employee_code)} ${a.forecast_share != null ? formatBaht(a.forecast_share) : "—"}`)
+                    .join(" · ")}
+                </span>
               </Row>
             )}
-            {/* The deal says sold, the listing says otherwise. Saving the card fixes it,
-                so this points at the button rather than asking for a second edit. */}
-            {closed && props.listingCode && props.listingStatus !== SOLD_LISTING_STATUS && (
+            {deal?.remark && (
+              <Row label="หมายเหตุ">
+                <span className="text-text-muted">{deal.remark}</span>
+              </Row>
+            )}
+            {deal && deal.status !== "fail" && props.listingCode && props.listingStatus !== SOLD_LISTING_STATUS && (
               <div className="text-label text-text-subtle">
-                ทรัพย์ {props.listingCode} ยังเป็น &quot;{props.listingStatus ?? "—"}&quot; —
-                กด &quot;แก้ไข&quot; แล้วบันทึกเพื่ออัปเดตเป็น Sold Completed
+                ทรัพย์ {props.listingCode} ยังเป็น &quot;{props.listingStatus ?? "—"}&quot; — กด &quot;แก้ไข&quot; แล้วบันทึกเพื่ออัปเดตเป็น Sold Completed
               </div>
             )}
             {note && (

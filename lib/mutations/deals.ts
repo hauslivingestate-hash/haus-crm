@@ -3,44 +3,73 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth";
-import { CLOSED_PIPELINE_STAGE, SOLD_LISTING_STATUS, isClosed } from "@/lib/deals";
+import {
+  CLOSED_PIPELINE_STAGE,
+  SOLD_LISTING_STATUS,
+  SALE_COMMISSION_RATE,
+  type CaseStatus,
+  type DealKind,
+} from "@/lib/deals";
 import { syncLeadLastMatch } from "@/lib/lastMatchSync";
 
-// บันทึกการปิดการขาย — the one write that records a sale.
-//
-// Before this existed there was none. `commission`, `closing_date` and `transfer_date` were
-// rendered on two screens and written by no screen at all, so a closed deal reached the
-// database only by way of the spreadsheet import. "Inform admin the old way" was not a
-// process anyone chose; it was the only path that existed.
+// บันทึกการปิดการขาย — the one write that records a sale. Since 2026-09-10 it writes a
+// CASE (closed_case + closed_case_agent), not five columns on the lead.
 //
 // ── WHAT THIS ASKS FOR vs WHAT IT WORKS OUT ─────────────────────────────────────
-// Asks (only the sale knows):  closing_price, closing_date, transfer_date, commission
-// Works out (already stored):  sale_id ← the listing, pipeline_stage, listing_status
+// Asks (only the sale knows):  deal type, closing price, signing date, forecast
+//                              commission (offered at 3% on a sale), a co-agent and the
+//                              split if there is one — and later the transfer date and
+//                              the real figure.
+// Works out (already stored):  the case id, who is credited (the lead's sale, else the
+//                              listing's), the listing, STATUS — pending on signing,
+//                              success the moment a transfer date is entered — the lead's
+//                              stage, the listing's status, the Last Match record.
+//
+// ── STATUS IS DERIVED, NOT ASKED ────────────────────────────────────────────────
+// A person entering a transfer date is saying the money arrived; asking them to also
+// flip a dropdown to "success" is asking the same question twice, and the second answer
+// drifts. The only status a person sets by hand is `fail`, because nothing in the data
+// can know a deal fell through — and it is its own button with its own confirmation.
+//
+// ── THE LEAD'S FIVE OLD COLUMNS ARE NOT TOUCHED ─────────────────────────────────
+// commission / closing_price / closing_date / transfer_date / case_closing_remark stay
+// with whatever they held. Nothing reads them; lib/queries.ts fills the same fields on a
+// CrmRow from the case. Dropping them is a separate decision.
 //
 // ── THE LISTING WRITE IS BEST-EFFORT, ON PURPOSE ────────────────────────────────
 // Marking the listing sold needs `listings.edit`, which plenty of agents do not hold. If
-// that write is refused the deal is still saved and the caller is told the listing was left
-// alone. The alternative — failing the whole close because a second table refused — would
-// lose the number we most need and send the agent back to messaging admin, which is the
-// exact behaviour this file exists to replace.
+// that write is refused the case is still saved and the caller is told the listing was
+// left alone. Failing the whole close because a second table refused would lose the
+// number we most need.
 
 type Result =
-  | { ok: true; listingUpdated: boolean }
+  | { ok: true; caseId: string; status: CaseStatus; listingUpdated: boolean }
   | { ok: false; error: string };
 
 type Row = Record<string, unknown>;
 
-/** What the close form collects. Strings, because they come from inputs; "" means cleared. */
+/** What the close form collects. Strings, because they come from inputs; "" means blank. */
 export interface DealCloseInput {
+  /** The case being edited, or null to open a new one on this lead. */
+  caseId: string | null;
+  dealType: DealKind;
   /** ราคาปิดจริง — may differ from the listing's asking price, which is why it is asked. */
   closingPrice: string;
-  /** วันที่ปิด (เซ็นสัญญา) — ISO yyyy-mm-dd. */
+  /** วันเซ็นสัญญา — ISO yyyy-mm-dd. */
   closingDate: string;
-  /** วันที่โอน — ISO yyyy-mm-dd. Blank is normal: transfer follows signing by weeks. */
+  /** Full company commission expected. Blank on a sale = 3% of the price. */
+  forecastRevenue: string;
+  /** วันโอน — ISO. Blank is normal: transfer follows signing by weeks. Filling it in is
+      what turns the case to `success`. */
   transferDate: string;
-  commission: string;
-  /** หมายเหตุ — main_6_buyer_crm.case_closing_remark. */
+  /** What actually arrived. Blank = the forecast stands until someone corrects it. */
+  realRevenue: string;
   remark: string;
+  /** A second agent credited on this deal, with their share of each figure in baht. Blank
+      shares = an even split. */
+  coAgent: { employeeCode: string; forecastShare: string; realShare: string } | null;
+  /** The one status a person sets by hand. */
+  markFailed?: boolean;
 }
 
 /** A money string from an input: strips the thousands separators people paste in. */
@@ -66,12 +95,12 @@ function day(raw: string): { ok: true; value: string | null } | { ok: false } {
 }
 
 /**
- * Record (or correct) a deal's closing details.
+ * Record (or correct) a deal.
  *
- * Gated on `leads.edit` — the same permission that edits any other field on the lead. A
- * separate "close" permission was considered and rejected: closing is not a privileged act,
- * it is the ordinary end of the job the lead's owner was already doing, and a gate they do
- * not hold is a gate they route around by messaging admin.
+ * Gated on `leads.edit` — the same permission that edits any other field on the lead.
+ * Closing is not a privileged act; it is the ordinary end of the job the lead's owner was
+ * already doing, and a gate they do not hold is a gate they route around by messaging
+ * admin. RLS on closed_case says the same thing independently.
  */
 export async function saveDealClose(leadId: string, input: DealCloseInput): Promise<Result> {
   const auth = await getAuthContext();
@@ -81,13 +110,23 @@ export async function saveDealClose(leadId: string, input: DealCloseInput): Prom
     return { ok: false, error: "ไม่มีสิทธิ์บันทึกการปิดการขาย" };
   }
 
+  // ── Validate what was typed ─────────────────────────────────────────────────
   const closingPrice = money(input.closingPrice);
-  const commission = money(input.commission);
   if (input.closingPrice.trim() !== "" && (closingPrice == null || closingPrice <= 0)) {
     return { ok: false, error: "ราคาปิดต้องเป็นตัวเลขมากกว่า 0" };
   }
-  if (input.commission.trim() !== "" && (commission == null || commission < 0)) {
+  let forecast = money(input.forecastRevenue);
+  if (input.forecastRevenue.trim() !== "" && (forecast == null || forecast < 0)) {
     return { ok: false, error: "คอมมิชชั่นต้องเป็นตัวเลข" };
+  }
+  // The rule the whole register follows: every sale case is exactly 3% of the price.
+  // Offered, not imposed — a typed figure always wins.
+  if (forecast == null && input.dealType === "sale" && closingPrice != null) {
+    forecast = Math.round(closingPrice * SALE_COMMISSION_RATE);
+  }
+  const real = money(input.realRevenue);
+  if (input.realRevenue.trim() !== "" && (real == null || real < 0)) {
+    return { ok: false, error: "ยอดที่ได้รับจริงต้องเป็นตัวเลข" };
   }
 
   const closing = day(input.closingDate);
@@ -100,29 +139,20 @@ export async function saveDealClose(leadId: string, input: DealCloseInput): Prom
     return { ok: false, error: "วันที่โอนต้องไม่ก่อนวันที่ปิด" };
   }
 
+  // ── Status: derived, except `fail` ──────────────────────────────────────────
+  const status: CaseStatus = input.markFailed ? "fail" : transfer.value ? "success" : "pending";
+
   const supabase = await createClient();
-  const { data: current, error: fetchError } = await supabase
+  const { data: lead, error: leadError } = await supabase
     .from("main_6_buyer_crm")
-    .select("sale_id,listing_code,pipeline_stage,closing_price,closing_date,transfer_date,commission,case_closing_remark")
+    .select("lead_id,lead_name,sale_id,listing_code,pipeline_stage,marketing_channel")
     .eq("lead_id", leadId)
     .maybeSingle();
-  if (fetchError || !current) return { ok: false, error: fetchError?.message ?? "ไม่พบ Lead นี้" };
+  if (leadError || !lead) return { ok: false, error: leadError?.message ?? "ไม่พบ Lead นี้" };
 
-  const patch: Row = {
-    closing_price: closingPrice,
-    closing_date: closing.value,
-    transfer_date: transfer.value,
-    commission,
-    case_closing_remark: input.remark.trim() || null,
-  };
-
-  // ── DERIVED, not asked ────────────────────────────────────────────────────────
-  const listingCode = (current.listing_code as string | null) || null;
-  interface ListingCtx {
-    listing_id: string;
-    sale_id: string | null;
-    listing_status: string | null;
-  }
+  // ── DERIVED, not asked ──────────────────────────────────────────────────────
+  const listingCode = (lead.listing_code as string | null) || null;
+  interface ListingCtx { listing_id: string; sale_id: string | null; listing_status: string | null }
   let listing: ListingCtx | null = null;
   if (listingCode) {
     const { data } = await supabase
@@ -133,89 +163,152 @@ export async function saveDealClose(leadId: string, input: DealCloseInput): Prom
     listing = (data as unknown as ListingCtx | null) ?? null;
   }
 
-  // The listing already knows who sells it. L26-007 is the case in point: no sale on the
-  // lead, C-001 on the listing. Only fills a BLANK — never overwrites a real assignment,
-  // because a lead can legitimately be worked by someone other than the listing's owner.
-  if (!current.sale_id && listing?.sale_id) patch.sale_id = listing.sale_id;
+  // Who is credited. The lead's sale, else the listing's (L26-007: no sale on the lead,
+  // C-001 on the listing), else whoever is saving — a deal with nobody on it is a deal
+  // nobody's dashboard can see.
+  const primaryCode = (lead.sale_id as string | null) || listing?.sale_id || auth.employeeCode;
 
-  // Any money or date at all means the deal happened, so the dropdown should say so. Four
-  // completed deals sit at Lead/Show/Appoint today purely because nobody went back to it.
-  const nowClosed = isClosed({
-    pipeline_stage: current.pipeline_stage as string | null,
-    closing_price: closingPrice,
+  // The split. Shares are baht, never percentages — the register's own splits are not
+  // always even. Blank shares on a co-agent mean half each.
+  let coCode: string | null = null;
+  let coForecast: number | null = null;
+  let coReal: number | null = null;
+  if (input.coAgent?.employeeCode) {
+    coCode = input.coAgent.employeeCode;
+    if (coCode === primaryCode) return { ok: false, error: "โคเอเจนต์ต้องไม่ใช่คนเดียวกับเจ้าของดีล" };
+    coForecast = money(input.coAgent.forecastShare);
+    coReal = money(input.coAgent.realShare);
+    if (coForecast == null && forecast != null) coForecast = Math.round(forecast / 2);
+    if (coReal == null && real != null) coReal = Math.round(real / 2);
+    if (forecast != null && coForecast != null && coForecast > forecast) {
+      return { ok: false, error: "ส่วนแบ่งของโคเอเจนต์มากกว่าคอมมิชชั่นทั้งหมด" };
+    }
+  }
+  const primaryForecast = forecast == null ? null : forecast - (coForecast ?? 0);
+  const primaryReal = real == null ? null : real - (coReal ?? 0);
+
+  // ── The case id ─────────────────────────────────────────────────────────────
+  let caseId = input.caseId?.trim() || null;
+  let existing: Row | null = null;
+  if (caseId) {
+    const { data } = await supabase
+      .from("closed_case")
+      .select("*")
+      .eq("case_id", caseId)
+      .eq("lead_id", leadId) // a case id off another lead is a bug, not a request
+      .maybeSingle();
+    if (!data) return { ok: false, error: "ไม่พบเคสนี้ในลีดนี้" };
+    existing = data as Row;
+  } else {
+    const { data, error } = await supabase.rpc("next_case_id");
+    if (error || !data) return { ok: false, error: error?.message ?? "สร้างรหัสเคสไม่สำเร็จ" };
+    caseId = String(data);
+  }
+
+  const patch: Row = {
+    lead_id: leadId,
+    listing_id: listing?.listing_id ?? null,
+    listing_ref: listingCode,
+    deal_type: input.dealType,
+    status,
     closing_date: closing.value,
     transfer_date: transfer.value,
-    commission,
-  });
-  if (nowClosed && current.pipeline_stage !== CLOSED_PIPELINE_STAGE) {
-    patch.pipeline_stage = CLOSED_PIPELINE_STAGE;
-  }
+    closing_price: closingPrice,
+    forecast_revenue: forecast,
+    real_revenue: real,
+    buyer_name: (lead.lead_name as string | null) ?? null,
+    channel: (lead.marketing_channel as string | null) ?? null,
+    remark: input.remark.trim() || null,
+  };
 
-  const before: Row = {};
-  const changed: Row = {};
-  for (const [k, v] of Object.entries(patch)) {
-    const was = (current as Row)[k] ?? null;
-    // Numerics come back from Postgres as strings; compare loosely so re-saving an
-    // unchanged form does not write a no-op row and an audit entry nobody caused.
-    if (String(was ?? "") === String(v ?? "")) continue;
-    before[k] = was;
-    changed[k] = v;
-  }
-
-  if (Object.keys(changed).length > 0) {
-    const { error: updateError } = await supabase
-      .from("main_6_buyer_crm")
-      .update(changed)
-      .eq("lead_id", leadId);
-    if (updateError) return { ok: false, error: updateError.message };
-
+  if (existing) {
+    // Only what changed, so re-saving an unchanged form writes no row and no audit entry
+    // nobody caused. Numerics come back as strings; compare loosely.
+    const before: Row = {};
+    const changed: Row = {};
+    for (const [k, v] of Object.entries(patch)) {
+      const was = existing[k] ?? null;
+      if (String(was ?? "") === String(v ?? "")) continue;
+      before[k] = was;
+      changed[k] = v;
+    }
+    if (Object.keys(changed).length > 0) {
+      const { error } = await supabase.from("closed_case").update(changed).eq("case_id", caseId);
+      if (error) return { ok: false, error: error.message };
+      await supabase.from("audit_log").insert({
+        entity: "closed_case",
+        entity_id: caseId,
+        action: "close_deal",
+        changed_by: auth.employeeCode,
+        before,
+        after: changed,
+      });
+    }
+  } else {
+    const { error } = await supabase
+      .from("closed_case")
+      .insert({ case_id: caseId, created_by: auth.employeeCode, ...patch });
+    if (error) return { ok: false, error: error.message };
     await supabase.from("audit_log").insert({
-      entity: "main_6_buyer_crm",
-      entity_id: leadId,
+      entity: "closed_case",
+      entity_id: caseId,
       action: "close_deal",
       changed_by: auth.employeeCode,
-      before,
-      after: changed,
+      before: {},
+      after: { case_id: caseId, ...patch },
     });
   }
 
-  /* Record the sale in the market log, or update the entry already there.
-     Best-effort, for the same reason the listing write is: writing it needs `lastmatch.add`,
-     and a sale who does not hold it must not lose the deal they just saved over a second
-     table. One row per lead is guaranteed by the database (uq_last_match_lead), so saving
-     this form again — which everyone does, weeks later, to add the transfer date — updates
-     the entry instead of adding another. */
-  if (nowClosed) {
+  // ── The credit list ─────────────────────────────────────────────────────────
+  // Whoever is no longer on the deal comes off it; the rest are written in full. A
+  // removed co-agent is the only way a share disappears, and it disappears entirely
+  // rather than lingering at zero.
+  const keep = [primaryCode, ...(coCode ? [coCode] : [])];
+  await supabase.from("closed_case_agent").delete().eq("case_id", caseId).not("employee_code", "in", `(${keep.join(",")})`);
+  const { error: agentError } = await supabase.from("closed_case_agent").upsert(
+    [
+      { case_id: caseId, employee_code: primaryCode, is_primary: true, forecast_share: primaryForecast, real_share: primaryReal },
+      ...(coCode
+        ? [{ case_id: caseId, employee_code: coCode, is_primary: false, forecast_share: coForecast, real_share: coReal }]
+        : []),
+    ],
+    { onConflict: "case_id,employee_code" }
+  );
+  if (agentError) return { ok: false, error: agentError.message };
+
+  // ── What a live deal implies for the lead and the listing ───────────────────
+  // A failed case implies nothing: the person decides what the lead becomes.
+  let listingUpdated = false;
+  if (status !== "fail") {
+    const leadPatch: Row = {};
+    if (lead.pipeline_stage !== CLOSED_PIPELINE_STAGE) leadPatch.pipeline_stage = CLOSED_PIPELINE_STAGE;
+    if (!lead.sale_id && primaryCode) leadPatch.sale_id = primaryCode;
+    if (Object.keys(leadPatch).length > 0) {
+      await supabase.from("main_6_buyer_crm").update(leadPatch).eq("lead_id", leadId);
+    }
+
+    /* The market log. Best-effort for the same reason the listing write is: it needs
+       `lastmatch.add`, and a sale who lacks it must not lose the deal they just saved
+       over a second table. One row per lead (uq_last_match_lead), updated in place. */
     await syncLeadLastMatch(supabase, auth.employeeCode, {
       leadId,
       price: closingPrice,
       remark: input.remark,
     });
-  }
 
-  // Best-effort — see the header. A refusal here is an ordinary outcome, not an error.
-  let listingUpdated = false;
-  if (nowClosed && listing && listing.listing_status !== SOLD_LISTING_STATUS) {
-    const { error } = await supabase
-      .from("main_4_listing_database")
-      .update({ listing_status: SOLD_LISTING_STATUS })
-      .eq("listing_id", listing.listing_id);
-    if (!error) {
-      listingUpdated = true;
-      await supabase.from("audit_log").insert({
-        entity: "main_4_listing_database",
-        entity_id: listing.listing_id,
-        action: "sold_by_deal",
-        changed_by: auth.employeeCode,
-        before: { listing_status: listing.listing_status },
-        after: { listing_status: SOLD_LISTING_STATUS },
-      });
+    if (listing && listing.listing_status !== SOLD_LISTING_STATUS) {
+      const { error } = await supabase
+        .from("main_4_listing_database")
+        .update({ listing_status: SOLD_LISTING_STATUS })
+        .eq("listing_id", listing.listing_id);
+      listingUpdated = !error;
     }
   }
 
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/");
   revalidatePath("/last-match");
-  if (listingUpdated && listing) revalidatePath(`/listings/${listing.listing_id}`);
-  return { ok: true, listingUpdated };
+  revalidatePath("/today");
+  return { ok: true, caseId, status, listingUpdated };
 }

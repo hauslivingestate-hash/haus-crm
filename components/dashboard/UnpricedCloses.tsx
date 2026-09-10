@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { DEAL_GAP_LABEL } from "@/lib/deals";
 import type { UnpricedClose } from "@/lib/salesDashboard";
 
@@ -31,20 +32,32 @@ export function UnpricedCloses({ rows }: { rows: UnpricedClose[] }) {
           </p>
 
           <ul className="mt-3 flex flex-col gap-1">
-            {rows.map((r) => (
-              <li key={r.leadId}>
-                <Link
-                  href={`/leads/${r.leadId}`}
-                  className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md px-2 py-1.5 -mx-2 hover:bg-surface-hover transition-colors"
-                >
-                  <span className="num text-small text-text-subtle">{r.leadId}</span>
-                  <span className="text-body text-text truncate">{r.leadName ?? "—"}</span>
+            {rows.map((r) => {
+              const body = (
+                <>
+                  <span className="num text-small text-text-subtle">{r.caseId}</span>
+                  <span className="text-body text-text truncate">{r.title}</span>
                   <span className="text-small text-text-muted">
                     ขาด {r.gaps.map((g) => DEAL_GAP_LABEL[g]).join(" · ")}
                   </span>
-                </Link>
-              </li>
-            ))}
+                </>
+              );
+              const cls =
+                "flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md px-2 py-1.5 -mx-2 transition-colors";
+              return (
+                <li key={r.caseId}>
+                  {/* A case the register could not tie to a lead has no page to open yet;
+                      it is listed so the gap is visible, not hidden behind a dead link. */}
+                  {r.leadId ? (
+                    <Link href={`/leads/${r.leadId}`} className={cn(cls, "hover:bg-surface-hover")}>
+                      {body}
+                    </Link>
+                  ) : (
+                    <div className={cls}>{body}</div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       </div>

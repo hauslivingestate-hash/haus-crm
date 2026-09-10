@@ -24,6 +24,7 @@ import {
   type Employee,
 } from "@/lib/team";
 import { todayISO } from "@/lib/momentum";
+import { withCase, type ClosedCase } from "@/lib/deals";
 import type { KpiTemplate, TemplateKind, TemplateSource } from "@/lib/masterdata";
 import { comboKey, type CopyGrade, type CopyTemplate, type CopyType } from "@/lib/listingCopy";
 import type {
@@ -120,10 +121,23 @@ export interface CrmRow {
   customer_complain: string | null;
   complain_status: string | null;
   complain_remark: string | null;
+  /** The lead's deals, newest first once through withCase(). */
+  primary_case?: ClosedCase | null;
+  closed_case?: unknown;
 }
 
+/* The lead's own closing columns (commission, closing_date, transfer_date, closing_price,
+   case_closing_remark) are NOT selected any more. Since 2026-09-10 a deal is a row in
+   closed_case; those five columns keep their old values but nothing writes or reads them.
+   The embed below brings the lead's cases along, and `withCase()` (lib/deals.ts) fills
+   the same five fields on CrmRow from the case — so every reader of `c.commission` keeps
+   working, and all of them now agree with the dashboard. */
+const CASE_EMBED =
+  "closed_case(case_id,lead_id,listing_id,deal_type,status,closing_date,transfer_date,closing_price,forecast_revenue,real_revenue,remark,buyer_name,agents:closed_case_agent(employee_code,is_primary,forecast_share,real_share))";
+
 const CRM_COLUMNS =
-  "lead_id,lead_name,phone,line_id,potential,lead_status,pipeline_stage,lead_type,sale_id,listing_code,budget,commission,last_follow_date,closing_date,transfer_date,closing_price,case_closing_remark,date_received,marketing_channel,tag_id,customer_complain,complain_status,complain_remark";
+  "lead_id,lead_name,phone,line_id,potential,lead_status,pipeline_stage,lead_type,sale_id,listing_code,budget,last_follow_date,date_received,marketing_channel,tag_id,customer_complain,complain_status,complain_remark," +
+  CASE_EMBED;
 
 // Mirrors `v_main_listing` in full — all 55 exposed columns. Types were probed against the
 // live schema (not inferred from sample rows, which are mostly null): `floor` and `unit_no`
@@ -257,7 +271,7 @@ export async function getCrm(): Promise<CrmRow[]> {
     .from("main_6_buyer_crm")
     .select(CRM_COLUMNS)
     .order("date_received", { ascending: false });
-  return (data as CrmRow[]) ?? [];
+  return ((data ?? []) as unknown as CrmRow[]).map(withCase);
 }
 
 export async function getListings(): Promise<ListingRow[]> {
@@ -342,7 +356,7 @@ export async function getLead(id: string): Promise<LeadDetailRow | null> {
     )
     .eq("lead_id", id)
     .maybeSingle();
-  return (data as unknown as LeadDetailRow | null) ?? null;
+  return data ? withCase(data as unknown as LeadDetailRow) : null;
 }
 
 export async function getListing(id: string): Promise<ListingRow | null> {
