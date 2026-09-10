@@ -6,6 +6,7 @@ import type { ListingRow } from "@/lib/queries";
 import { useCopyTemplates } from "@/components/CopyTemplatesProvider";
 import { listingCopy } from "@/lib/listingCopy";
 import { cn } from "@/lib/cn";
+import { useTopmostEscape } from "@/lib/overlayStack";
 
 // "สร้างคำโฆษณา" — reveals the server/template-generated ad copy for a listing in a drawer,
 // split into the three ready-to-paste blocks (Headline · Normal · DDproperty), each with
@@ -35,16 +36,18 @@ function CopyDrawer({
   copy: { headline: string; normal: string; dd: string };
   onClose: () => void;
 }) {
+  // Escape is handled by the overlay stack, not by a bare document listener: this sheet
+  // can open INSIDE the detail drawer, and two listeners meant one key press closed both.
+  // See lib/overlayStack.ts.
+  useTopmostEscape(onClose);
+
   React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div onClick={onClose} className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">

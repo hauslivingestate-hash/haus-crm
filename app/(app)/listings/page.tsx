@@ -2,17 +2,25 @@ import { Topbar } from "@/components/Topbar";
 import { ListingsBrowser } from "@/components/ListingsBrowser";
 import { ListingIntakeButton } from "@/components/ListingIntakeButton";
 import { getMyListings, getListingCovers } from "@/lib/queries";
+import { getTablePrefs } from "@/lib/tables/queries";
+import { getLookupColors, getSlaWindows } from "@/lib/tables/colors";
 
 // This page reads the session, so it renders per request. `revalidate` is gone rather than
 // ignored: a cached copy of one agent's inventory served to another is exactly the bug.
 export default async function ListingsPage() {
-  const [listings, covers] = await Promise.all([getMyListings(), getListingCovers()]);
+  const [listings, covers, prefs, colors, sla] = await Promise.all([
+    getMyListings(),
+    getListingCovers(),
+    getTablePrefs(),
+    getLookupColors(),
+    getSlaWindows(),
+  ]);
 
   return (
     <>
       <Topbar title="ทรัพย์" subtitle={`ทรัพย์ที่ฉันดูแล · ${listings.length} รายการ`} actions={<ListingIntakeButton />} />
       <div className="p-4 lg:p-6">
-        <ListingsBrowser listings={listings} covers={covers} />
+        <ListingsBrowser listings={listings} covers={covers} prefs={prefs.listings} colors={colors} sla={sla.listing} />
       </div>
     </>
   );

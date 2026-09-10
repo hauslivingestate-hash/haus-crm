@@ -326,7 +326,7 @@ export function LeadAssignment({ leads, agents }: { leads: CrmRow[]; agents: Age
                         <TD className="num text-small text-text-muted">{r.listing_code ?? "—"}</TD>
                         <TD className="num text-right text-text-muted">{r.budgetBaht != null ? formatBaht(r.budgetBaht) : "—"}</TD>
                         <TD>
-                          <span className="inline-flex items-center gap-1.5 text-body whitespace-nowrap"><Dot className={stg.dot} />{stg.th}</span>
+                          <span className="inline-flex items-center gap-1.5 text-body whitespace-nowrap"><Dot className={stg.dot} />{stg.label}</span>
                         </TD>
                         <TD>{r.status ? <StatusBadge color={leadStatusDot(r.status)}>{r.status}</StatusBadge> : "—"}</TD>
                         <TD onClick={(e) => e.stopPropagation()} className="cursor-default">
@@ -394,7 +394,7 @@ function labelFor(col: FilterCol, value: string): string {
     if (col === "source") return "ไม่ระบุ";
     return "—";
   }
-  if (col === "stage") return stageMeta(value).th;
+  if (col === "stage") return stageMeta(value).label;
   return value;
 }
 

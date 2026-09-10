@@ -1,7 +1,23 @@
-// SAMPLE lead activity timeline — "what the assigned sales logged" on a lead, so admin has
-// context when reassigning. Design-first + deterministic (seeded by lead_id). Wire: read the
-// real activities (related_lead_id) + audit_log for the lead instead of generating these.
-// Reassign events are NOT here — they come live from NewLeadsProvider.historyOf(leadId).
+/* What actually happened to a lead. Pure model — lib/queries.ts does the reading.
+ *
+ * ── WHAT THIS REPLACED ──────────────────────────────────────────────────────────
+ * Until 2026-09-10 this file GENERATED the timeline: a hash of the lead_id picked a
+ * plausible-looking run of calls, follow-ups and viewings, dated off `date_received`.
+ * It was written as design-phase scaffolding and it was still on screen months later,
+ * showing every sale a history of work nobody did. A fake log is worse than no log —
+ * an empty one says "nothing recorded", a fabricated one says "this was handled".
+ *
+ * ── WHERE THE REAL EVENTS COME FROM ─────────────────────────────────────────────
+ *   activities  — what someone did, with a note. `related_lead_id` has existed on that
+ *                 table since it was created and had never been written to: all 2,646
+ *                 rows are daily KPI tallies with no lead attached. The composer in the
+ *                 lead drawer is the first thing to fill it in, so a lead's log starts
+ *                 empty today and grows from here. That is the honest starting point.
+ *   audit_log   — what someone changed: reassignment, closing the deal, field edits.
+ *                 Only readable with roles.manage (RLS), so most viewers see the
+ *                 activity half only.
+ *   the lead    — `date_received` anchors the list so it is never completely empty.
+ */
 
 export type TimelineKind = "created" | "call" | "follow" | "show" | "note" | "stage" | "assign";
 
@@ -9,50 +25,142 @@ export interface TimelineEvent {
   id: string;
   kind: TimelineKind;
   at: string; // YYYY-MM-DD
-  by: string; // actor nickname
+  by: string; // actor: employee_code, resolved to a nickname by the component
   text: string;
+  /** activities.count when it is more than one ("พาชม × 3"). */
+  count?: number;
 }
 
-function hash(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+/** One row of `activities`, as the timeline needs it. */
+export interface LeadActivityRow {
+  id: number;
+  employee_code: string;
+  action: string;
+  activity_date: string;
+  count: number | null;
+  remark: string | null;
+}
+
+/** One row of `audit_log` for this lead. */
+export interface LeadAuditRow {
+  id: number;
+  action: string;
+  changed_by: string;
+  created_at: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
+/* Which icon an action gets. The keys are the company's own vocabulary from the
+   `activities.action` reference list — not a new set invented here, because Settings can
+   add to that list and anything unrecognised must still render rather than crash. */
+const ACTION_KIND: Record<string, TimelineKind> = {
+  Call: "call",
+  Follow: "follow",
+  "Follow Up": "follow",
+  Appoint: "show",
+  Show: "show",
+  Nego: "follow",
+  Close: "stage",
+  Win: "stage",
+  เซ็นสัญญา: "stage",
+  โอน: "stage",
+  บันทึก: "note",
+  "Owner Talk": "call",
+  "Owner Visit": "show",
+  Survey: "show",
+};
+
+export function actionKind(action: string): TimelineKind {
+  return ACTION_KIND[action] ?? "note";
+}
+
+/** Field edits worth a line in the log. Everything else is noise on a timeline. */
+const AUDIT_LABEL: Record<string, string> = {
+  close_deal: "บันทึกการปิดการขาย",
+  update: "แก้ไขข้อมูล",
+  tag: "เปลี่ยนแท็ก",
+  complaint: "อัปเดตข้อร้องเรียน",
+};
+
+/**
+ * Merge the sources into one list, newest first.
+ *
+ * `assign` rows are handled by the caller (it already resolves nicknames from the agent
+ * list, and the audit half is permission-gated separately) — passing them in pre-built
+ * keeps this function from needing a directory it would only use for two lines.
+ */
+export function buildTimeline({
+  leadId,
+  dateReceived,
+  activities,
+  audits,
+  extra = [],
+}: {
+  leadId: string;
+  dateReceived: string | null;
+  activities: LeadActivityRow[];
+  audits: LeadAuditRow[];
+  extra?: TimelineEvent[];
+}): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+
+  for (const a of activities) {
+    const n = a.count ?? 1;
+    events.push({
+      id: `act-${a.id}`,
+      kind: actionKind(a.action),
+      at: a.activity_date,
+      by: a.employee_code,
+      text: a.remark?.trim() || a.action,
+      count: n > 1 ? n : undefined,
+    });
   }
-  return h >>> 0;
-}
-function addDays(iso: string, n: number): string {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 
-const SCRIPT: { kind: TimelineKind; text: string }[] = [
-  { kind: "call", text: "โทรหาลูกค้า แนะนำตัวและสอบถามความต้องการ" },
-  { kind: "note", text: "สรุปความต้องการ: งบ/ทำเล/ประเภททรัพย์" },
-  { kind: "show", text: "นัดชมทรัพย์ที่สนใจ" },
-  { kind: "follow", text: "ตามผลหลังพาชม ลูกค้าขอเวลาตัดสินใจ" },
-  { kind: "call", text: "โทรตามความคืบหน้า" },
-  { kind: "stage", text: "ขยับสเตจ: กำลังต่อรอง" },
-];
-
-/** Deterministic sample of the assigned sales' logged activity for a lead. */
-export function sampleTimeline(leadId: string, sale: string, dateReceived: string | null): TimelineEvent[] {
-  const base = dateReceived || "2026-07-01";
-  const h = hash(leadId);
-  const count = 2 + (h % 4); // 2–5 logged events
-  const events: TimelineEvent[] = [
-    { id: `${leadId}-created`, kind: "created", at: base, by: sale || "Admin", text: sale ? `รับลีดเข้าระบบ · มอบหมายให้ ${sale}` : "รับลีดเข้าระบบ" },
-  ];
-  let day = 1;
-  for (let i = 0; i < count; i++) {
-    // UNSIGNED shifts (>>>). `hash` returns a full unsigned 32-bit value, so a signed `>>`
-    // keeps the sign bit for any hash >= 2^31 — the index then goes negative, SCRIPT[-n] is
-    // undefined, and reading `.kind` off it crashed the lead page for ~half of all leads.
-    // Same bug, same cause as lib/tags.ts:69 (fixed 2026-08-05); this copy was missed then.
-    const s = SCRIPT[(h >>> (i + 1)) % SCRIPT.length];
-    day += 1 + ((h >>> (i * 2)) % 3);
-    events.push({ id: `${leadId}-a${i}`, kind: s.kind, at: addDays(base, day), by: sale || "—", text: s.text });
+  for (const r of audits) {
+    // Reassignment is the caller's to render — it needs the nickname directory.
+    if (r.action === "assign") continue;
+    const label = AUDIT_LABEL[r.action];
+    if (!label) continue;
+    events.push({
+      id: `aud-${r.id}`,
+      kind: r.action === "close_deal" ? "stage" : "note",
+      at: r.created_at.slice(0, 10),
+      by: r.changed_by,
+      text: r.action === "update" ? `${label}: ${changedFields(r.after)}` : label,
+    });
   }
-  return events;
+
+  events.push(...extra);
+
+  // The anchor. Without it a lead with no logged work shows a blank card, which reads as
+  // broken rather than as "nothing has been recorded yet".
+  if (dateReceived) {
+    events.push({
+      id: `${leadId}-created`,
+      kind: "created",
+      at: dateReceived,
+      by: "",
+      text: "รับลีดเข้าระบบ",
+    });
+  }
+
+  return events.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
+/** "ชื่อ, เบอร์โทร" — which fields an `update` touched, for the log line. */
+function changedFields(after: Record<string, unknown> | null): string {
+  const TH: Record<string, string> = {
+    lead_name: "ชื่อ",
+    phone: "เบอร์โทร",
+    line_id: "LINE",
+    lead_type: "ประเภท",
+    pipeline_stage: "ขั้นตอน",
+    lead_status: "สถานะ",
+    potential: "เกรด",
+    budget: "งบประมาณ",
+  };
+  const keys = Object.keys(after ?? {});
+  if (!keys.length) return "—";
+  return keys.map((k) => TH[k] ?? k).join(", ");
 }

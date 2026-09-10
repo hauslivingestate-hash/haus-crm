@@ -275,12 +275,35 @@ export function PropertyTypesManager({
 // columns yet → usage isn't countable; the confirm warns to check manually (wire the real
 // count once the columns land).
 export function LeadReferenceManager() {
-  const { sources, contactBys, genders, nationalities } = useMasterData();
+  const { sources, contactBys, genders, nationalities, pipelineStages, ownerStages } = useMasterData();
   // The real count is checked server-side before deleting — that is what actually refuses
   // the removal. This is only the advance warning on the confirm.
   const inUse = () => usageWarning(null, "ลีด");
   return (
     <div className="flex flex-col gap-4">
+      {/* THE TWO PIPELINES. Order here is the order on the board and in the pills, and it
+          is what decides whether the activity composer treats a move as forwards — so the
+          list is sorted by sort_order, never alphabetically.
+
+          Renaming is safe: both columns are ON UPDATE CASCADE, so every lead or listing on
+          a stage follows it to the new name. Deleting one that is still in use is refused
+          by the database. */}
+      <RefListCard
+        title="ขั้นตอน (ลูกค้า)"
+        note="ไปป์ไลน์ฝั่งผู้ซื้อ — เรียงตามลำดับการขาย"
+        table="pipeline_stage"
+        items={pipelineStages}
+        placeholder="เพิ่มขั้นตอน…"
+        warnFor={inUse}
+      />
+      <RefListCard
+        title="ไปป์ไลน์เจ้าของ"
+        note="ความคืบหน้ากับเจ้าของทรัพย์ — คนละเรื่องกับ 'สถานะประกาศ' ที่บอกว่าประกาศยังขายอยู่ไหม"
+        table="owner_stage"
+        items={ownerStages}
+        placeholder="เพิ่มขั้นตอน…"
+        warnFor={() => usageWarning(null, "ทรัพย์")}
+      />
       <RefListCard title="Marketing Channel" note="ช่องทางที่ลีดเข้ามา" table="marketing_channel" items={sources} placeholder="เพิ่มช่องทาง…" warnFor={inUse} />
       <RefListCard title="Contact By" note="วิธี/กล่องที่ติดต่อเข้ามา" table="contact_by" items={contactBys} placeholder="เพิ่มวิธีติดต่อ…" warnFor={inUse} />
       <RefListCard title="เพศ" table="gender" items={genders} placeholder="เพิ่ม…" warnFor={inUse} />

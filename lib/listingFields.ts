@@ -37,7 +37,8 @@ export type ListingLookup =
   | "unitPositions"
   | "unitConditions"
   | "inOutProjects"
-  | "priceRemarks";
+  | "priceRemarks"
+  | "ownerStages";
 
 export type ListingSectionKey =
   | "basics"
@@ -139,6 +140,9 @@ export const LISTING_FIELDS: ListingField[] = [
   { key: "owner_name", label: "ชื่อเจ้าของ", kind: "text", group: "core", section: "owner", target: "owner" },
   { key: "owner_phone", label: "เบอร์โทร", kind: "text", group: "core", section: "owner", target: "owner", placeholder: "08x-xxx-xxxx" },
   { key: "owner_line", label: "LINE", kind: "text", group: "core", section: "owner", target: "owner" },
+  // Owner-side pipeline, governed in ตั้งค่า like every other lookup here.
+  { key: "owner_stage", label: "ไปป์ไลน์เจ้าของ", kind: "select", group: "core", section: "owner",
+    lookup: "ownerStages", hint: "ความคืบหน้ากับเจ้าของ — คนละอย่างกับสถานะประกาศ" },
   { key: "owner_focus", label: "ติดตามเจ้าของ", kind: "boolean", group: "core", section: "owner" },
   { key: "owner_talk_last_date", label: "คุยล่าสุด", kind: "date", group: "core", section: "owner" },
   { key: "activity_comment", label: "บันทึกการคุย", kind: "textarea", group: "core", section: "owner" },

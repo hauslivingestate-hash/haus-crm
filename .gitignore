@@ -6,3 +6,6 @@
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Google OAuth token — holds client_secret + refresh_token, must never be committed
+token.json

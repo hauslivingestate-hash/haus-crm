@@ -49,7 +49,8 @@ export interface ContactDemand {
   leadId: string;
   interest: string;
   budget: number | null;
-  stageTh: string;
+  /** The pipeline stage, shown as stored (lib/pipeline.ts). */
+  stageLabel: string;
   stageDot: string; // bg-* token
   deal: "buy" | "rent";
 }

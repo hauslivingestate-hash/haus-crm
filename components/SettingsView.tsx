@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ShieldCheck, Users, Map, Home, ListChecks, Activity, Target, Info, Lock, ClipboardList, Megaphone, Medal, Tags, CalendarOff, KeyRound } from "lucide-react";
+import { ShieldCheck, Users, Map, Home, ListChecks, Activity, Target, Info, Lock, ClipboardList, Megaphone, Medal, Tags, CalendarOff, KeyRound, Palette } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { type Zone } from "@/lib/zones";
 import { RolesManager } from "@/components/RolesManager";
@@ -19,6 +19,7 @@ import { CopyTemplateEditor } from "@/components/CopyTemplateEditor";
 import { SalesRankManager } from "@/components/SalesRankManager";
 import { LeaveAllowanceManager } from "@/components/LeaveAllowanceManager";
 import { AccountsManager } from "@/components/AccountsManager";
+import { StatusColorsManager, type ColorableList } from "@/components/StatusColorsManager";
 import type { AccountRow } from "@/lib/accounts";
 import type { Employee } from "@/lib/team";
 import type { AttachMode } from "@/lib/actions";
@@ -29,7 +30,7 @@ import { useRbac } from "@/components/RbacProvider";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 
-type SectionKey = "roles" | "teams" | "zones" | "property_types" | "lead_fields" | "lead_tags" | "action_types" | "kpi" | "ranks" | "checklists" | "copy" | "leave" | "accounts";
+type SectionKey = "roles" | "teams" | "zones" | "property_types" | "lead_fields" | "lead_tags" | "action_types" | "kpi" | "ranks" | "checklists" | "copy" | "leave" | "accounts" | "status_colors";
 // Each section is gated to a permission — the sub-nav only shows what the viewer can govern,
 // so Listing Support (reference.manage) sees the reference lists but not roles/zones/KPI.
 type Section = { key: SectionKey; label: string; icon: LucideIcon; perm: string };
@@ -48,6 +49,9 @@ const SECTIONS: Section[] = [
   // masterdata.govern to a role.
   { key: "lead_tags", label: "แท็ก Lead", icon: Tags, perm: "masterdata.govern" },
   { key: "action_types", label: "ประเภทกิจกรรม", icon: Activity, perm: "masterdata.govern" },
+  // Colour only — these five lists are structural, so adding/deleting a value is
+  // deliberately NOT offered here. See StatusColorsManager.
+  { key: "status_colors", label: "สีสถานะ & SLA", icon: Palette, perm: "masterdata.govern" },
   { key: "kpi", label: "เป้าหมาย KPI", icon: Target, perm: "masterdata.govern" },
   { key: "ranks", label: "Rank เซลล์ใหม่", icon: Medal, perm: "masterdata.govern" },
   // Leave quota — gated leave.manage (CEO/HR), NOT masterdata.govern: it is an HR policy
@@ -70,6 +74,7 @@ export function SettingsView({
   kpiTemplates,
   checklistTemplates,
   roleOptions,
+  colorLists,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
@@ -89,6 +94,8 @@ export function SettingsView({
   teams: TeamRow[];
   /** KPI presets from `kpi_template`. */
   kpiTemplates: KpiTemplate[];
+  /** The five colour-bearing lookup lists, for ตั้งค่า → สีสถานะ. */
+  colorLists: ColorableList[];
   /** Value-add checklist definitions. */
   checklistTemplates: ChecklistTemplate[];
   /** Roles a checklist step can be assigned to. */
@@ -221,6 +228,15 @@ export function SettingsView({
               desc="จำนวนวันลาต่อปีของแต่ละประเภท · ใช้คำนวณวันลาคงเหลือในหน้าวันลา · CEO / HR"
             />
             <LeaveAllowanceManager />
+          </>
+        )}
+        {section === "status_colors" && (
+          <>
+            <SectionHeader
+              title="สีสถานะ & SLA"
+              desc="สีพื้นของช่องในตาราง + กำหนดว่าไม่ติดต่อกี่วันถึงขึ้นแดง (เว้นว่าง = ไม่มี SLA) · เพิ่ม/ลบค่าไม่ได้ที่นี่"
+            />
+            <StatusColorsManager lists={colorLists} />
           </>
         )}
         {section === "action_types" && (

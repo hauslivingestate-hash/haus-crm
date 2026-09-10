@@ -10,6 +10,7 @@ import {
   type ContactSummary,
 } from "@/lib/contacts";
 import { stageMeta } from "@/lib/pipeline";
+import type { LeadActivityRow, LeadAuditRow } from "@/lib/leadTimeline";
 import {
   DEFAULT_LEAVE_ALLOWANCES,
   type LeaveAllowance,
@@ -102,7 +103,14 @@ export interface CrmRow {
   budget: number | null;
   commission: number | null;
   last_follow_date: string | null;
+  /** เซ็นสัญญา. The sales scoreboard counts on this — see lib/deals.ts. */
   closing_date: string | null;
+  /** โอนกรรมสิทธิ์, weeks after closing_date. The money counts on this one. */
+  transfer_date: string | null;
+  /** ราคาปิดจริง — usually below the listing's asking price. Added 2026-09-06; nothing
+      else in the database records what a unit actually sold for. */
+  closing_price: number | null;
+  case_closing_remark: string | null;
   date_received: string | null;
   /** Where the lead came from — main_6_buyer_crm.marketing_channel. */
   marketing_channel: string | null;
@@ -115,7 +123,7 @@ export interface CrmRow {
 }
 
 const CRM_COLUMNS =
-  "lead_id,lead_name,phone,line_id,potential,lead_status,pipeline_stage,lead_type,sale_id,listing_code,budget,commission,last_follow_date,closing_date,date_received,marketing_channel,tag_id,customer_complain,complain_status,complain_remark";
+  "lead_id,lead_name,phone,line_id,potential,lead_status,pipeline_stage,lead_type,sale_id,listing_code,budget,commission,last_follow_date,closing_date,transfer_date,closing_price,case_closing_remark,date_received,marketing_channel,tag_id,customer_complain,complain_status,complain_remark";
 
 // Mirrors `v_main_listing` in full — all 55 exposed columns. Types were probed against the
 // live schema (not inferred from sample rows, which are mostly null): `floor` and `unit_no`
@@ -192,6 +200,9 @@ export interface ListingRow {
   owner_phone: string | null;
   owner_line: string | null;
   owner_talk_last_date: string | null;
+  /** Owner-side pipeline (lib/ownerPipeline.ts). NOT listing_status, which is the
+      marketing queue for the advert. */
+  owner_stage: string | null;
   activity_comment: string | null;
 
   // Marketing / portals
@@ -219,7 +230,7 @@ const LISTING_COLUMNS = [
   "property_type", "unit_no", "bed", "bath", "area_rai", "area_ngan", "area_wa", "area_sqm",
   "floor", "building", "direction", "view_type", "unit_position", "parking", "unit_condition",
   "asking_price", "rental_price", "old_price", "new_price", "update_remark", "price_remark",
-  "owner_id", "owner_name", "owner_phone", "owner_line", "owner_talk_last_date",
+  "owner_id", "owner_name", "owner_phone", "owner_line", "owner_talk_last_date", "owner_stage",
   "activity_comment",
   "sign", "vdo", "ddproperty_link", "livinginsider_link", "livinginsider_date",
   "propertyhub_link", "shorts_reels_link", "hometour_link",
@@ -278,14 +289,60 @@ export async function getMyListings(): Promise<ListingRow[]> {
   return all.filter((l) => l.effective_sale_id === auth.employeeCode);
 }
 
-export async function getLead(id: string): Promise<CrmRow | null> {
+/**
+ * The listing facts the closing card needs, and nothing else.
+ *
+ * Deliberately not `getListing()`, which reads all 55 columns of `v_main_listing` to render
+ * a price and a status.
+ *
+ * Reads the base table rather than the view because `listing_status` is what the deal
+ * writes back to, and the value read must be the value written — a view could filter or
+ * rename it and the comparison would quietly stop matching.
+ */
+export interface DealListingContext {
+  asking_price: number | null;
+  listing_status: string | null;
+  sale_id: string | null;
+}
+
+/** A lead plus the unit its deal is priced against. Only the detail view needs the second
+    half, so it is not folded into `CrmRow` — the list reads hundreds of rows and wants none
+    of it. */
+export interface LeadDetailRow extends CrmRow {
+  deal_listing: DealListingContext | null;
+  /** The market-log entry this lead's close created, if it still exists. At most one —
+      uq_last_match_lead. Present so the closing card can offer to clear it when a lead is
+      reopened; a row saying a property sold when the sale fell through is worse than none. */
+  last_match: { last_match_id: string; last_match_price: number | null }[];
+}
+
+/**
+ * One lead, with its deal's listing attached.
+ *
+ * The listing used to be a SECOND round trip, fired after this one returned because it keys
+ * off `listing_code` — ~0.4s of pure waiting on a page that had already finished fetching
+ * everything else. The foreign key added on 2026-09-10
+ * (`main_6_buyer_crm_listing_code_fkey`) lets PostgREST join it in the same request, so the
+ * dependency costs nothing.
+ *
+ * The FK is named explicitly: `main_6_buyer_crm` has eighteen foreign keys and PostgREST
+ * needs to be told which relationship this embed means.
+ *
+ * The embed obeys the listing table's own RLS, so a caller without `listings.view` gets null
+ * here — exactly what the separate query returned them before.
+ */
+export async function getLead(id: string): Promise<LeadDetailRow | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("main_6_buyer_crm")
-    .select(CRM_COLUMNS)
+    .select(
+      `${CRM_COLUMNS}` +
+        `,deal_listing:main_4_listing_database!main_6_buyer_crm_listing_code_fkey(asking_price,listing_status,sale_id)` +
+        `,last_match:main_7_last_match!main_7_last_match_lead_id_fkey(last_match_id,last_match_price)`
+    )
     .eq("lead_id", id)
     .maybeSingle();
-  return (data as CrmRow | null) ?? null;
+  return (data as unknown as LeadDetailRow | null) ?? null;
 }
 
 export async function getListing(id: string): Promise<ListingRow | null> {
@@ -510,6 +567,192 @@ export async function getActivitiesForLead(leadId: string | null | undefined): P
   if (!leadId) return [];
   const all = await getActivityFeed(500);
   return all.filter((a) => a.related_lead_id === leadId);
+}
+
+/**
+ * One lead's timeline: what was done to it, and what was changed on it.
+ *
+ * Asks the database for THIS lead's rows rather than pulling the last 500 activities
+ * company-wide and filtering in memory the way getActivitiesForLead above does — that
+ * one cannot see past the 500th row, so a lead worked on last month would silently show
+ * an empty log.
+ *
+ * The audit half is permission-gated by RLS (roles.manage). A refusal comes back as zero
+ * rows, which is why `auditReadable` is reported separately: "no changes recorded" and
+ * "you may not see the changes" must not render as the same thing.
+ */
+export async function getLeadTimeline(
+  leadId: string
+): Promise<{ activities: LeadActivityRow[]; audits: LeadAuditRow[]; auditReadable: boolean }> {
+  const supabase = await createClient();
+
+  /* Identity is fetched ALONGSIDE the rows, not before them.
+     `auth` used to be awaited first, so both queries sat waiting on a permission check they
+     did not need to be issued — one whole round trip of dead time on the most-opened screen
+     in the app.
+
+     The audit query is therefore fired for everyone, and RLS decides: without roles.manage
+     it comes back empty. That is one extra indexed lookup for the six agents who cannot read
+     it, running in parallel with work they were waiting for anyway — cheaper than the wait it
+     replaces. `auditReadable` still comes from the permission, never from the row count, so
+     "nothing changed" and "you may not see the changes" stay different answers. */
+  const [auth, act, aud] = await Promise.all([
+    getAuthContext(),
+    supabase
+      .from("activities")
+      .select("id,employee_code,action,activity_date,count,remark")
+      .eq("related_lead_id", leadId)
+      .order("activity_date", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(200),
+    supabase
+      .from("audit_log")
+      .select("id,action,changed_by,created_at,before,after")
+      .eq("entity", "main_6_buyer_crm")
+      .eq("entity_id", leadId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+  ]);
+
+  const auditReadable = !!auth?.permissions.includes("roles.manage");
+
+  return {
+    activities: (act.data ?? []) as LeadActivityRow[],
+    // Belt and braces: RLS already returns nothing without the permission, but the flag is
+    // what the UI trusts, so the rows are dropped on the same condition.
+    audits: auditReadable ? ((aud.data ?? []) as LeadAuditRow[]) : [],
+    auditReadable,
+  };
+}
+
+/** A buyer whose lead points at a listing — the ผู้สนใจ card. */
+export interface InterestedLead {
+  lead_id: string;
+  lead_name: string | null;
+  phone: string | null;
+  pipeline_stage: string | null;
+  lead_status: string | null;
+  potential: string | null;
+  budget: number | null;
+  sale_id: string | null;
+  date_received: string | null;
+  last_follow_date: string | null;
+}
+
+/**
+ * Who is interested in this unit — the reverse of the lead page's ทรัพย์ที่สนใจ link.
+ *
+ * The `listing_code` join has existed since the sheet import and had never been read from
+ * this direction: 977 leads point at a listing, across 251 of them, and the only way to see
+ * them was to search the leads grid by hand. It is the question that gets asked the moment
+ * an owner drops their price.
+ *
+ * ⚠️ RLS-SCOPED, and that is not a bug. An agent without `leads.view_all` sees only their
+ * own leads here, so this is "who that YOU can see is interested", not a company total. The
+ * card must never present the count as the whole picture — a listing with 8 interested
+ * buyers showing 2 to the agent who owns it would otherwise read as a quiet listing.
+ */
+export async function getInterestedLeads(listingCode: string): Promise<InterestedLead[]> {
+  const supabase = await createClient();
+
+  // Reads lead_listing_interest, not main_6_buyer_crm.listing_code: a buyer may be shopping
+  // several units and the column holds only the one the deal is about. The embedded select
+  // is a single round trip, and RLS on both tables still applies (the interest row is
+  // visible only with its lead, and the lead only under the leads policy).
+  const { data } = await supabase
+    .from("lead_listing_interest")
+    .select(
+      "lead:main_6_buyer_crm(lead_id,lead_name,phone,pipeline_stage,lead_status,potential,budget,sale_id,date_received,last_follow_date)"
+    )
+    .eq("listing_id", listingCode)
+    .limit(300);
+
+  const rows = ((data ?? []) as unknown as { lead: InterestedLead | null }[])
+    .map((r) => r.lead)
+    .filter((l): l is InterestedLead => !!l);
+
+  // Newest enquiry first — the most recent person to ask is the most likely to still care.
+  // Sorted here rather than in the query: the order is on the joined table, and asking
+  // PostgREST to order by an embedded column costs a second round trip to no benefit at
+  // this size.
+  return rows.sort((a, b) => (a.date_received ?? "") < (b.date_received ?? "") ? 1 : -1);
+}
+
+/** Every listing one lead is interested in — the ทรัพย์ที่สนใจ card on the lead drawer. */
+export async function getLeadInterests(
+  leadId: string
+): Promise<{ listing_id: string; listing_name: string | null; asking_price: number | null; listing_status: string | null }[]> {
+  const supabase = await createClient();
+
+  /* Two levels of embed, one round trip: interest → listing → project.
+     The unit's readable name lives on the project, not the listing — the same join
+     v_main_listing does. This used to be a second query, fired only after the first came
+     back because it needed the project ids from it. PostgREST will follow both foreign keys
+     in one request, so the whole card costs what one row used to. */
+  const { data } = await supabase
+    .from("lead_listing_interest")
+    .select(
+      "listing_id, listing:main_4_listing_database(asking_price,listing_status,project:main_3_property_detail!main_4_listing_database_project_id_fkey(project_name_thai))"
+    )
+    .eq("lead_id", leadId)
+    .order("created_at");
+
+  const rows = (data ?? []) as unknown as {
+    listing_id: string;
+    listing: {
+      asking_price: number | null;
+      listing_status: string | null;
+      project: { project_name_thai: string | null } | null;
+    } | null;
+  }[];
+
+  return rows.map((r) => ({
+    listing_id: r.listing_id,
+    listing_name: r.listing?.project?.project_name_thai ?? null,
+    asking_price: r.listing?.asking_price ?? null,
+    listing_status: r.listing?.listing_status ?? null,
+  }));
+}
+
+/**
+ * One listing's timeline — the owner-side twin of getLeadTimeline.
+ *
+ * This is what merged กิจกรรมล่าสุด and ประวัติการแก้ไข into one card. They were two
+ * cards showing two halves of the same question ("what has happened to this listing?"),
+ * and one of them was a "เร็ว ๆ นี้" placeholder that had never been wired to anything.
+ */
+export async function getListingTimeline(
+  listingId: string
+): Promise<{ activities: LeadActivityRow[]; audits: LeadAuditRow[]; auditReadable: boolean }> {
+  const supabase = await createClient();
+
+  // Identity fetched alongside the rows, not before them — see getLeadTimeline above for why
+  // the audit query is now issued for everyone and RLS is left to decide.
+  const [auth, act, aud] = await Promise.all([
+    getAuthContext(),
+    supabase
+      .from("activities")
+      .select("id,employee_code,action,activity_date,count,remark")
+      .eq("related_listing_id", listingId)
+      .order("activity_date", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(200),
+    supabase
+      .from("audit_log")
+      .select("id,action,changed_by,created_at,before,after")
+      .eq("entity", "main_4_listing_database")
+      .eq("entity_id", listingId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+  ]);
+
+  const auditReadable = !!auth?.permissions.includes("roles.manage");
+
+  return {
+    activities: (act.data ?? []) as LeadActivityRow[],
+    audits: auditReadable ? ((aud.data ?? []) as LeadAuditRow[]) : [],
+    auditReadable,
+  };
 }
 
 /** One listing's photos, cover first. */
@@ -1390,7 +1633,7 @@ async function loadPeople(): Promise<Map<string, Contact>> {
       leadId: l.lead_id,
       interest: wants || l.interested || l.listing_code || "ไม่ระบุความต้องการ",
       budget: numOrNull(l.budget),
-      stageTh: stage.th,
+      stageLabel: stage.label,
       stageDot: stage.dot,
       deal: l.lead_type === "Buyer - Rent" ? "rent" : "buy",
     });

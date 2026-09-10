@@ -7,22 +7,27 @@ import { Search, Plus, X, Tags, Check, Columns3, GripVertical, RotateCcw, ListFi
 import type { CrmRow } from "@/lib/queries";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
-import { SortHeader, useSort } from "@/components/ui/SortHeader";
-import { StatusBadge, Dot } from "@/components/ui/Dot";
-import { Pill } from "@/components/ui/Pill";
-import { Avatar } from "@/components/ui/Avatar";
-import { GradeChip } from "@/components/ui/GradeChip";
-import { STAGES, stageMeta } from "@/lib/pipeline";
+import { useSort } from "@/components/ui/SortHeader";
+import { SheetTable, Val, Dim } from "@/components/ui/SheetTable";
+import type { SheetColumn, TablePrefs } from "@/lib/tables";
+import { lookupFill, slaFill, type LookupColors } from "@/lib/tables/fills";
+import { isClosed } from "@/lib/deals";
+import { stashLead } from "@/lib/peek";
+import type { SlaWindows } from "@/lib/sla";
+import { stageMeta, STAGES as SEED_STAGES } from "@/lib/pipeline";
 import { findTag, TAG_TONE_CLASS, type LeadTag } from "@/lib/tags";
 import { useMasterData } from "@/components/MasterDataProvider";
-import { setLeadTag } from "@/lib/mutations/leads";
+import { useRbac } from "@/components/RbacProvider";
+import { setLeadTag, createLead } from "@/lib/mutations/leads";
 import { formatBaht, formatDate } from "@/lib/format";
 import { leadStatusDot } from "@/lib/status";
 import { compareValues, orderIndex } from "@/lib/sort";
 import { cn } from "@/lib/cn";
 
-const STAGE_KEYS = STAGES.map((s) => s.key);
+// Sort order for the ขั้นตอน column. The seed order, not the governed one — sorting a
+// grid column is presentation, and threading the live list through the module-level
+// comparator map would mean rebuilding it on every render for no visible gain.
+const STAGE_KEYS = SEED_STAGES.map((s) => s.key);
 const LEAD_POTENTIAL_ORDER = ["A", "B", "C", "New Lead"];
 const LEAD_STATUS_ORDER = ["Active", "Win", "Lose", "Reject"];
 
@@ -89,14 +94,22 @@ function TagChip({ tag, onRemove }: { tag: LeadTag; onRemove?: () => void }) {
   );
 }
 
-export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
+export function LeadsBrowser({ crm, prefs, colors, sla }: {
+  crm: CrmRow[];
+  /** This viewer's saved column layout. Undefined = never opened the manager. */
+  prefs?: TablePrefs;
+  /** Admin-chosen colour per lookup value — ตั้งค่า → ข้อมูลอ้างอิงกลาง. */
+  colors: LookupColors;
+  /** Lead grade → follow-up window in days. Missing/null = no SLA. */
+  sla: SlaWindows;
+}) {
   const router = useRouter();
   const [q, setQ] = React.useState("");
   const [stage, setStage] = React.useState("all");
   const [groupBy, setGroupBy] = React.useState(false);
   const [colsOpen, setColsOpen] = React.useState(false);
   const [order, setOrder] = React.useState<ColId[]>(DEFAULT_ORDER);
-  const { sort, onSort } = useSort();
+  const { sort } = useSort();
 
   // Load saved column order once on mount.
   React.useEffect(() => {
@@ -122,7 +135,8 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
   // `crm` prop (main_6_buyer_crm.tag_id) — `tagOverride` is a local optimistic layer only,
   // reconciled by router.refresh() after every pick, so a picked tag shows instantly without
   // waiting on the round trip, and the table + lead detail page never disagree for long.
-  const { leadTags } = useMasterData();
+  const { leadTags, pipelineStages } = useMasterData();
+  const { can } = useRbac();
   const [tagOverride, setTagOverride] = React.useState<Record<string, string | null>>({});
   const [openLead, setOpenLead] = React.useState<{ id: string; rect: DOMRect } | null>(null);
 
@@ -142,13 +156,19 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
     router.refresh();
   }
 
+  /* Filter chips, in the pipeline's own order — read from ตั้งค่า rather than the STAGES
+     constant so a stage renamed there keeps its chip instead of quietly disappearing from
+     the filters while its leads stay in the grid. Only stages someone is actually on get a
+     chip; an empty stage is a filter that returns nothing. */
   const stageOptions = [
     { key: "all", label: "ทั้งหมด", count: crm.length },
-    ...STAGES.filter((s) => crm.some((c) => c.pipeline_stage === s.key)).map((s) => ({
-      key: s.key,
-      label: s.th,
-      count: crm.filter((c) => c.pipeline_stage === s.key).length,
-    })),
+    ...pipelineStages
+      .filter((s) => crm.some((c) => c.pipeline_stage === s.id))
+      .map((s) => ({
+        key: s.id,
+        label: stageMeta(s.id).label,
+        count: crm.filter((c) => c.pipeline_stage === s.id).length,
+      })),
   ];
 
   const query = q.trim().toLowerCase();
@@ -186,94 +206,125 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupBy, rows, tagOverride, leadTags]);
 
-  // ── header + cell renderers keyed by column id ──────────────────────────────
-  const headerFor = (colId: ColId) => {
-    const cfg = COLS[colId];
-    return cfg.sortKey ? (
-      <SortHeader key={colId} label={cfg.label} sortKey={cfg.sortKey} sort={sort} onSort={onSort} align={cfg.align} defaultDir={cfg.defaultDir} />
-    ) : (
-      <TH key={colId} className={cfg.align === "right" ? "text-right" : undefined}>{cfg.label}</TH>
-    );
-  };
+  /* THE COLUMN REGISTRY. Every field `getCrm` returns gets a column — the old
+     table showed 11 of 19, and the missing eight (phone, LINE, source, the
+     three complaint fields, listing code, received date) were the ones you had
+     to open a record to see.
 
-  const cellFor = (colId: ColId, c: CrmRow): React.ReactNode => {
-    switch (colId) {
-      case "lead_id":
-        return (
-          <TD key={colId} className="num text-small text-text-muted">
-            <Link href={`/leads/${c.lead_id}`} onClick={(e) => e.stopPropagation()} className="hover:text-accent hover:underline">{c.lead_id}</Link>
-          </TD>
-        );
-      case "name":
-        return (
-          <TD key={colId}>
-            <div className="flex items-center gap-2.5">
-              <Avatar name={c.lead_name} tone="crimson" />
-              <div className="min-w-0">
-                <div className="font-medium truncate">{c.lead_name}</div>
-                <div className="text-label text-text-subtle num">{c.phone}</div>
-              </div>
-            </div>
-          </TD>
-        );
-      case "potential":
-        return <TD key={colId}><GradeChip grade={c.potential ?? ""} /></TD>;
-      case "stage": {
-        const stg = stageMeta(c.pipeline_stage);
-        return (
-          <TD key={colId}>
-            <span className="inline-flex items-center gap-1.5 text-body whitespace-nowrap"><Dot className={stg.dot} />{stg.th}</span>
-          </TD>
-        );
-      }
-      case "status":
-        return <TD key={colId}><StatusBadge color={leadStatusDot(c.lead_status)}>{c.lead_status}</StatusBadge></TD>;
-      case "type":
-        return <TD key={colId}><Pill className="whitespace-nowrap">{c.lead_type ?? "—"}</Pill></TD>;
-      case "tags": {
-        // One tag max — so the cell is a single chip (tap to change) or an empty picker
-        // button, never a growing chip list.
+     Cells are plain text, not chips. In a 30px row an avatar or a pill sets
+     the row height and breaks the lattice; the colour lives on the cell now,
+     which is what made the chips redundant in the first place. */
+  const columns = React.useMemo<SheetColumn<CrmRow>[]>(() => [
+    { key: "lead_id", label: "Lead ID", locked: true, width: 96,
+      cell: (c) => <span className="num text-accent">{c.lead_id}</span> },
+    { key: "name", label: "ลูกค้า", width: 160, cell: (c) => <Val>{c.lead_name}</Val>,
+      // The only field createLead refuses without. Being `required` also pins
+      // the column visible — a hidden required field is an uncommittable row.
+      add: { field: "lead_name", editor: { as: "text" }, required: true, placeholder: "ชื่อลูกค้าใหม่…" } },
+    { key: "phone", label: "เบอร์โทร", cell: (c) => <Val mono>{c.phone}</Val>,
+      add: { field: "phone", editor: { as: "text" } } },
+    { key: "line_id", label: "LINE", cell: (c) => <Val mono>{c.line_id}</Val> },
+    { key: "potential", label: "เกรด", align: "center", width: 72,
+      cell: (c) => <Val>{c.potential}</Val>,
+      fill: (c) => lookupFill(colors.potential, c.potential) },
+    { key: "stage", label: "สเตจ", width: 116,
+      cell: (c) => <Val>{stageMeta(c.pipeline_stage).label}</Val>,
+      fill: (c) => lookupFill(colors.pipeline_stage, c.pipeline_stage) },
+    { key: "status", label: "สถานะ", width: 96,
+      cell: (c) => <Val>{c.lead_status}</Val>,
+      fill: (c) => lookupFill(colors.lead_status, c.lead_status) },
+    { key: "type", label: "ประเภท", cell: (c) => <Val>{c.lead_type}</Val> },
+    { key: "tags", label: "แท็ก", width: 120,
+      // The one interactive cell. Its own click must not also open the lead,
+      // so it stops propagation before the row's handler sees it.
+      cell: (c) => {
         const tag = tagOf(c);
         return (
-          <TD key={colId} onClick={(e) => e.stopPropagation()} className="cursor-default">
+          <span onClick={(e) => e.stopPropagation()} className="inline-flex">
             <button
               onClick={(e) => setOpenLead({ id: c.lead_id, rect: e.currentTarget.getBoundingClientRect() })}
               aria-label={tag ? `เปลี่ยนแท็ก (${tag.label})` : "เลือกแท็ก"}
               className="inline-flex items-center gap-1 rounded transition-colors"
             >
-              {tag ? (
-                <TagChip tag={tag} />
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded border border-dashed border-border-strong px-1.5 py-0.5 text-label text-text-subtle hover:text-accent hover:border-accent transition-colors">
-                  <Plus size={11} strokeWidth={2} /> แท็ก
+              {tag ? <TagChip tag={tag} /> : (
+                <span className="inline-flex items-center gap-1 rounded border border-dashed border-border-strong px-1.5 text-label text-text-subtle hover:text-accent hover:border-accent transition-colors">
+                  <Plus size={10} strokeWidth={2} /> แท็ก
                 </span>
               )}
             </button>
-          </TD>
+          </span>
         );
-      }
-      case "sale":
-        return (
-          <TD key={colId}>
-            <span className="inline-flex items-center gap-1.5">
-              <Avatar name={c.sale_id ?? ""} tone="crimson" className="h-5 w-5" />
-              <span className="text-small num text-text-muted">{c.sale_id}</span>
-            </span>
-          </TD>
-        );
-      case "budget":
-        return <TD key={colId} className="text-right num">{formatBaht(c.budget)}</TD>;
-      case "commission":
-        return <TD key={colId} className="text-right num text-green">{c.commission ? formatBaht(c.commission) : "—"}</TD>;
-      case "follow":
-        return <TD key={colId} className="text-right text-small text-text-muted num">{formatDate(c.last_follow_date)}</TD>;
-    }
+      } },
+    { key: "sale", label: "เซล", cell: (c) => <Val mono>{c.sale_id}</Val> },
+    { key: "listing_code", label: "ทรัพย์ที่สนใจ", cell: (c) => <Val mono>{c.listing_code}</Val>,
+      add: { field: "listing_code", editor: { as: "text" }, placeholder: "รหัสทรัพย์" } },
+    { key: "marketing_channel", label: "ช่องทาง", width: 120, cell: (c) => <Val>{c.marketing_channel}</Val> },
+    { key: "budget", label: "งบประมาณ", align: "right", width: 110,
+      cell: (c) => <Val mono>{c.budget != null ? formatBaht(c.budget) : null}</Val> },
+    { key: "commission", label: "คอมมิชชั่น", align: "right", width: 110,
+      cell: (c) => <Val mono>{c.commission ? formatBaht(c.commission) : null}</Val> },
+    { key: "date_received", label: "วันที่รับ", align: "right",
+      cell: (c) => <Val mono>{formatDate(c.date_received)}</Val> },
+    { key: "follow", label: "ติดตามล่าสุด", align: "right", width: 116,
+      cell: (c) => <Val mono>{formatDate(c.last_follow_date)}</Val>,
+      // The grade decides the window, and a grade with no window paints
+      // nothing — see ตั้งค่า → สีสถานะ & SLA.
+      fill: (c) => slaFill(sla, c.potential, c.last_follow_date) },
+    /* The three closing columns sit together: signed → transferred → what it sold
+       for. A closed deal missing the price shows an amber "ยังไม่กรอก" rather than
+       a blank, because a blank reads as "nothing to record here" and this is the
+       one number nothing else in the database holds (lib/deals.ts). */
+    { key: "closing_date", label: "วันที่ปิด", align: "right",
+      cell: (c) => <Val mono>{formatDate(c.closing_date)}</Val> },
+    { key: "transfer_date", label: "วันที่โอน", align: "right",
+      cell: (c) => <Val mono>{formatDate(c.transfer_date)}</Val> },
+    { key: "closing_price", label: "ราคาปิด", align: "right", width: 110,
+      cell: (c) =>
+        c.closing_price != null ? (
+          <Val mono>{formatBaht(c.closing_price)}</Val>
+        ) : isClosed(c) ? (
+          <span className="text-amber">ยังไม่กรอก</span>
+        ) : null },
+    { key: "customer_complain", label: "ข้อร้องเรียน", width: 180, cell: (c) => <Dim>{c.customer_complain}</Dim> },
+    { key: "complain_status", label: "สถานะร้องเรียน", cell: (c) => <Val>{c.complain_status}</Val> },
+    { key: "complain_remark", label: "หมายเหตุร้องเรียน", width: 180, cell: (c) => <Dim>{c.complain_remark}</Dim> },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [colors, sla, leadTags, tagOverride]);
+
+  /* Throwing rather than returning is what SheetTable's draft row expects: it
+     keeps everything typed on screen and shows the message, so a refused
+     create never also loses the row. */
+  const addLead = async (draft: Record<string, string>) => {
+    const res = await createLead({
+      lead_name: draft.lead_name ?? "",
+      phone: draft.phone ?? "",
+      listing_code: draft.listing_code || undefined,
+    });
+    if (!res.ok) throw new Error(res.error);
+    router.refresh();
   };
 
-  const renderRow = (c: CrmRow, keyPrefix = "") => (
-    <TR key={`${keyPrefix}${c.lead_id}`} className="cursor-pointer" onClick={() => router.push(`/leads/${c.lead_id}`)}>
-      {order.map((colId) => cellFor(colId, c))}
-    </TR>
+  const canCreate = can("leads.create");
+
+  const grid = (data: CrmRow[], caption: string, withAdd = false) => (
+    <SheetTable
+      tableKey="leads"
+      columns={columns}
+      rows={data}
+      rowKey={(c) => c.lead_id}
+      // Hand the row to the drawer's loading state so it opens filled in rather than
+      // shimmering, THEN navigate. See lib/peek.ts.
+      onSelect={(c) => {
+        stashLead(c);
+        router.push(`/leads/${c.lead_id}`);
+      }}
+      onHover={(c) => router.prefetch(`/leads/${c.lead_id}`)}
+      prefs={prefs}
+      empty="ไม่พบรายการ"
+      caption={caption}
+      onCreate={withAdd && canCreate ? addLead : undefined}
+      addHint="เกรด · สเตจ · งบ กรอกได้หลังเปิดรายการ"
+    />
   );
 
   return (
@@ -290,44 +341,27 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
         >
           <Tags size={14} strokeWidth={1.75} /> จัดกลุ่มตามแท็ก
         </button>
-        <button
-          onClick={() => setColsOpen(true)}
-          className="inline-flex items-center gap-1.5 text-small font-medium rounded-md px-3 py-1.5 border border-border-strong text-text-muted hover:bg-surface-2 transition-colors"
-        >
-          <Columns3 size={14} strokeWidth={1.75} /> คอลัมน์
-        </button>
         <div className="ml-auto">
           <StageFilter value={stage} options={stageOptions} onChange={setStage} />
         </div>
       </div>
 
-      <CardContent className="p-0">
-        {rows.length === 0 ? (
-          <div className="p-10 text-center text-small text-text-subtle">ไม่พบรายการ</div>
-        ) : (
-          <Table className="min-w-[1180px] whitespace-nowrap">
-            <THead>
-              <TR>{order.map((colId) => headerFor(colId))}</TR>
-            </THead>
-            <TBody>
-              {groups
-                ? groups.map((g) => (
-                    <React.Fragment key={g.tag?.id ?? "__untagged"}>
-                      <TR className="bg-surface-2/60">
-                        <TD colSpan={order.length} className="py-2">
-                          <span className="inline-flex items-center gap-2">
-                            {g.tag ? <TagChip tag={g.tag} /> : <span className="text-small text-text-subtle">ไม่มีแท็ก</span>}
-                            <span className="num text-label text-text-subtle">({g.rows.length})</span>
-                          </span>
-                        </TD>
-                      </TR>
-                      {g.rows.map((c) => renderRow(c, `${g.tag?.id ?? "none"}-`))}
-                    </React.Fragment>
-                  ))
-                : rows.map((c) => renderRow(c))}
-            </TBody>
-          </Table>
-        )}
+      {/* Grouping renders ONE GRID PER TAG rather than group header rows inside
+          a single table: the grid's header is frozen and its rows are a fixed
+          height, so a full-width heading row spliced into the body would sit
+          under the sticky header and break the lattice both rely on. */}
+      <CardContent className={cn("p-0", groups && "flex flex-col gap-3 p-3")}>
+        {groups
+          ? groups.map((g) => (
+              <div key={g.tag?.id ?? "__untagged"}>
+                <div className="mb-1.5 flex items-center gap-2">
+                  {g.tag ? <TagChip tag={g.tag} /> : <span className="text-small text-text-subtle">ไม่มีแท็ก</span>}
+                  <span className="num text-label text-text-subtle">({g.rows.length})</span>
+                </div>
+                {grid(g.rows, `แสดง ${g.rows.length} รายการ`)}
+              </div>
+            ))
+          : grid(rows, `แสดง ${rows.length} จาก ${crm.length} รายการ`, true)}
       </CardContent>
 
       {openLead && (
@@ -338,10 +372,6 @@ export function LeadsBrowser({ crm }: { crm: CrmRow[] }) {
           onPick={(t) => pickTag(openLead.id, t)}
           onClose={() => setOpenLead(null)}
         />
-      )}
-
-      {colsOpen && (
-        <ColumnsModal order={order} onChange={applyOrder} onReset={() => applyOrder(DEFAULT_ORDER)} onClose={() => setColsOpen(false)} />
       )}
     </Card>
   );

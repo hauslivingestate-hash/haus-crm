@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { X, ChevronDown, UserRound, Building2, Check, Search, AlertCircle } from "lucide-react";
+import { X, ChevronDown, UserRound, Building2, Check, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
 import { AiPasteBox } from "@/components/AiPasteBox";
@@ -12,7 +12,7 @@ import { emptyLead, type NewLead, type LeadRole } from "@/lib/leads";
 // nothing in the database and would fail every insert.
 import { useMasterData } from "@/components/MasterDataProvider";
 import { createLead } from "@/lib/mutations/leads";
-import { searchListings, type ListingHit } from "@/lib/search";
+import { ListingCombobox } from "@/components/ListingCombobox";
 import { type LeadDraft } from "@/lib/ai/parseLead";
 import { cn } from "@/lib/cn";
 
@@ -434,105 +434,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// Searchable listing picker — by code (TDMK007) or project name, against the REAL inventory
-// (511 listings) via the searchListings server action. Selecting a listing passes its
-// managing agent so the assignment can default to them; a typed code that matches nothing is
-// still accepted, since a sale may know a code the search hasn't indexed yet.
-function ListingCombobox({ value, onPick }: { value: string; onPick: (code: string, sale?: string | null) => void }) {
-  const [q, setQ] = React.useState("");
-  const [open, setOpen] = React.useState(false);
-  const [matches, setMatches] = React.useState<ListingHit[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const boxRef = React.useRef<HTMLDivElement>(null);
-
-  const query = q.trim();
-  const display = value;
-
-  // Debounced so typing a code doesn't fire a request per keystroke. The guard on `stale`
-  // keeps an earlier, slower response from overwriting a later one.
-  React.useEffect(() => {
-    if (!open) return;
-    let stale = false;
-    setLoading(true);
-    const t = setTimeout(async () => {
-      const hits = await searchListings(query);
-      if (!stale) {
-        setMatches(hits);
-        setLoading(false);
-      }
-    }, 250);
-    return () => {
-      stale = true;
-      clearTimeout(t);
-    };
-  }, [q, open, query]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  const pick = (code: string, sale?: string | null) => {
-    onPick(code, sale);
-    setQ("");
-    setOpen(false);
-  };
-
-  return (
-    <div ref={boxRef} className="relative">
-      <div className="relative">
-        <Search size={14} strokeWidth={1.75} className="text-text-subtle absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-        <input
-          value={open ? q : display}
-          onChange={(e) => {
-            setQ(e.target.value);
-            if (!open) setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && q.trim()) {
-              e.preventDefault();
-              pick(q.trim().toUpperCase());
-            }
-          }}
-          placeholder="ค้นหารหัส / ชื่อทรัพย์ หรือพิมพ์รหัส…"
-          className={cn(field, "pl-8")}
-        />
-      </div>
-      {open && (
-        <div className="absolute z-10 left-0 right-0 mt-1 rounded-md border border-border bg-surface shadow-pop max-h-56 overflow-y-auto">
-          {value && (
-            <button type="button" onClick={() => pick("")} className="w-full text-left px-3 py-2 text-small text-text-subtle hover:bg-surface-hover">
-              — ล้าง —
-            </button>
-          )}
-          {matches.map((l) => (
-            <button
-              key={l.code}
-              type="button"
-              onClick={() => pick(l.code, l.sale)}
-              className="w-full text-left px-3 py-2 hover:bg-surface-hover flex items-center justify-between gap-2"
-            >
-              <span className="min-w-0 truncate">
-                <span className="num text-small font-medium">{l.code}</span> <span className="text-small text-text-muted">{l.label}</span>
-              </span>
-              <span className="text-label text-text-subtle shrink-0">{l.sale ?? "—"}</span>
-            </button>
-          ))}
-          {loading && matches.length === 0 && (
-            <div className="px-3 py-2 text-small text-text-subtle">กำลังค้นหา…</div>
-          )}
-          {!loading && query && matches.length === 0 && (
-            <button type="button" onClick={() => pick(q.trim().toUpperCase())} className="w-full text-left px-3 py-2 text-small text-accent hover:bg-accent-wash">
-              ใช้รหัส “{q.trim().toUpperCase()}”
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}

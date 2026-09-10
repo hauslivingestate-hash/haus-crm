@@ -145,6 +145,7 @@ export function ListingSectionBlock({
   onChange,
   canEditGroup,
   defaultOpen,
+  exclude,
   children,
 }: {
   section: ListingSection;
@@ -153,11 +154,21 @@ export function ListingSectionBlock({
   /** Whether the viewer may write this permission group. */
   canEditGroup: (group: ListingField["group"]) => boolean;
   defaultOpen: boolean;
+  /** Field keys to leave out, because another control on the same screen already owns
+      them. The EDIT sheet drops สถานะประกาศ and ไปป์ไลน์เจ้าของ — the จัดการ card sits
+      right above it and saves them on a single tap, and one field with two save rules on
+      one screen is how a screen starts disagreeing with itself. The ADD form passes
+      nothing, because there is no จัดการ card on a listing that does not exist yet. */
+  exclude?: ReadonlySet<string>;
   /** Extra content for the section — the project picker, the photo picker. */
   children?: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
-  const fields = fieldsInSection(section.key);
+  const all = fieldsInSection(section.key);
+  const fields = exclude ? all.filter((f) => !exclude.has(f.key)) : all;
+  // A section excluded down to nothing would render as a header opening onto an empty box.
+  // Neither current caller can reach this; it is here so the next one cannot either.
+  if (!fields.length && !children) return null;
   // How many of this section's fields already carry something — so a folded section can say
   // it is not empty rather than hiding data.
   const filled = fields.filter((f) => {

@@ -1,5 +1,6 @@
 import { Topbar } from "@/components/Topbar";
 import { SettingsView } from "@/components/SettingsView";
+import { getColorableLists } from "@/lib/tables/colors";
 import { getListings, getEmployees, getZones, getActionTypes, getActionUsage, getPropertyTypeCodes, getRbacConfig, getTeams, getKpiTemplates, getChecklistTemplates, getRoleOptions } from "@/lib/queries";
 import { getAccounts } from "@/lib/accounts";
 
@@ -13,7 +14,7 @@ export default async function SettingsPage() {
     propertyTypeUsage[l.property_type] = (propertyTypeUsage[l.property_type] ?? 0) + 1;
   }
 
-  const [accounts, employees, zones, actionTypes, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates, checklistTemplates, roleOptions] =
+  const [accounts, employees, zones, actionTypes, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates, checklistTemplates, roleOptions, colorLists] =
     await Promise.all([
     getAccounts(),
     getEmployees(),
@@ -26,6 +27,7 @@ export default async function SettingsPage() {
     getKpiTemplates(),
     getChecklistTemplates(),
     getRoleOptions(),
+    getColorableLists(),
   ]);
 
   return (
@@ -33,6 +35,7 @@ export default async function SettingsPage() {
       <Topbar title="ตั้งค่า" subtitle="ผู้ใช้ · สิทธิ์ · ข้อมูลอ้างอิงกลาง" actions={false} />
       <div className="p-4 lg:p-6">
         <SettingsView
+          colorLists={colorLists}
           zones={zones}
           propertyTypeUsage={propertyTypeUsage}
           accounts={accounts}

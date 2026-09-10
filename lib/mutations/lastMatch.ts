@@ -3,17 +3,26 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth";
+import { syncLeadLastMatch } from "@/lib/lastMatchSync";
 
 // ราคาปิดดีล — `main_7_last_match.last_match_price`.
 //
 // Ben, 2026-08-15: capture it when the lead moves to Win/Close, and let the 56 existing
 // deals be back-filled on the Last Match page.
 //
-// ⚠️ WHY THIS EXISTS. The price column was empty on all 56 rows, which is the single reason
-// the dashboard is parked: it was ported from HAUS V2 with revenue as its spine, so five of
-// its six overview blocks render ฿0 without this. There is nowhere else in the database
-// that a closing price is recorded — main_6_buyer_crm has `commission` and `closing_date`
-// but no sale price — so this table is it.
+// ⚠️ SUPERSEDED, 2026-09-06 — this is NOT where the company's revenue lives.
+//
+// The note below was written when `main_6_buyer_crm` had no sale price, so this table
+// looked like the only home for one. Reading the rows settled it: only 16 of the 56 are
+// this company's own deals. The rest are OTHER agencies' sales, recorded for comparison —
+// this is a market log, and putting our revenue in it would mix our money with the market's.
+//
+// `main_6_buyer_crm.closing_price` is the sale price now, written by lib/mutations/deals.ts
+// from the closing card on the lead. This file keeps doing what the table is actually for.
+//
+// (The original note, for context: the price column was empty on all 56 rows, which was the
+// stated reason the dashboard is parked — it was ported from HAUS V2 with revenue as its
+// spine, so five of its six overview blocks render ฿0 without a revenue source.)
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -31,36 +40,6 @@ async function requireEdit(): Promise<{ employeeCode: string; canAll: boolean } 
     employeeCode: auth.employeeCode,
     canAll: perms.has("lastmatch.view_all") || perms.has("roles.manage"),
   };
-}
-
-/**
- * Mint the next `last_match_id`.
- *
- * ⚠️ There is NO trigger on this table, and the ids already in it are nickname-based
- * (`Stone-10`, `Stone+Pup-01`) from the sheet import — not the `S-001-001` shape CLAUDE.md
- * describes. Following what the data actually does rather than what the note says, so the
- * ledger stays readable to the people who have been keeping it.
- */
-async function nextMatchId(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  saleId: string
-): Promise<string> {
-  const { data: emp } = await supabase
-    .from("main_1_hr")
-    .select("nickname")
-    .eq("employee_code", saleId)
-    .maybeSingle();
-  const prefix = (emp?.nickname as string | undefined) || saleId;
-
-  const { data: existing } = await supabase
-    .from("main_7_last_match")
-    .select("last_match_id")
-    .like("last_match_id", `${prefix}-%`);
-  const highest = ((existing ?? []) as { last_match_id: string }[]).reduce((max, r) => {
-    const n = Number(r.last_match_id.slice(prefix.length + 1));
-    return Number.isFinite(n) && n > max ? n : max;
-  }, 0);
-  return `${prefix}-${String(highest + 1).padStart(2, "0")}`;
 }
 
 /** Back-fill or correct a closed deal's price and note. */
@@ -116,17 +95,20 @@ export interface CloseDealInput {
 }
 
 /**
- * Record the deal behind a lead that just reached Win/Close.
+ * Record the deal behind a lead in the market log.
  *
- * Called from the lead editor when the stage moves into a closed state — the moment the
- * number is actually known. Everything except the price is copied from the lead and the
- * listing it was interested in, so the rep types one figure rather than re-entering the
- * property.
+ * ⚠️ NOTHING CALLS THIS TODAY. It was the แก้ไข form's closing-price prompt, removed on
+ * 2026-09-10 when stage editing moved to the จัดการ card — that prompt was a second way to
+ * close a deal which wrote a different half of it from the closing card (this row, but never
+ * the lead's own closing_price). The closing card is now the single path and calls the same
+ * helper below.
  *
- * The id is minted here (see nextMatchId) because this table has no trigger.
+ * Kept rather than deleted because the entry point is still sound — a bulk importer or a
+ * back-fill screen would want exactly this. It delegates so it can never again produce a
+ * second, unlinked row for a lead the closing card has already recorded.
  */
 export async function closeDeal(input: CloseDealInput): Promise<
-  { ok: true; lastMatchId: string } | { ok: false; error: string }
+  { ok: true; lastMatchId: string | null } | { ok: false; error: string }
 > {
   const auth = await requireEdit();
   if ("error" in auth) return { ok: false, error: auth.error };
@@ -135,62 +117,65 @@ export async function closeDeal(input: CloseDealInput): Promise<
   }
 
   const supabase = await createClient();
-  const { data: lead } = await supabase
-    .from("main_6_buyer_crm")
-    .select("lead_id,sale_id,listing_code,lead_name")
-    .eq("lead_id", input.leadId)
-    .maybeSingle();
-  if (!lead) return { ok: false, error: "ไม่พบลีดนี้" };
-
-  // The deal belongs to whoever owns the lead; fall back to the person doing the closing
-  // when the lead is unassigned, because the id generator needs a sale_id.
-  const saleId = (lead.sale_id as string | null) ?? auth.employeeCode;
-
-  // Copy the property details across from the listing the lead was interested in.
-  let listing: Record<string, unknown> | null = null;
-  if (lead.listing_code) {
-    const { data } = await supabase
-      .from("v_main_listing")
-      .select("listing_name,property_type,zone,area_wa,area_sqm,bed,bath")
-      .eq("listing_id", lead.listing_code)
-      .maybeSingle();
-    listing = data ?? null;
-  }
-
-  const lastMatchId = await nextMatchId(supabase, saleId);
-  const { data, error } = await supabase
-    .from("main_7_last_match")
-    .insert({
-      last_match_id: lastMatchId,
-      sale_id: saleId,
-      close_type: input.closeType || "ปิดเอง",
-      project_name: (listing?.listing_name as string | null) ?? null,
-      property_type: (listing?.property_type as string | null) ?? null,
-      zone: (listing?.zone as string | null) ?? null,
-      sq_wa: (listing?.area_wa as number | null) ?? null,
-      sq_m: (listing?.area_sqm as number | null) ?? null,
-      bed: (listing?.bed as number | null) ?? null,
-      bath: (listing?.bath as number | null) ?? null,
-      last_match_price: input.price,
-      last_match_remark: input.remark?.trim() || null,
-      buyer_persona: (lead.lead_name as string | null) ?? null,
-      date_created: new Date().toISOString().slice(0, 10),
-    })
-    .select("last_match_id")
-    .single();
-  if (error) return { ok: false, error: error.message };
-
-  await supabase.from("audit_log").insert({
-    entity: "main_7_last_match",
-    entity_id: data.last_match_id as string,
-    action: "close_deal",
-    changed_by: auth.employeeCode,
-    before: { lead_id: input.leadId },
-    after: { price: input.price, sale_id: saleId },
+  const res = await syncLeadLastMatch(supabase, auth.employeeCode, {
+    leadId: input.leadId,
+    price: input.price,
+    remark: input.remark ?? null,
+    closeType: input.closeType ?? null,
   });
+  if (!res.ok) return res;
 
   revalidatePath("/last-match");
   revalidatePath("/leads");
   revalidatePath("/");
-  return { ok: true, lastMatchId: data.last_match_id as string };
+  return { ok: true, lastMatchId: res.lastMatchId };
+}
+
+/**
+ * Remove the market-log entry a lead's close created — the undo.
+ *
+ * Only ever reaches a row the closing card made (`lead_id` is set) and only that lead's, so
+ * the 56 rows imported from the sheet are out of reach from here. The database enforces the
+ * same thing independently: p_delete allows roles.manage anything, and everyone else only
+ * their own linked rows (migration last_match_delete_own_auto_created).
+ *
+ * A market log that says a property sold when the sale fell through is worse than a missing
+ * entry, which is why the person who caused it can clear it rather than having to ask.
+ */
+export async function removeLeadLastMatch(leadId: string): Promise<Result> {
+  const auth = await requireEdit();
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  const supabase = await createClient();
+  const { data: row } = await supabase
+    .from("main_7_last_match")
+    .select("last_match_id,sale_id,last_match_price")
+    .eq("lead_id", leadId)
+    .maybeSingle();
+  // Already gone, or never visible to this reader. Either way there is nothing to undo and
+  // nothing to apologise for.
+  if (!row) return { ok: true };
+
+  const { error } = await supabase
+    .from("main_7_last_match")
+    .delete()
+    .eq("lead_id", leadId);
+  if (error) return { ok: false, error: error.message };
+
+  // Written BEFORE the revalidate and after the delete: the row is gone, so this audit entry
+  // is the only remaining record that it ever existed.
+  await supabase.from("audit_log").insert({
+    entity: "main_7_last_match",
+    entity_id: (row as { last_match_id: string }).last_match_id,
+    action: "delete",
+    changed_by: auth.employeeCode,
+    before: { ...(row as object), lead_id: leadId },
+    after: null,
+  });
+
+  revalidatePath("/last-match");
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/");
+  return { ok: true };
 }

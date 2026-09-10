@@ -7,14 +7,19 @@ import { Search, Building2 } from "lucide-react";
 import type { ListingRow } from "@/lib/queries";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
-import { SortHeader, useSort } from "@/components/ui/SortHeader";
-import { StatusBadge } from "@/components/ui/Dot";
-import { Pill } from "@/components/ui/Pill";
+import { useSort } from "@/components/ui/SortHeader";
+import { SheetTable, Val, Dim, Yes } from "@/components/ui/SheetTable";
+import type { SheetColumn, TablePrefs } from "@/lib/tables";
+import { lookupFill, slaFill, type LookupColors } from "@/lib/tables/fills";
+import { ownerStageMeta } from "@/lib/ownerPipeline";
+import type { SlaWindows } from "@/lib/sla";
 import { formatBaht, formatRent, formatNumber, daysOnMarketLabel } from "@/lib/format";
-import { listingStatusDot, potentialTone, potentialGroup, type PotentialGroup } from "@/lib/status";
+import { potentialTone, potentialGroup, type PotentialGroup } from "@/lib/status";
 import { compareValues, orderIndex } from "@/lib/sort";
 import { cn } from "@/lib/cn";
+import { useMasterData } from "@/components/MasterDataProvider";
+import { useRbac } from "@/components/RbacProvider";
+import { createListing } from "@/lib/mutations/listings";
 
 // Stable, sensible chip order — only statuses actually present get a chip.
 const STATUS_ORDER = [
@@ -55,17 +60,32 @@ const SORT_VALUE: Record<string, (l: ListingRow) => number | string | null> = {
 export function ListingsBrowser({
   listings,
   covers = {},
+  prefs,
+  colors,
+  sla,
 }: {
   listings: ListingRow[];
   /** listing_id → cover photo URL. Absent = no photo uploaded yet, which the Cover
    *  component draws as a building icon rather than a stock photo of someone else's house. */
   covers?: Record<string, string>;
+  /** This viewer's saved column layout. Undefined = never opened the manager. */
+  prefs?: TablePrefs;
+  /** Admin-chosen colour per lookup value — ตั้งค่า → ข้อมูลอ้างอิงกลาง. */
+  colors: LookupColors;
+  /** Listing grade → owner-talk window in days. Missing/null = no SLA. */
+  sla: SlaWindows;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState("all");
   const [potFilter, setPotFilter] = React.useState<"all" | PotentialGroup>("all");
-  const { sort, onSort } = useSort();
+  // Sort STATE is kept — it still orders the rows handed to the grid. What is
+  // gone is the clickable header: SheetTable has no sort affordance, because a
+  // header sort that disagrees with the filter chips above it is its own bug.
+  // Re-adding sorting is a deliberate piece of work, not a leftover.
+  const { sort } = useSort();
+  const { propertyTypes, zones } = useMasterData();
+  const { can } = useRbac();
 
   const chips = [
     { key: "all", label: "ทั้งหมด" },
@@ -96,6 +116,110 @@ export function ListingsBrowser({
   const rows = sortFn
     ? [...filtered].sort((a, b) => compareValues(sortFn(a), sortFn(b), sort.dir))
     : filtered;
+
+  /* THE COLUMN REGISTRY. Lives here rather than in lib/ because a cell may
+     need anything this component has — `covers` is the reason today, hooks
+     will be the reason tomorrow.
+
+     Every field `v_main_listing` exposes gets a column. That is the point of
+     the grid: the old table showed 10 of 55 and the other 45 were reachable
+     only by opening a record one at a time. Nobody has to look at all of them
+     — the column manager is what makes 40 columns a library rather than a
+     wall, and the default hidden set is nobody's job to guess. */
+  const columns = React.useMemo<SheetColumn<ListingRow>[]>(() => [
+    { key: "listing_id", label: "Listing ID", locked: true, width: 104,
+      cell: (l) => <span className="num text-accent">{l.listing_id}</span> },
+    { key: "name", label: "โครงการ", width: 210,
+      cell: (l) => (
+        <span className="flex items-center gap-2">
+          <Cover src={covers[l.listing_id]} compact />
+          <span className="truncate">{l.listing_name ?? l.project_name_eng ?? "—"}</span>
+        </span>
+      ) },
+    { key: "status", label: "สถานะ", width: 116,
+      cell: (l) => <Val>{l.listing_status}</Val>,
+      fill: (l) => lookupFill(colors.listing_status, l.listing_status) },
+    // The OWNER pipeline, next to the advert's status so the two are read as the
+    // different things they are (lib/ownerPipeline.ts). Appended to the registry, so
+    // resolve() shows it to everyone who has not hidden it.
+    { key: "owner_stage", label: "ไปป์ไลน์เจ้าของ", width: 128,
+      cell: (l) => <Val>{ownerStageMeta(l.owner_stage).label}</Val> },
+    { key: "potential", label: "Potential", width: 96,
+      cell: (l) => <Val>{l.potential}</Val>,
+      fill: (l) => lookupFill(colors.listing_potential, l.potential) },
+    { key: "listing_type", label: "ประเภทประกาศ", cell: (l) => <Val>{l.listing_type}</Val> },
+    { key: "owner_focus", label: "โฟกัส", align: "center", cell: (l) => <Yes on={l.owner_focus ?? undefined} /> },
+    { key: "property_type", label: "ประเภททรัพย์", cell: (l) => <Val>{l.property_type}</Val>,
+      // Required, and not for validation's sake: the listing_id trigger builds
+      // the code from this letter plus the zone and RAISES without either.
+      add: { field: "property_type", editor: { as: "select", choices: propertyTypes.map((t) => ({ value: t.id, label: t.label })) }, required: true, placeholder: "เลือกประเภท" } },
+    { key: "zone", label: "โซน", width: 130,
+      cell: (l) => <Val>{l.zone_name_thai ?? l.zone}</Val>,
+      add: { field: "zone", editor: { as: "select", choices: zones.map((z) => ({ value: z.id, label: z.label })) }, required: true, placeholder: "เลือกโซน" } },
+    { key: "in_out_project", label: "ใน/นอกโครงการ", cell: (l) => <Dim>{l.in_out_project}</Dim> },
+    { key: "road_soi", label: "ถนน/ซอย", width: 140, cell: (l) => <Dim>{l.road_soi}</Dim> },
+    { key: "unit_no", label: "เลขห้อง", cell: (l) => <Val mono>{l.unit_no}</Val>,
+      add: { field: "unit_no", editor: { as: "text" } } },
+    { key: "building", label: "อาคาร", cell: (l) => <Val>{l.building}</Val> },
+    { key: "floor", label: "ชั้น", cell: (l) => <Val mono>{l.floor}</Val> },
+    { key: "bed", label: "นอน", align: "right", cell: (l) => <Val mono>{l.bed}</Val> },
+    { key: "bath", label: "น้ำ", align: "right", cell: (l) => <Val mono>{l.bath}</Val> },
+    { key: "area_sqm", label: "ตร.ม.", align: "right",
+      cell: (l) => <Val mono>{l.area_sqm != null ? formatNumber(l.area_sqm) : null}</Val> },
+    { key: "area_wa", label: "ตร.ว.", align: "right",
+      cell: (l) => <Val mono>{l.area_wa != null ? formatNumber(l.area_wa) : null}</Val> },
+    { key: "parking", label: "จอดรถ", align: "right", cell: (l) => <Val mono>{l.parking}</Val> },
+    { key: "direction", label: "ทิศ", cell: (l) => <Val>{l.direction}</Val> },
+    { key: "view_type", label: "วิว", cell: (l) => <Val>{l.view_type}</Val> },
+    { key: "unit_position", label: "ตำแหน่งห้อง", cell: (l) => <Val>{l.unit_position}</Val> },
+    { key: "unit_condition", label: "สภาพ", cell: (l) => <Val>{l.unit_condition}</Val> },
+    { key: "asking_price", label: "ราคาขาย", align: "right", width: 116,
+      cell: (l) => <Val mono>{l.asking_price != null ? formatBaht(l.asking_price) : null}</Val>,
+      add: { field: "asking_price", editor: { as: "money" } } },
+    { key: "rental_price", label: "ราคาเช่า", align: "right", width: 110,
+      cell: (l) => <Val mono>{l.rental_price != null ? formatRent(l.rental_price) : null}</Val> },
+    { key: "old_price", label: "ราคาเดิม", align: "right",
+      cell: (l) => <Dim>{l.old_price != null ? formatBaht(l.old_price) : null}</Dim> },
+    { key: "price_remark", label: "หมายเหตุราคา", width: 150, cell: (l) => <Dim>{l.price_remark}</Dim> },
+    { key: "dom", label: "DOM", align: "right",
+      cell: (l) => <Val mono>{daysOnMarketLabel(l.days_on_market)}</Val> },
+    { key: "owner_name", label: "เจ้าของ", width: 140, cell: (l) => <Val>{l.owner_name}</Val> },
+    { key: "owner_phone", label: "เบอร์เจ้าของ", cell: (l) => <Val mono>{l.owner_phone}</Val> },
+    { key: "owner_talk_last_date", label: "คุยเจ้าของล่าสุด", align: "right", width: 130,
+      cell: (l) => <Val mono>{l.owner_talk_last_date}</Val>,
+      // The listing grade's window — Exclusive gets chased harder than Normal,
+      // if and only if someone has set a number for it.
+      fill: (l) => slaFill(sla, l.potential, l.owner_talk_last_date) },
+    { key: "sale_id", label: "เซล",
+      cell: (l) => <Val mono>{l.effective_sale_id ?? l.sale_id}</Val> },
+    { key: "sign", label: "ป้าย", align: "center", cell: (l) => <Yes on={l.sign ?? undefined} /> },
+    { key: "vdo", label: "วิดีโอ", align: "center", cell: (l) => <Yes on={l.vdo ?? undefined} /> },
+    { key: "ddproperty_link", label: "DD", align: "center", cell: (l) => <Yes on={Boolean(l.ddproperty_link)} /> },
+    { key: "livinginsider_link", label: "LV", align: "center", cell: (l) => <Yes on={Boolean(l.livinginsider_link)} /> },
+    { key: "propertyhub_link", label: "PH", align: "center", cell: (l) => <Yes on={Boolean(l.propertyhub_link)} /> },
+    { key: "agreement_end", label: "สัญญาถึง", align: "right", cell: (l) => <Val mono>{l.agreement_end}</Val> },
+    { key: "date_created", label: "วันที่ลง", align: "right", cell: (l) => <Val mono>{l.date_created}</Val> },
+    { key: "remark", label: "หมายเหตุ", width: 200, cell: (l) => <Dim>{l.remark}</Dim> },
+  ], [covers, colors, sla, propertyTypes, zones]);
+
+  /* Throwing rather than returning keeps the typed values on screen when a
+     create is refused — losing four filled fields to an error message is what
+     makes an inline row feel worse than the form it replaced. */
+  const addListing = async (draft: Record<string, string>) => {
+    const res = await createListing({
+      project_id: "",
+      values: {
+        property_type: draft.property_type ?? "",
+        zone: draft.zone ?? "",
+        unit_no: draft.unit_no || null,
+        // The money editor allows grouping separators through; the column is
+        // numeric, so they have to come off before it reaches Postgres.
+        asking_price: draft.asking_price ? draft.asking_price.replace(/,/g, "") : null,
+      },
+    });
+    if (!res.ok) throw new Error(res.error);
+    router.refresh();
+  };
 
   return (
     <Card>
@@ -174,100 +298,19 @@ export function ListingsBrowser({
       )}
 
       <CardContent className="p-0">
-        {rows.length === 0 ? (
-          <div className="p-10 text-center text-small text-text-subtle">ไม่พบทรัพย์</div>
-        ) : (
-          <Table className="min-w-[920px]">
-            <THead>
-              <TR>
-                <SortHeader label="Listing ID" sortKey="listing_id" sort={sort} onSort={onSort} />
-                <SortHeader label="โครงการ" sortKey="name" sort={sort} onSort={onSort} />
-                <SortHeader label="โซน" sortKey="zone" sort={sort} onSort={onSort} />
-                <TH>ประเภท</TH>
-                <TH className="text-right">ห้อง</TH>
-                <SortHeader label="พื้นที่" sortKey="area" sort={sort} onSort={onSort} align="right" defaultDir="desc" />
-                <SortHeader label="Potential" sortKey="potential" sort={sort} onSort={onSort} />
-                <SortHeader label="สถานะ" sortKey="status" sort={sort} onSort={onSort} />
-                <SortHeader label="ราคา" sortKey="price" sort={sort} onSort={onSort} align="right" defaultDir="desc" />
-                <SortHeader label="DOM" sortKey="dom" sort={sort} onSort={onSort} align="right" defaultDir="desc" />
-              </TR>
-            </THead>
-            <TBody>
-              {rows.map((l) => (
-                <TR
-                  key={l.listing_id}
-                  className="cursor-pointer"
-                  onClick={() => router.push(`/listings/${l.listing_id}`)}
-                >
-                  <TD className="num text-small text-accent font-medium">
-                    <Link
-                      href={`/listings/${l.listing_id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="hover:underline"
-                    >
-                      {l.listing_id}
-                    </Link>
-                  </TD>
-                  <TD>
-                    <div className="flex items-center gap-2.5">
-                      <Cover src={covers[l.listing_id]} />
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{l.listing_name ?? "—"}</div>
-                        <div className="text-label text-text-subtle truncate">
-                          {l.project_name_eng}
-                        </div>
-                      </div>
-                    </div>
-                  </TD>
-                  <TD className="text-small text-text-muted">
-                    {l.zone_name_thai}
-                    <span className="num text-text-subtle ml-1">{l.zone}</span>
-                  </TD>
-                  <TD className="text-small">{l.property_type}</TD>
-                  <TD className="text-right num text-small">
-                    {l.bed ?? "—"}<span className="text-text-subtle">น</span> {l.bath ?? "—"}
-                    <span className="text-text-subtle">บ</span>
-                  </TD>
-                  <TD className="text-right num text-small">
-                    {l.area_sqm ? `${formatNumber(l.area_sqm)}` : "—"}
-                    <span className="text-text-subtle"> ตร.ม.</span>
-                  </TD>
-                  <TD>
-                    <Pill tone={potentialTone(l.potential)}>{l.potential}</Pill>
-                  </TD>
-                  <TD>
-                    <StatusBadge color={listingStatusDot(l.listing_status)}>
-                      {l.listing_status}
-                    </StatusBadge>
-                  </TD>
-                  <TD className="text-right num">
-                    {l.asking_price == null && l.rental_price == null ? (
-                      <span className="text-text-subtle">—</span>
-                    ) : (
-                      <div className="flex flex-col items-end leading-tight">
-                        {l.asking_price != null && (
-                          <span className="font-medium">
-                            <span className="text-label text-text-subtle mr-1">ขาย</span>
-                            {formatBaht(l.asking_price)}
-                          </span>
-                        )}
-                        {l.rental_price != null && (
-                          <span className="text-small text-text-muted">
-                            <span className="text-label text-text-subtle mr-1">เช่า</span>
-                            {formatRent(l.rental_price)}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </TD>
-                  <TD className="text-right num text-small text-text-muted">
-                    {daysOnMarketLabel(l.days_on_market)}
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        )}
+        <SheetTable
+          tableKey="listings"
+          columns={columns}
+          rows={rows}
+          rowKey={(l) => l.listing_id}
+          onSelect={(l) => router.push(`/listings/${l.listing_id}`)}
+          onHover={(l) => router.prefetch(`/listings/${l.listing_id}`)}
+          prefs={prefs}
+          empty="ไม่พบทรัพย์"
+          caption={`แสดง ${rows.length} จาก ${listings.length} รายการ`}
+          onCreate={can("listings.create") ? addListing : undefined}
+          addHint="รหัสทรัพย์สร้างอัตโนมัติจากประเภท + โซน · ที่เหลือกรอกได้หลังเปิดรายการ"
+        />
       </CardContent>
     </Card>
   );
@@ -276,14 +319,19 @@ export function ListingsBrowser({
 /** Listing cover thumbnail — shows the photo when available, else a fallback
  *  icon. HAUS has no listing photos yet, so this currently always falls back;
  *  pass `src` once cover images are wired. */
-function Cover({ src }: { src?: string | null }) {
+function Cover({ src, compact }: { src?: string | null; compact?: boolean }) {
   return (
-    <span className="h-9 w-12 shrink-0 rounded-md overflow-hidden bg-surface-2 border border-border grid place-items-center">
+    <span className={cn(
+      "shrink-0 rounded overflow-hidden bg-surface-2 border border-border grid place-items-center",
+      // The grid's row is 30px tall, so the thumbnail has to fit inside it —
+      // a 36px cover would set the row height and break the lattice.
+      compact ? "h-[18px] w-[26px]" : "h-9 w-12",
+    )}>
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt="" className="size-full object-cover" />
       ) : (
-        <Building2 size={16} strokeWidth={1.75} className="text-text-subtle" />
+        <Building2 size={compact ? 11 : 16} strokeWidth={1.75} className="text-text-subtle" />
       )}
     </span>
   );

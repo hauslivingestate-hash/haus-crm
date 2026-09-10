@@ -103,7 +103,7 @@ export function LeadAdminPanel({ leadId, stage, customerComplain, complainStatus
               </span>
             )}
             <span className="ml-auto inline-flex items-center gap-1.5 text-label text-text-subtle whitespace-nowrap">
-              <Dot className={stg.dot} /> {stg.th}
+              <Dot className={stg.dot} /> {stg.label}
             </span>
           </div>
           <div className="text-label text-text-subtle mt-1">อัตโนมัติจากสเตจไปป์ไลน์ (เซลขยับ Lead → Call = ติดต่อแล้ว)</div>

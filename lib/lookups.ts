@@ -33,6 +33,11 @@ export interface Lookups {
   priceRemarks: RefItem[];
   /** Zones are id + name (ASK · อโศก) rather than a bare name, unlike the other lookups. */
   zones: RefItem[];
+  /* THE TWO PIPELINES. Ordered by sort_order, not alphabetically — for a stage list the
+     order IS the meaning, and "Appoint, Call, Close, Follow…" is not a pipeline. That is
+     why these are fetched separately from NAME_TABLES below. */
+  pipelineStages: RefItem[];
+  ownerStages: RefItem[];
   leadTags: LeadTag[];
 }
 
@@ -64,7 +69,7 @@ export async function getLookups(): Promise<Lookups> {
   const supabase = await createClient();
 
   const nameEntries = Object.entries(NAME_TABLES) as [keyof typeof NAME_TABLES, string][];
-  const [nameResults, zoneResult, tagResult] = await Promise.all([
+  const [nameResults, zoneResult, tagResult, stageResult, ownerStageResult] = await Promise.all([
     Promise.all(
       nameEntries.map(([, table]) => supabase.from(table).select("name").order("name"))
     ),
@@ -75,6 +80,8 @@ export async function getLookups(): Promise<Lookups> {
       .eq("is_active", true)
       .order("sort_order")
       .order("id"),
+    supabase.from("pipeline_stage").select("name,sort_order").order("sort_order"),
+    supabase.from("owner_stage").select("name,sort_order").order("sort_order"),
   ]);
 
   const out = {} as Lookups;
@@ -102,6 +109,11 @@ export async function getLookups(): Promise<Lookups> {
     id: z.zone_id,
     label: z.name_thai ? `${z.name_thai} · ${z.zone_id}` : z.zone_id,
   }));
+
+  const stageRows = (stageResult.data ?? []) as { name: string }[];
+  out.pipelineStages = stageRows.map((r) => ({ id: r.name, label: r.name }));
+  const ownerStageRows = (ownerStageResult.data ?? []) as { name: string }[];
+  out.ownerStages = ownerStageRows.map((r) => ({ id: r.name, label: r.name }));
 
   // Tags carry a stored colour, so they are not RefItems — see lib/tags.ts.
   out.leadTags = ((tagResult.data ?? []) as {

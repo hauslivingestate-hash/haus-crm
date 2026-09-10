@@ -128,7 +128,7 @@ export default async function ContactDetailPage({
                         </span>
                       )}
                       <span className={cn("shrink-0", d.budget == null && "ml-auto")}>
-                        <StatusBadge color={d.stageDot}>{d.stageTh}</StatusBadge>
+                        <StatusBadge color={d.stageDot}>{d.stageLabel}</StatusBadge>
                       </span>
                     </div>
                   ))

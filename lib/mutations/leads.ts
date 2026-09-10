@@ -268,14 +268,46 @@ export async function createLead(
   const saleId = canAssign ? draft.sale_id ?? "" : auth.employeeCode;
 
   const supabase = await createClient();
+
+  /* listing_code is a real foreign key as of 2026-09-10, so a code that names no listing
+     is now refused by the database. The intake form picks from a combobox and cannot
+     produce one, but the leads grid's inline add row is a free-text box — and a raw
+     "violates foreign key constraint main_6_buyer_crm_listing_code_fkey" is not something
+     to put in front of someone who mistyped a listing code. Checked here so the message
+     says what is wrong and which value caused it. */
+  const listingCode = draft.listing_code?.trim() || null;
+  if (listingCode) {
+    const { data: exists } = await supabase
+      .from("main_4_listing_database")
+      .select("listing_id")
+      .eq("listing_id", listingCode)
+      .maybeSingle();
+    if (!exists) return { ok: false, error: `ไม่พบทรัพย์รหัส ${listingCode}` };
+  }
+
   // create_lead writes main_5 (whose trigger mints the id) and main_6 in one transaction and
   // hands back the id — a plain insert can't, because RETURNING is checked against a SELECT
   // policy that hides rows assigned to other people. See db/rls_policies.sql §13.
   const { data: leadId, error } = await supabase.rpc("create_lead", {
-    p: { ...draft, sale_id: saleId },
+    p: { ...draft, sale_id: saleId, listing_code: listingCode },
   });
   if (error || !leadId) {
     return { ok: false, error: error?.message ?? "เพิ่มลีดไม่สำเร็จ" };
+  }
+
+  /* The interest list is the source for ทรัพย์ที่สนใจ and for a listing's ผู้สนใจ card, so a
+     lead created against a unit has to appear there too — otherwise the buyer shows on the
+     lead but not on the listing they asked about. `listing_code` is still written by the RPC
+     above; see lib/mutations/leadInterests.ts for why both exist.
+
+     Best-effort: the lead is already created, and failing the whole call because a
+     secondary row did not insert would leave the caller thinking nothing was saved. */
+  if (listingCode) {
+    await supabase.from("lead_listing_interest").insert({
+      lead_id: leadId as string,
+      listing_id: listingCode,
+      created_by: auth.employeeCode,
+    });
   }
 
   await writeAudit(supabase, auth.employeeCode, leadId as string, "create", {}, {

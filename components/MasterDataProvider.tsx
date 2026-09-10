@@ -4,6 +4,8 @@ import * as React from "react";
 import { LEAD_SOURCES, CONTACT_BYS, GENDERS, NATIONALITIES } from "@/lib/leads";
 import { PROPERTY_TYPES, POTENTIALS } from "@/lib/masterdata";
 import { SEED_LEAD_TAGS, type LeadTag } from "@/lib/tags";
+import { STAGES } from "@/lib/pipeline";
+import { OWNER_STAGES } from "@/lib/ownerPipeline";
 
 // Shared LIVE store for the governed reference vocabularies (property type, marketing
 // channel, contact-by, gender, nationality) — the single source both the Settings managers
@@ -55,6 +57,12 @@ interface MasterDataValue {
   unitConditions: RefItem[];
   inOutProjects: RefItem[];
   priceRemarks: RefItem[];
+  /* THE TWO PIPELINES, in their stored order. Governed in ตั้งค่า, which is why they are
+     read from here rather than from the STAGES / OWNER_STAGES constants: those remain the
+     source of the Thai label and the dot colour for stages they know, and the fallback for
+     a session that loaded no lookups. The LIST is the database's. */
+  pipelineStages: RefItem[];
+  ownerStages: RefItem[];
 }
 
 const Ctx = React.createContext<MasterDataValue | null>(null);
@@ -79,6 +87,8 @@ export interface MasterDataInitial {
   unitConditions?: RefItem[];
   inOutProjects?: RefItem[];
   priceRemarks?: RefItem[];
+  pipelineStages?: RefItem[];
+  ownerStages?: RefItem[];
   leadTags?: LeadTag[];
 }
 
@@ -133,6 +143,15 @@ export function MasterDataProvider({
   const unitConditions = initial?.unitConditions ?? [];
   const inOutProjects = initial?.inOutProjects ?? [];
   const priceRemarks = initial?.priceRemarks ?? [];
+  // Unlike the FK vocabularies above, these fall back to the code seed: a stage picker with
+  // no options would leave the pills blank, and the seeds here ARE the stored values (not
+  // design-mode slugs), so offering them can never produce an FK violation.
+  const pipelineStages = seeded(initial?.pipelineStages, () =>
+    STAGES.map((s) => ({ id: s.key as string, label: s.key as string }))
+  );
+  const ownerStages = seeded(initial?.ownerStages, () =>
+    OWNER_STAGES.map((s) => ({ id: s.key, label: s.key }))
+  );
 
   const value: MasterDataValue = {
     propertyTypes,
@@ -159,6 +178,8 @@ export function MasterDataProvider({
     unitConditions,
     inOutProjects,
     priceRemarks,
+    pipelineStages,
+    ownerStages,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

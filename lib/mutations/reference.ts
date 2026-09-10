@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth";
+import { isPaletteToken } from "@/lib/tables/palette";
+import { SLA_TABLES } from "@/lib/tables/colors";
 
 // ตั้งค่า → ข้อมูลอ้างอิงกลาง (ประเภททรัพย์ · ช่องทาง/ฟิลด์ลีด · แท็กลีด · ประเภทกิจกรรม).
 //
@@ -58,6 +60,19 @@ const LOOKUPS = {
       { table: "main_6_buyer_crm", column: "nationality", noun: "ลีด" },
       { table: "main_1_hr", column: "nationality", noun: "พนักงาน" },
     ],
+  },
+  /* THE TWO PIPELINES. Both were code constants until 2026-09-10, which meant renaming a
+     stage was a deploy. They are FKs on their tables, so DELETE is refused by the database
+     while any record still sits on the stage — the count below is only there to say so in
+     Thai first. Renaming is safe and cheap: both FKs are ON UPDATE CASCADE, so the records
+     follow the new name automatically. */
+  pipeline_stage: {
+    label: "ขั้นตอน (ลูกค้า)",
+    uses: [{ table: "main_6_buyer_crm", column: "pipeline_stage", noun: "ลีด" }],
+  },
+  owner_stage: {
+    label: "ไปป์ไลน์เจ้าของ",
+    uses: [{ table: "main_4_listing_database", column: "owner_stage", noun: "ทรัพย์" }],
   },
   action_type: {
     label: "ประเภทกิจกรรม",
@@ -126,6 +141,22 @@ export async function addLookupValue(
     row.attach = "either";
     row.is_active = true;
     row.sort_order = 999;
+  }
+  /* The two pipelines are ORDERED lists, and for them sort_order is not decoration: it is
+     what the board columns follow and what decides whether the activity composer treats a
+     move as forwards. Left NULL a new stage sorts last (Postgres puts NULLs last on ASC),
+     which is at least stable — but "last" is wrong for a stage someone is adding in the
+     middle of their process, and there is no way to reorder it afterwards from this screen.
+     Appending explicitly at least puts it somewhere real, and it can then be renamed into
+     the position the team wants. */
+  if (table === "pipeline_stage" || table === "owner_stage") {
+    const { data: last } = await supabase
+      .from(table)
+      .select("sort_order")
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    row.sort_order = ((last as { sort_order: number | null } | null)?.sort_order ?? 0) + 1;
   }
   const { error } = await supabase.from(table).insert(row);
   if (error) {
@@ -272,6 +303,96 @@ export async function deleteLeadTag(id: string): Promise<Result> {
     changed_by: auth.employeeCode,
     before: { id },
     after: {},
+  });
+  done();
+  return { ok: true };
+}
+
+/* ---------------------------------------------------------------- COLOURS ---
+   ตั้งค่า → สีสถานะ. The colour a status/grade wears in the sheet-table grids.
+
+   A SEPARATE WHITELIST FROM `LOOKUPS`, deliberately. These five lists are
+   structural — a pipeline stage is referenced by lib/pipeline, the scoreboard
+   and every funnel count — so they are NOT safe to add to, rename or delete
+   from a settings screen the way a marketing channel is. Recolouring one is
+   safe: nothing but the grid reads `color`, and an unknown or null token
+   renders unfilled rather than breaking.
+
+   The token is validated against PALETTE rather than accepting a hex, for the
+   reason lib/tables/palette.ts gives. */
+const COLORABLE = [
+  "lead_status",
+  "pipeline_stage",
+  "potential",
+  "listing_status",
+  "listing_potential",
+] as const;
+
+export type ColorableTable = (typeof COLORABLE)[number];
+
+export async function setLookupColor(
+  table: string,
+  name: string,
+  /** A PALETTE token, or null to clear the colour and render the cell unfilled. */
+  color: string | null,
+): Promise<Result> {
+  const auth = await requireManage();
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  if (!(COLORABLE as readonly string[]).includes(table)) {
+    return { ok: false, error: "ตารางนี้ตั้งสีไม่ได้" };
+  }
+  if (color !== null && !isPaletteToken(color)) {
+    return { ok: false, error: "สีไม่อยู่ในชุดที่กำหนด" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from(table).update({ color }).eq("name", name);
+  if (error) return { ok: false, error: error.message };
+
+  await supabase.from("audit_log").insert({
+    entity: table,
+    entity_id: name,
+    action: "color",
+    changed_by: auth.employeeCode,
+    after: { color },
+  });
+  done();
+  return { ok: true };
+}
+
+/** The follow-up window on a grade, in days. NULL = no SLA for that grade.
+
+    Only the two GRADE lists carry one — a status is a state, not a clock.
+
+    Zero and negative are refused rather than quietly stored: "0 days" reads as
+    "chase immediately, for ever", which is what someone means by switching it
+    off. Clearing the box is how you switch it off, and that is `null`. */
+export async function setSlaDays(
+  table: string,
+  name: string,
+  days: number | null,
+): Promise<Result> {
+  const auth = await requireManage();
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  if (!(SLA_TABLES as readonly string[]).includes(table)) {
+    return { ok: false, error: "ตารางนี้ตั้ง SLA ไม่ได้" };
+  }
+  if (days !== null && (!Number.isInteger(days) || days < 1 || days > 365)) {
+    return { ok: false, error: "จำนวนวันต้องเป็น 1–365 (เว้นว่าง = ไม่มี SLA)" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from(table).update({ sla_days: days }).eq("name", name);
+  if (error) return { ok: false, error: error.message };
+
+  await supabase.from("audit_log").insert({
+    entity: table,
+    entity_id: name,
+    action: "sla",
+    changed_by: auth.employeeCode,
+    after: { sla_days: days },
   });
   done();
   return { ok: true };

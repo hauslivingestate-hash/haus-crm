@@ -93,7 +93,9 @@ export const NOTIFICATION_META: Record<
   listing_price_changed: { label: "ราคาเปลี่ยน", icon: TagIcon, tone: "amber" },
   lead_stale: { label: "ลีดค้าง", icon: Clock, tone: "amber" },
   leave_pending: { label: "ใบลารออนุมัติ", icon: CalendarOff, tone: "violet" },
-  deal_missing_price: { label: "ยังไม่กรอกราคาปิด", icon: Banknote, tone: "amber" },
+  // Named for the price because that is the field most often missing, but it fires for any
+  // of the three things only the closer knows — ราคาปิด, วันที่ปิด, คอมมิชชั่น (lib/deals.ts).
+  deal_missing_price: { label: "ดีลปิดแล้วข้อมูลไม่ครบ", icon: Banknote, tone: "amber" },
   listing_no_photo: { label: "ทรัพย์ยังไม่มีรูป", icon: ImageOff, tone: "blue" },
 };
 
@@ -110,8 +112,11 @@ export function notificationHref(n: AppNotification): string | null {
       // ใบลารออนุมัติ lands on the leave queue, not the daily plan.
       return n.type === "leave_pending" ? "/leave" : "/today";
     case "target":
-      // The missing-price summary is actionable on the ledger, not the plan.
-      return n.type === "deal_missing_price" ? "/last-match" : "/today";
+      // `deal_missing_price` was raised against `target` until 2026-09-06, when it stopped
+      // being about main_7_last_match (a market log of other agencies' sales) and became a
+      // check on the deal's own row. New rows carry entity `lead`; this keeps any already
+      // in the table landing somewhere that can actually be acted on.
+      return n.type === "deal_missing_price" ? "/leads" : "/today";
     default:
       return null;
   }

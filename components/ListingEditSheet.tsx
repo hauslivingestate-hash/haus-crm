@@ -14,6 +14,7 @@ import {
   type ListingFieldGroup,
 } from "@/lib/listingFields";
 import { ListingSectionBlock, type DraftValue } from "@/components/ListingFieldInput";
+import { useTopmostEscape } from "@/lib/overlayStack";
 
 // แก้ไขทรัพย์ — the same field set as เพิ่มทรัพย์, from lib/listingFields.ts.
 //
@@ -32,6 +33,14 @@ import { ListingSectionBlock, type DraftValue } from "@/components/ListingFieldI
 // one listing would rename it for all of them.
 
 type Draft = Record<string, DraftValue>;
+
+/* Fields the จัดการ card owns, so this form must not offer them too.
+   Both are one-tap pills sitting a few centimetres above this sheet's own dropdown for the
+   same column — a pill that saves on touch, a dropdown that saves on บันทึก. Change it in
+   the form, close without saving, and nobody can say what the listing now holds.
+   NOT excluded from the ADD form: a listing being created has no จัดการ card to set them
+   in, and its opening status is a real thing to choose. */
+const OWNED_BY_MANAGE_CARD: ReadonlySet<string> = new Set(["listing_status", "owner_stage"]);
 
 const TEXT = (v: unknown) => (v == null ? "" : String(v));
 
@@ -75,17 +84,19 @@ export function ListingEditSheet({
     }
   }, [open]);
 
+  // Escape is handled by the overlay stack, not by a bare document listener: this sheet
+  // can open INSIDE the detail drawer, and two listeners meant one key press closed both.
+  // See lib/overlayStack.ts.
+  useTopmostEscape(onClose, open);
+
   React.useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open || !mounted) return null;
 
@@ -162,8 +173,14 @@ export function ListingEditSheet({
               onChange={setField}
               canEditGroup={canEditGroup}
               defaultOpen
+              exclude={OWNED_BY_MANAGE_CARD}
             />
           ))}
+
+          {/* Said once, where someone would otherwise hunt for the two missing dropdowns. */}
+          <p className="text-label text-text-subtle">
+            สถานะประกาศ และ ไปป์ไลน์เจ้าของ แก้ได้ที่การ์ด “จัดการ” — กดครั้งเดียวบันทึกทันที
+          </p>
 
           {error && (
             <div className="rounded-md px-3 py-2 text-small border bg-red-bg text-red border-red/30 inline-flex items-start gap-1.5">

@@ -30,11 +30,19 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // Must be getUser(), not getSession(): it revalidates the token server-side. It also
-  // triggers the refresh that writes the cookies above.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  /* getClaims(), not getSession() and no longer getUser().
+     getSession() alone only decodes the cookie, which a client could have forged — never
+     gate on it. getUser() was correct but asked the Auth server to verify the token on every
+     single request, which from Bangkok is ~0.27s added to everything the app does, this
+     middleware being on the path of every navigation.
+
+     getClaims() verifies the signature locally against the project's published ES256 public
+     key, and still refreshes the session and writes the cookies above — this is what
+     Supabase's own Next.js middleware example now uses. Do not remove it: server-side
+     rendering with a stale cookie is what randomly signs people out. See lib/auth.ts for
+     the security reasoning in full. */
+  const { data: claimData } = await supabase.auth.getClaims();
+  const user = claimData?.claims ?? null;
 
   const { pathname } = request.nextUrl;
   const isLogin = pathname === "/login";
