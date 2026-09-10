@@ -18,6 +18,8 @@ import { caseGaps, toClosedCase, type CaseStatus, type DealGap, type RevenueBasi
 import { periodKeyOf, periodMultiple, type PeriodLength, type Range } from "@/lib/range";
 import { todayISO } from "@/lib/momentum";
 import { slaFor, type SlaWindows } from "@/lib/sla";
+import type { FollowUpRow, OverdueFollowUps } from "@/lib/followUps";
+import { metricOfRow, type WorkMetric } from "@/lib/workTargets";
 
 /* ---------- activity ------------------------------------------------------------- */
 
@@ -33,6 +35,17 @@ export interface ActivityTotal {
   /** The stored order, so the card reads in business order rather than however the rows
    *  happened to arrive. */
   sortOrder: number;
+  /** `action_type.side` — which HALF OF THE BUSINESS this is, which is not the same
+   *  question as `group_label` (a display name) or `attach` (which record it hangs on).
+   *  Sourcing hangs on nothing and is still property work. */
+  side: "listing" | "lead" | "general";
+  /** `action_type.stage_name` — the buyer step this action advances, or null for work
+   *  that advances no particular one. A real FK, so a stage renamed in ตั้งค่า carries
+   *  every action with it; matching by label is what Klaichan had to migrate away from. */
+  stageName: string | null;
+  /** `action_type.owner_stage_name` — the acquisition step this action advances. Same
+   *  idea, other pipeline; used only for the row's colour on the owner half today. */
+  ownerStageName: string | null;
   /** Work logged inside the range. */
   total: number;
   /** The same figure for the equivalent prior window; null for a custom range, which
@@ -66,23 +79,73 @@ export async function getActivityTotals(employeeCode: string, range: Range): Pro
   const [now, before, kinds] = await Promise.all([
     read(range.start, range.end),
     range.prev ? read(range.prev.start, range.prev.end) : Promise.resolve(null),
-    supabase.from("action_type").select("name,group_label,sort_order"),
+    supabase.from("action_type").select("name,group_label,sort_order,side,stage_name,owner_stage_name,is_active,on_dashboard"),
   ]);
 
   const meta = new Map(
-    ((kinds.data ?? []) as { name: string; group_label: string | null; sort_order: number | null }[]).map(
-      (k) => [k.name, { group: k.group_label ?? "อื่นๆ", sortOrder: Number(k.sort_order ?? 999) }]
-    )
+    (
+      (kinds.data ?? []) as {
+        name: string;
+        group_label: string | null;
+        sort_order: number | null;
+        side: string | null;
+        stage_name: string | null;
+        owner_stage_name: string | null;
+        is_active: boolean | null;
+        on_dashboard: boolean | null;
+      }[]
+    ).map((k) => [
+      k.name,
+      {
+        group: k.group_label ?? "อื่นๆ",
+        sortOrder: Number(k.sort_order ?? 999),
+        side: (k.side ?? "general") as ActivityTotal["side"],
+        stageName: k.stage_name,
+        ownerStageName: k.owner_stage_name,
+        active: k.is_active !== false,
+        onDashboard: k.on_dashboard !== false,
+      },
+    ])
   );
 
-  const actions = new Set([...now.keys(), ...(before?.keys() ?? [])]);
+  /* THE ROW SET IS THE VOCABULARY, NOT THE LOG.
+     Every active action appears, at zero if nobody did it. Three reasons, and the third
+     is the one that breaks things:
+       · "you logged no Reels this month" is a fact worth seeing; an absent row hides it
+       · a row that vanishes when it hits zero makes the card's height jump between ranges
+       · a GOAL set on an action with no activity would have no row to draw on, so the
+         goal would silently disappear — the exact failure the เป้า switch exists to avoid
+     Inactive actions still appear if they have activity in either window: the total on
+     this card has to keep matching the activity log. */
+  const actions = new Set([
+    ...now.keys(),
+    ...(before?.keys() ?? []),
+    ...[...meta.entries()].filter(([, m]) => m.active).map(([name]) => name),
+  ]);
+
+  /* ── ADMIN WORK IS LOGGED BUT NOT SCORED ─────────────────────────────────────
+     `on_dashboard = false` (ประชุม, ทำงานหน้าคอม, อื่นๆ). Ben, 2026-09-10: keep the
+     action, keep the 286 rows behind it, keep it out of the scoreboard.
+
+     ⚠️ THIS CARD THEREFORE NO LONGER SUMS TO THE ACTIVITY LOG. That is deliberate and it
+     is the only place in the app where the two diverge — the activity feed on /today
+     still shows every row. Filtered here rather than in the card so there is one answer
+     to "what does the dashboard count", and so a second dashboard tab cannot quietly
+     disagree with this one. */
   return [...actions]
+    .filter((action) => meta.get(action)?.onDashboard !== false)
     .map((action) => {
       const m = meta.get(action);
       return {
         action,
         group: m?.group ?? "อื่นๆ",
         sortOrder: m?.sortOrder ?? 999,
+        // An action logged before its type was deleted from ตั้งค่า has no row left to
+        // read. It counts as general work rather than vanishing — the total on this card
+        // has to keep matching the activity log.
+        side: m?.side ?? "general",
+        stageName: m?.stageName ?? null,
+        ownerStageName: m?.ownerStageName ?? null,
         total: now.get(action) ?? 0,
         prev: before ? before.get(action) ?? 0 : null,
       };
@@ -362,134 +425,182 @@ export async function getStageMovement(employeeCode: string, range: Range): Prom
 
 /* ---------- follow-up SLA -------------------------------------------------------- */
 
-export interface OverdueLead {
-  leadId: string;
-  leadName: string | null;
-  grade: string | null;
-  stage: string | null;
-  /** Days since last contact. null = never contacted. */
-  days: number | null;
-  /** The grade's window, in days. */
-  window: number;
-  /** Days past the window; 0 when never contacted (there is no "past" to measure). */
-  over: number;
-}
-
-export interface OverdueFollowUps {
-  /** Every overdue lead, not just the ones listed. */
-  count: number;
-  /** The worst offenders, worst first — a worklist, not a scoreboard. */
-  rows: OverdueLead[];
-}
-
 /**
- * ติดตามเกินกำหนด — this person's leads that are past their follow-up window.
+ * Everything this person is late contacting, both sides of the business.
  *
- * ── THE RULE IS NOT RESTATED HERE ───────────────────────────────────────────────
- * lib/sla.ts owns it, and the window per grade lives on `potential.sla_days`, edited in
- * ตั้งค่า → สีสถานะ & SLA. This function passes both to `slaFor()` rather than writing
- * `last_follow_date < today - N` in SQL: a second copy of the rule is a second rule, and
- * this one is already painting cells on /leads and /listings. The two must agree, so
- * only one of them may exist.
+ * ── IT IS A WORKLIST, NOT A COUNT ───────────────────────────────────────────────
+ * HAUS runs six agents against a rule nobody currently meets, so a bare "27" is a number
+ * people learn to ignore by the second day. A short ordered list of WHICH ONES is a
+ * morning's work. Never-contacted first, then furthest past the window.
  *
- * That is why the rows come back to JS instead of being filtered in Postgres. The
- * prefilter keeps it honest — only Active leads on a grade that actually HAS a window,
- * which is a few dozen rows per person, not the 1,058-row table.
+ * ── BOTH SIDES, ONE LIST ────────────────────────────────────────────────────────
+ * Leads and listings are merged and ranked together rather than shown as two lists. They
+ * compete for the same hour: an owner unheard from for two months outranks a lead one day
+ * over, and two separate lists would have hidden that. Each row says which side it is,
+ * because a name alone does not — an owner filed under a nickname and a lead named after
+ * the project they want look identical.
  *
- * ── A BLANK WINDOW MEANS NO SLA ─────────────────────────────────────────────────
- * Grades C, New Lead and Agent carry no window today and are therefore never overdue.
- * That is a decision, not missing configuration — see the header of lib/sla.ts.
+ * ── `is_open`, NOT A HARDCODED STATUS NAME ──────────────────────────────────────
+ * Both status lists are editable in ตั้งค่า. Reading the flag means a rename cannot
+ * silently empty this card, which `lead_status = 'Active'` could.
  *
- * ── NEVER CONTACTED IS THE WORST CASE ───────────────────────────────────────────
- * It sorts to the top. A graded lead nobody has ever called is the most overdue thing
- * on the list, and treating a missing date as "fine" is how those rows stay invisible.
+ * ── A GRADE WITH NO WINDOW IS SILENT ────────────────────────────────────────────
+ * lib/sla.ts, and Ben's decision of 2026-09-06. Klaichan defaults to 30 days, which means
+ * no grade can ever be switched off. Here the absence of a number is the decision.
  */
-export async function getOverdueFollowUps(employeeCode: string, limit = 8): Promise<OverdueFollowUps> {
+export async function getOverdueFollowUps(
+  employeeCode: string,
+  limit = 8
+): Promise<OverdueFollowUps> {
   const supabase = await createClient();
 
-  const [gradeRes, leadRes] = await Promise.all([
-    supabase.from("potential").select("name,sla_days"),
-    supabase
-      .from("main_6_buyer_crm")
-      .select("lead_id,lead_name,potential,pipeline_stage,last_follow_date")
-      .eq("sale_id", employeeCode)
-      .eq("lead_status", "Active")
-      .not("potential", "is", null),
-  ]);
+  const [leadGrades, listingGrades, leadStatuses, listingStatuses, leadRes, listingRes] =
+    await Promise.all([
+      supabase.from("potential").select("name,sla_days"),
+      supabase.from("listing_potential").select("name,sla_days"),
+      supabase.from("lead_status").select("name,is_open"),
+      supabase.from("listing_status").select("name,is_open"),
+      supabase
+        .from("main_6_buyer_crm")
+        .select(
+          "lead_id,lead_name,potential,pipeline_stage,lead_status,last_follow_date,listing_code"
+        )
+        .eq("sale_id", employeeCode)
+        .not("potential", "is", null),
+      // v_main_listing, not the base table: `effective_sale_id` falls back to the zone's
+      // primary agent, and it is what "my listings" means everywhere else in the app.
+      supabase
+        .from("v_main_listing")
+        .select(
+          "listing_id,listing_name,potential,listing_status,owner_name,owner_talk_last_date"
+        )
+        .eq("effective_sale_id", employeeCode)
+        .not("potential", "is", null),
+    ]);
 
-  if (gradeRes.error || leadRes.error || !gradeRes.data || !leadRes.data) {
-    return { count: 0, rows: [] };
-  }
+  const windowsOf = (res: { data: unknown }): SlaWindows => {
+    const out: SlaWindows = {};
+    for (const g of (res.data ?? []) as { name: string; sla_days: number | null }[]) {
+      out[g.name] = g.sla_days;
+    }
+    return out;
+  };
+  const openOf = (res: { data: unknown }): Set<string> =>
+    new Set(
+      ((res.data ?? []) as { name: string; is_open: boolean }[])
+        .filter((r) => r.is_open)
+        .map((r) => r.name)
+    );
 
-  const windows: SlaWindows = {};
-  for (const g of gradeRes.data as { name: string; sla_days: number | null }[]) {
-    windows[g.name] = g.sla_days;
-  }
+  const leadWindows = windowsOf(leadGrades);
+  const listingWindows = windowsOf(listingGrades);
+  const openLeads = openOf(leadStatuses);
+  const openListings = openOf(listingStatuses);
 
-  const overdue: OverdueLead[] = [];
-  for (const l of leadRes.data as {
+  const rows: FollowUpRow[] = [];
+
+  for (const l of (leadRes.data ?? []) as {
     lead_id: string;
     lead_name: string | null;
     potential: string | null;
     pipeline_stage: string | null;
+    lead_status: string | null;
     last_follow_date: string | null;
+    listing_code: string | null;
   }[]) {
-    const state = slaFor(windows, l.potential, l.last_follow_date);
+    if (!l.lead_status || !openLeads.has(l.lead_status)) continue;
+    const state = slaFor(leadWindows, l.potential, l.last_follow_date);
     if (!state.overdue || state.window == null) continue;
-    overdue.push({
-      leadId: l.lead_id,
-      leadName: l.lead_name,
+    rows.push({
+      side: "lead",
+      id: l.lead_id,
+      name: l.lead_name || l.lead_id,
+      subtitle: l.listing_code,
       grade: l.potential,
-      stage: l.pipeline_stage,
       days: state.days,
       window: state.window,
       over: state.over,
+      onPlan: false,
     });
   }
 
-  // Never-contacted first (days === null), then furthest past the window.
-  overdue.sort((a, b) => {
+  for (const l of (listingRes.data ?? []) as {
+    listing_id: string;
+    listing_name: string | null;
+    potential: string | null;
+    listing_status: string | null;
+    owner_name: string | null;
+    owner_talk_last_date: string | null;
+  }[]) {
+    if (!l.listing_status || !openListings.has(l.listing_status)) continue;
+    const state = slaFor(listingWindows, l.potential, l.owner_talk_last_date);
+    if (!state.overdue || state.window == null) continue;
+    rows.push({
+      side: "listing",
+      id: l.listing_id,
+      // The OWNER is who gets called. The unit is what the call is about and goes
+      // underneath — a row headed with a building name is a row you cannot ring.
+      name: l.owner_name || l.listing_name || l.listing_id,
+      subtitle: l.listing_name,
+      grade: l.potential,
+      days: state.days,
+      window: state.window,
+      over: state.over,
+      onPlan: false,
+    });
+  }
+
+  const totalLeads = rows.filter((r) => r.side === "lead").length;
+  const totalListings = rows.length - totalLeads;
+
+  // Never contacted first — a graded record nobody has ever rung is the most overdue
+  // thing here, and `over` cannot rank it because there is no window to be past.
+  rows.sort((a, b) => {
     if ((a.days === null) !== (b.days === null)) return a.days === null ? -1 : 1;
-    return b.over - a.over || a.leadId.localeCompare(b.leadId);
+    return b.over - a.over || a.id.localeCompare(b.id);
   });
 
-  return { count: overdue.length, rows: overdue.slice(0, limit) };
+  const shown = rows.slice(0, limit);
+
+  /* ── ALREADY ON TODAY'S PLAN ────────────────────────────────────────────────
+     Asked only for the rows being shown. This is what keeps the + button honest across a
+     reload: without it, promoting a row and refreshing would offer to promote it again,
+     and the second tap would write a duplicate task. */
+  if (shown.length > 0) {
+    const leadIds = shown.filter((r) => r.side === "lead").map((r) => r.id);
+    const listingIds = shown.filter((r) => r.side === "listing").map((r) => r.id);
+    // Values are double-quoted: PostgREST splits `in.(...)` on commas, so an id that ever
+    // contained one would silently become two ids and match nothing.
+    const list = (ids: string[]) => ids.map((v) => `"${v}"`).join(",");
+    const filter = [
+      leadIds.length ? `related_lead_id.in.(${list(leadIds)})` : null,
+      listingIds.length ? `related_listing_id.in.(${list(listingIds)})` : null,
+    ]
+      .filter(Boolean)
+      .join(",");
+    const { data: tasks } = await supabase
+      .from("tasks")
+      .select("related_lead_id,related_listing_id")
+      .eq("employee_code", employeeCode)
+      .eq("task_date", todayISO())
+      // `done` is nullable, and `eq false` does not match NULL — a task written before the
+      // column had a default would read as unclaimed for ever.
+      .not("done", "is", true)
+      .or(filter);
+    const claimed = new Set(
+      ((tasks ?? []) as { related_lead_id: string | null; related_listing_id: string | null }[])
+        .flatMap((t) => [
+          t.related_lead_id ? `lead:${t.related_lead_id}` : null,
+          t.related_listing_id ? `listing:${t.related_listing_id}` : null,
+        ])
+        .filter(Boolean) as string[]
+    );
+    for (const r of shown) r.onPlan = claimed.has(`${r.side}:${r.id}`);
+  }
+
+  return { rows: shown, totalLeads, totalListings };
 }
 
-/* ---------- แผนวันนี้ ------------------------------------------------------------- */
-
-export interface TodaySummary {
-  done: number;
-  total: number;
-}
-
-/**
- * Today's task count — a pointer to แผนวันนี้, not a second copy of it.
- *
- * ── WHY THIS IS A NUMBER AND NOT THE PLANNER ────────────────────────────────────
- * Klaichan puts its whole planner inside the dashboard, because Klaichan has no separate
- * plan page. HAUS has /today: a full client island holding optimistic state, task
- * composition, repeats and the leave form. Rendering a second copy here would mean two
- * surfaces that can disagree about whether a task is ticked, and every future change to
- * the planner would have to be made twice.
- *
- * So the dashboard carries the one fact worth seeing from across the room — how much of
- * today is done — and a way in.
- */
-export async function getTodaySummary(employeeCode: string): Promise<TodaySummary> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("done")
-    .eq("employee_code", employeeCode)
-    .eq("task_date", todayISO());
-
-  if (error || !data) return { done: 0, total: 0 };
-  return {
-    done: data.filter((t) => t.done).length,
-    total: data.length,
-  };
-}
 
 /* ---------- กรวยการขาย ------------------------------------------------------------ */
 
@@ -525,4 +636,147 @@ export async function getLeadFunnel(employeeCode: string, range: Range): Promise
     reached: Number(r.reached ?? 0),
     cohort: Number(r.cohort ?? 0),
   }));
+}
+
+/* ---------- the owner side ------------------------------------------------------- */
+
+export interface OwnerFunnelStep {
+  stage: string;
+  reached: number;
+  cohort: number;
+}
+
+/**
+ * กรวยเจ้าของ — of the units taken on in this window, how far the owner conversation got.
+ *
+ * ⚠️ NOT THE SAME KIND OF NUMBER AS THE BUYER FUNNEL, and the card says so.
+ * `lead_stage_event` records every buyer move, so that funnel can honestly claim
+ * "furthest reached". There is no owner_stage log, so this reads where each unit sits
+ * NOW and assumes the owner conversation only moves forward. A listing that reached
+ * Exclusive Offer and was walked back to Owner Talk is counted at Owner Talk.
+ *
+ * An owner_stage event log is the honest fix and is its own piece of work. Reporting the
+ * standing position, labelled as the standing position, is the truthful thing to do
+ * meanwhile — leaving the acquisition half with no funnel at all was the worse option.
+ */
+export async function getOwnerFunnel(
+  employeeCode: string,
+  range: Range
+): Promise<OwnerFunnelStep[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("dash_owner_funnel", {
+    p_sale_id: employeeCode,
+    p_from: range.start,
+    p_to: range.end,
+  });
+  if (error || !data) return [];
+  return (data as { stage: string; reached: number; cohort: number }[]).map((r) => ({
+    stage: r.stage,
+    reached: Number(r.reached ?? 0),
+    cohort: Number(r.cohort ?? 0),
+  }));
+}
+
+/* ---------- goals on the work rows ----------------------------------------------- */
+
+export interface WorkTargets {
+  /** metric → the figure THIS range is measured against. Scaled only for a custom
+      window, which is measured in days against the daily figure. */
+  resolved: Record<WorkMetric, number>;
+  /** metric → the unscaled standing figure for this period length — what the inline
+      editor loads and writes back. Saving a scaled number as a standing one would
+      quietly inflate the goal every time somebody opened the form on a custom range. */
+  standing: Record<WorkMetric, number>;
+  /** True when a row keyed to this exact period beat the standing one, for at least one
+      metric — the editor says so rather than silently showing a figure it will not
+      overwrite. */
+  hasOverride: boolean;
+}
+
+/**
+ * Every work goal that applies to this range, and the standing figures behind them.
+ *
+ * Same three rules as เป้ารายได้, for the same reasons (see resolveRevenueTarget):
+ *   NO PRO-RATING      a real number per period length; nothing is divided
+ *   OVERRIDE > STANDING a row for '2026-09' beats the '' row
+ *   `official` ONLY     a stretch goal must never become the bar somebody is scored on
+ *
+ * One round trip for the whole card. A query per row would be twenty.
+ */
+export async function getWorkTargets(
+  employeeCode: string,
+  range: Range
+): Promise<WorkTargets> {
+  const supabase = await createClient();
+  const key = periodKeyOf(range);
+
+  const { data, error } = await supabase
+    .from("targets")
+    .select("source,activity_type,stage_name,owner_stage_name,period_key,target")
+    .eq("employee_code", employeeCode)
+    .eq("owner", "official")
+    .is("month", null)
+    .in("source", ["activity", "stage", "owner_stage"])
+    .eq("period", range.period)
+    .in("period_key", ["", key]);
+  if (error || !data) return { resolved: {}, standing: {}, hasOverride: false };
+
+  const rows = data as {
+    source: string;
+    activity_type: string | null;
+    stage_name: string | null;
+    owner_stage_name: string | null;
+    period_key: string;
+    target: number;
+  }[];
+
+  const standing: Record<WorkMetric, number> = {};
+  const override: Record<WorkMetric, number> = {};
+  for (const r of rows) {
+    const metric = metricOfRow(r);
+    if (!metric) continue;
+    (r.period_key === "" ? standing : override)[metric] = Number(r.target ?? 0);
+  }
+
+  const multiple = periodMultiple(range);
+  const resolved: Record<WorkMetric, number> = {};
+  for (const [metric, amount] of Object.entries({ ...standing, ...override })) {
+    if (amount > 0) resolved[metric] = amount * multiple;
+  }
+
+  return { resolved, standing, hasOverride: Object.keys(override).length > 0 };
+}
+
+/** Every standing work goal for one person at one period length, keyed by metric —
+    what the inline editor loads when it is opened on a range whose period differs from
+    the one the card just resolved. Kept separate from getWorkTargets so the editor can
+    never write a resolved (scaled) figure back as a standing one. */
+export async function getStandingWorkTargets(
+  employeeCode: string,
+  period: PeriodLength
+): Promise<Record<WorkMetric, number>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("targets")
+    .select("source,activity_type,stage_name,owner_stage_name,target")
+    .eq("employee_code", employeeCode)
+    .eq("owner", "official")
+    .is("month", null)
+    .in("source", ["activity", "stage", "owner_stage"])
+    .eq("period", period)
+    .eq("period_key", "");
+  if (error || !data) return {};
+
+  const out: Record<WorkMetric, number> = {};
+  for (const r of data as {
+    source: string;
+    activity_type: string | null;
+    stage_name: string | null;
+    owner_stage_name: string | null;
+    target: number;
+  }[]) {
+    const metric = metricOfRow(r);
+    if (metric) out[metric] = Number(r.target ?? 0);
+  }
+  return out;
 }

@@ -5,6 +5,7 @@ import { PERIOD_ORDER, type PeriodLength } from "@/lib/range";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth";
 import type { TargetKind, TargetOwner, TargetSource } from "@/lib/momentum";
+import { metricOfRow, toColumns } from "@/lib/workTargets";
 
 // Phase 5 #6 (right-hand side of /today) — monthly targets.
 //
@@ -282,6 +283,117 @@ export async function setRevenueTargets(
 
   revalidatePath("/today");
   revalidatePath("/");
+  revalidatePath(`/team/${employeeCode}`);
+  return { ok: true };
+}
+
+/**
+ * Set one person's official WORK goals — the ความเคลื่อนไหว card's rows.
+ *
+ * ── ONE FORM, ONE PERIOD LENGTH ─────────────────────────────────────────────────
+ * Whatever the range bar is showing. The editor's heading says which, because "10" means
+ * a very different thing per day than per quarter and a form that did not say would be
+ * unusable. Standing rows only (`period_key = ''`): a one-off figure for a single month
+ * is an override and is not written here.
+ *
+ * ── EVERY ROW THE FORM SHOWED IS SENT ───────────────────────────────────────────
+ * A box cleared to blank arrives as 0, and 0 DELETES. "No goal" has to be reachable by
+ * emptying the box — a separate remove control for each of twenty rows would be worse,
+ * and leaving a 0 behind would draw as "your target is nothing", which reads as a
+ * judgement rather than an absence.
+ *
+ * ── THE METRIC IS RESOLVED TO COLUMNS HERE ──────────────────────────────────────
+ * `lib/workTargets.toColumns` is the only place the UI's string key becomes storage.
+ * Everything below is real columns with real foreign keys, so renaming a stage or an
+ * action in ตั้งค่า cascades and carries the goal with it.
+ *
+ * Gated on `targets.set`. Ben, 2026-09-10: the CEO sets the sale's number, not the sale.
+ * RLS enforces the same rule independently.
+ */
+export async function setWorkTargets(
+  employeeCode: string,
+  period: PeriodLength,
+  amounts: Record<string, number>
+): Promise<Result> {
+  const auth = await requireAuth();
+  if (!auth) return { ok: false, error: "ไม่พบสิทธิ์ผู้ใช้ กรุณาเข้าสู่ระบบใหม่" };
+  const perms = new Set(auth.permissions);
+  if (!(perms.has("targets.set") || perms.has("roles.manage"))) {
+    return { ok: false, error: "ไม่มีสิทธิ์ตั้งเป้าหมายให้พนักงาน" };
+  }
+  if (!PERIOD_ORDER.includes(period)) return { ok: false, error: "ช่วงเวลาไม่ถูกต้อง" };
+
+  const supabase = await createClient();
+
+  const { data: existing, error: readError } = await supabase
+    .from("targets")
+    .select("id,source,activity_type,stage_name,owner_stage_name,target")
+    .eq("employee_code", employeeCode)
+    .eq("owner", "official")
+    .is("month", null)
+    .in("source", ["activity", "stage", "owner_stage"])
+    .eq("period", period)
+    .eq("period_key", "");
+  if (readError) return { ok: false, error: readError.message };
+
+  const byMetric = new Map<string, { id: number; target: number }>();
+  for (const r of (existing ?? []) as {
+    id: number;
+    source: string;
+    activity_type: string | null;
+    stage_name: string | null;
+    owner_stage_name: string | null;
+    target: number;
+  }[]) {
+    const metric = metricOfRow(r);
+    if (metric) byMetric.set(metric, { id: r.id, target: Number(r.target ?? 0) });
+  }
+
+  for (const [metric, raw] of Object.entries(amounts)) {
+    const cols = toColumns(metric);
+    // An unknown metric is a bug in the caller, not a user error — refuse the whole save
+    // rather than write a row nothing will ever read back.
+    if (!cols) return { ok: false, error: `เป้าหมายไม่ถูกต้อง: ${metric}` };
+    if (!Number.isFinite(raw)) return { ok: false, error: "จำนวนเป้าหมายต้องเป็นตัวเลข" };
+    const amount = Math.max(0, Math.round(raw));
+    const row = byMetric.get(metric);
+
+    if (amount <= 0) {
+      if (!row) continue;
+      const { error } = await supabase.from("targets").delete().eq("id", row.id);
+      if (error) return { ok: false, error: error.message };
+      await writeAudit(supabase, auth.employeeCode, row.id, "delete", { target: row.target }, {});
+    } else if (row) {
+      if (row.target === amount) continue; // no-op; no audit row for a save that changed nothing
+      const { error } = await supabase.from("targets").update({ target: amount }).eq("id", row.id);
+      if (error) return { ok: false, error: error.message };
+      await writeAudit(supabase, auth.employeeCode, row.id, "update", { target: row.target }, { target: amount });
+    } else {
+      const insert = {
+        employee_code: employeeCode,
+        // NULL month is what separates a period-based goal from a แผนวันนี้ month goal —
+        // the unique index that stops a double save relies on it.
+        month: null,
+        period,
+        period_key: "",
+        label: metric,
+        kind: "count",
+        target: amount,
+        manual_current: 0,
+        source: cols.source,
+        activity_type: cols.activityType,
+        stage_name: cols.stageName,
+        owner_stage_name: cols.ownerStageName,
+        owner: "official",
+      };
+      const { data, error } = await supabase.from("targets").insert(insert).select("id").single();
+      if (error || !data) return { ok: false, error: error?.message ?? "ตั้งเป้าหมายไม่สำเร็จ" };
+      await writeAudit(supabase, auth.employeeCode, data.id as number, "create", {}, insert);
+    }
+  }
+
+  revalidatePath("/");
+  revalidatePath("/today");
   revalidatePath(`/team/${employeeCode}`);
   return { ok: true };
 }

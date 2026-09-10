@@ -4,7 +4,6 @@ import * as React from "react";
 import { Plus, Medal, ChevronUp, ChevronDown } from "lucide-react";
 import { useProbation } from "@/components/ProbationProvider";
 import { WINDOW_LABEL, type CriterionWindow, type SalesRank } from "@/lib/probation";
-import { NOTE_ACTION } from "@/lib/actions";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -30,11 +29,9 @@ export function SalesRankManager({
   const { ranks, setRanks, dirty, save, reset, busy, error } = useProbation();
   const [seq, setSeq] = React.useState(1);
 
-  // Loggable actions only — a rank criterion on the free-note action makes no sense.
   const actionOptions = React.useMemo(() => {
     const groups = new Map<string, string[]>();
     for (const a of actionTypes) {
-      if (a.name === NOTE_ACTION) continue;
       const arr = groups.get(a.group) ?? [];
       arr.push(a.name);
       groups.set(a.group, arr);

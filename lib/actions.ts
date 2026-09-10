@@ -30,14 +30,7 @@ export const ACTION_GROUPS: ActionGroup[] = [
     attach: "none",
     items: ["ประชุม", "ทำงานหน้าคอม", "Sourcing", "อื่นๆ"],
   },
-  {
-    group: "บันทึกโน้ต",
-    attach: "either",
-    items: ["บันทึก"],
-  },
 ];
-
-export const NOTE_ACTION = "บันทึก";
 
 /** Attach mode for a given action (defaults to "none" for unknowns). */
 export function actionAttach(action: string | null | undefined): AttachMode {
@@ -68,4 +61,8 @@ export interface Activity {
 // `action_type` table actually has (Owner Talk, Update Price, เซ็นสัญญา). It has caused the
 // same bug three times — the task form, the rank editor, the activity-type editor — so
 // anything that must produce an FK-valid action name reads the table via getActionTypes()
-// instead. Only NOTE_ACTION and the AttachMode type are safe to use from here.
+// instead. Only the AttachMode type is safe to use from here.
+//
+// The บันทึกโน้ต group is gone too (Ben, 2026-09-10): the บันทึก action had zero rows in
+// the whole history and existed only to be special-cased out of every picker. Notes live
+// on the lead and listing records.

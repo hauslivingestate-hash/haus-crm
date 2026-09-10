@@ -107,7 +107,10 @@ export function DailyPlan({ plan }: { plan: PlanData }) {
   const tasks = React.useMemo(() => {
     const outside = Object.values(extra)
       .flat()
-      .filter((t) => t.date < serverRange.from || t.date > serverRange.to);
+      // `t.date &&` is not defensive noise: an undated backlog task compares as 0 against
+      // a date string in JS, so `t.date < from` would be true for every one of them and the
+      // whole backlog would leak into the calendar.
+      .filter((t) => t.date && (t.date < serverRange.from || t.date > serverRange.to));
     return [...plan.tasks, ...outside];
   }, [plan.tasks, extra, serverRange]);
 

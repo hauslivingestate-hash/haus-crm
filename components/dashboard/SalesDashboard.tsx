@@ -5,21 +5,25 @@ import { MovementCard } from "@/components/dashboard/MovementCard";
 import { TargetRevenueCard } from "@/components/dashboard/TargetRevenueCard";
 import { RevenueTrendCard } from "@/components/dashboard/RevenueTrendCard";
 import { FollowUpCard } from "@/components/dashboard/FollowUpCard";
-import { TodayCard } from "@/components/dashboard/TodayCard";
+import { DailyPlan } from "@/components/DailyPlan";
+import { BacklogCard } from "@/components/BacklogCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   getActivityTotals,
   getLeadFunnel,
   getOverdueFollowUps,
+  getOwnerFunnel,
   getRevenueSummary,
   getRevenueTrend,
   getStageMovement,
   getStandingRevenueTargets,
-  getTodaySummary,
+  getStandingWorkTargets,
   getUnpricedCloses,
+  getWorkTargets,
 } from "@/lib/salesDashboard";
 import { resolveRange, type Range } from "@/lib/range";
 import { asRevenueBasis, type RevenueBasis } from "@/lib/deals";
+import { getPlanData } from "@/lib/plan";
 
 /* แดชบอร์ดขาย — the scoreboard for whoever is signed in.
  *
@@ -88,20 +92,30 @@ export function SalesDashboard({
           </Suspense>
 
           <Suspense fallback={<Skeleton className="h-80 rounded-lg" />}>
-            <MovementBlock employeeCode={employeeCode} range={range} />
+            <MovementBlock
+              employeeCode={employeeCode}
+              range={range}
+              canSetTargets={canSetTargets}
+              searchParams={searchParams}
+            />
           </Suspense>
         </div>
 
         {/* ---- right 1/3: the day ----
-            Deliberately NOT scoped by the range bar: what is on today and what has gone
-            overdue are true regardless of which period is being inspected, and letting
-            "ปีนี้" imply a year's worth of overdue follow-ups would be a lie. */}
+            Deliberately NOT scoped by the range bar: today's plan, what is overdue and
+            what is unscheduled are all true regardless of which period is being
+            inspected, and letting "ปีนี้" imply a year's worth of overdue follow-ups
+            would be a lie.
+
+            THE ORDER IS KLAICHAN'S AND IT IS ARGUED: the day you actually planned comes
+            first; ติดตามเกินกำหนด is work that is already due, so it outranks the undated
+            pile; รายการรอ last, because nothing in it has a deadline.
+
+            One Suspense around the plan and the backlog, because they read the same
+            getPlanData() — splitting them would fetch it twice. */}
         <div className="flex flex-col gap-4">
-          <Suspense fallback={<Skeleton className="h-20 rounded-lg" />}>
-            <TodayBlock employeeCode={employeeCode} />
-          </Suspense>
-          <Suspense fallback={<Skeleton className="h-72 rounded-lg" />}>
-            <FollowUpBlock employeeCode={employeeCode} />
+          <Suspense fallback={<Skeleton className="h-96 rounded-lg" />}>
+            <DayBlock employeeCode={employeeCode} />
           </Suspense>
         </div>
       </div>
@@ -160,30 +174,86 @@ async function TrendBlock({ employeeCode, basis }: { employeeCode: string; basis
 /* ONE card for both halves and both views, as in Klaichan — not a pipeline card beside
    an activity card. They are the same question ("what moved in this window") asked of the
    two sides of the business, and splitting them into separate cards let a reader compare
-   actions against stage moves as though they were the same unit. They are not. */
-async function MovementBlock({ employeeCode, range }: { employeeCode: string; range: Range }) {
-  const [activity, funnel, stages] = await Promise.all([
+   actions against stage moves as though they were the same unit. They are not.
+
+   Six reads, all in parallel. They are one card because they answer one question, and
+   because the card's two halves have to agree on the same window — fetching them in
+   separate Suspense blocks would let one half render against a range the other had not
+   caught up with yet. */
+async function MovementBlock({
+  employeeCode,
+  range,
+  canSetTargets,
+  searchParams,
+}: {
+  employeeCode: string;
+  range: Range;
+  canSetTargets: boolean;
+  searchParams: { range?: string; from?: string; to?: string };
+}) {
+  const [activity, funnel, stages, ownerFunnel, work, standing] = await Promise.all([
     getActivityTotals(employeeCode, range),
     getLeadFunnel(employeeCode, range),
     getStageMovement(employeeCode, range),
+    getOwnerFunnel(employeeCode, range),
+    getWorkTargets(employeeCode, range),
+    // Loaded with the card rather than on demand: the editor is one tap away and a
+    // spinner inside a form that just opened reads as a broken form.
+    canSetTargets ? getStandingWorkTargets(employeeCode, range.period) : Promise.resolve({}),
   ]);
+
   return (
     <MovementCard
       activity={activity}
       funnel={funnel}
       stages={stages}
-      rangeLabel={range.label}
-      compareLabel={range.compareLabel}
+      ownerFunnel={ownerFunnel}
+      // The buyer funnel's cohort IS the intake count — leads received in this window.
+      // Reading it from the funnel rather than asking again means the "Lead" bar and the
+      // funnel's denominator can never disagree.
+      newLeads={funnel[0]?.cohort ?? 0}
+      range={{
+        label: range.label,
+        period: range.period,
+        elapsed: range.elapsed,
+        compareLabel: range.compareLabel,
+      }}
+      targets={work.resolved}
+      standingTargets={standing}
+      canSetTargets={canSetTargets}
+      employeeCode={employeeCode}
+      searchParams={searchParams}
     />
   );
 }
 
-async function TodayBlock({ employeeCode }: { employeeCode: string }) {
-  const summary = await getTodaySummary(employeeCode);
-  return <TodayCard summary={summary} />;
+/* THE REAL PLANNER, NOT A POINTER (Ben, 2026-09-10: "make it like klaichan").
+ *
+ * This renders the SAME component as /today. Not a compact copy of it — the same file.
+ * That is the whole reason this is safe: there is exactly one planner in the app, so the
+ * dashboard and /today cannot disagree about whether a task is done, and every future
+ * change to it lands on both at once. My earlier objection was to a second implementation,
+ * which is a different thing and would have been wrong.
+ *
+ * It is NOT wrapped in `.plan-theme`. That class scopes the Solo Gang palette to /today;
+ * on the dashboard the card takes the HAUS palette like everything around it.
+ *
+ * `getPlanData()` reads the signed-in person's own plan — it takes no employee code and
+ * cannot be pointed at anyone else, which is why this block does not receive one.
+ */
+async function DayBlock({ employeeCode }: { employeeCode: string }) {
+  const [plan, followUps] = await Promise.all([
+    getPlanData(),
+    getOverdueFollowUps(employeeCode),
+  ]);
+  return (
+    <>
+      {/* No employee row → no plan. The page above already renders its own empty state
+          for an account in that position, so this stays quiet rather than repeating it. */}
+      {plan && <DailyPlan plan={plan} />}
+      <FollowUpCard data={followUps} />
+      {plan && <BacklogCard plan={plan} />}
+    </>
+  );
 }
 
-async function FollowUpBlock({ employeeCode }: { employeeCode: string }) {
-  const data = await getOverdueFollowUps(employeeCode);
-  return <FollowUpCard data={data} />;
-}

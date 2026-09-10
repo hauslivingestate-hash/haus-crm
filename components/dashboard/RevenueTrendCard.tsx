@@ -1,7 +1,22 @@
+"use client";
+
+/* ⚠️ CLIENT, and it has to be. `AreaChart` is a client component and its `format` prop is
+   a function — functions cannot cross the server→client boundary, so a server component
+   rendering it crashes at request time with "Functions cannot be passed directly to
+   Client Components". TypeScript cannot see this; only opening the page does.
+
+   The alternative was giving AreaChart a serializable format option (`format="baht"`),
+   which would bend a shared primitive around one caller. A card that draws an
+   interactive chart belonging on the client is the ordinary answer.
+
+   Everything it receives — rows, basis — is serializable, and lib/deals + lib/format are
+   pure modules with no server-only imports, so nothing else has to move. */
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { AreaChart } from "@/components/ui/AreaChart";
+import { RevenueBasisToggle } from "@/components/dashboard/RevenueBasisToggle";
 import { TH_MONTHS } from "@/lib/format";
-import { REVENUE_BASIS_LABEL, type RevenueBasis } from "@/lib/deals";
+import type { RevenueBasis } from "@/lib/deals";
 import type { TrendPoint } from "@/lib/salesDashboard";
 
 /* แนวโน้มรายได้ — twelve months of signed commission.
@@ -10,9 +25,10 @@ import type { TrendPoint } from "@/lib/salesDashboard";
  * longer than the thing being filtered; "วันนี้" would collapse this to a single point,
  * and a chart that can be filtered down to one dot is a chart that will be.
  *
- * Same basis as the card above it — signed, not received. Two revenue figures on one
- * screen counting different things is worse than either choice alone: the reader compares
- * them, and nothing on the page would say they are not comparable.
+ * ALWAYS the same basis as the card above it, because both read `?basis=` rather than
+ * holding their own state. Two revenue figures on one screen counting different things is
+ * worse than either choice alone: the reader compares them, and nothing on the page would
+ * say they are not comparable. Two toggles, one number.
  */
 export function RevenueTrendCard({ rows, basis }: { rows: TrendPoint[]; basis: RevenueBasis }) {
   const data = rows.map((r) => ({
@@ -25,14 +41,22 @@ export function RevenueTrendCard({ rows, basis }: { rows: TrendPoint[]; basis: R
   return (
     <Card>
       <CardHeader>
-        <CardTitle>แนวโน้มรายได้</CardTitle>
-        {/* The basis is named here because the toggle that sets it lives on the card
-            ABOVE this one — without it, a chart that visibly redraws would give no clue
-            why. The range filter is called out for the opposite reason: it does NOT
-            apply. */}
-        <span className="text-small text-text-muted">
-          12 เดือนล่าสุด · {REVENUE_BASIS_LABEL[basis]} · ไม่ขึ้นกับตัวกรองช่วงเวลา
-        </span>
+        {/* One row, because CardHeader is a fixed h-12 — a stacked title and subtitle
+            would overflow it. The range filter is called out because it does NOT apply
+            here; the basis is no longer spelled out in words, since the toggle beside it
+            already says which one is on. */}
+        <div className="flex min-w-0 items-baseline gap-2">
+          <CardTitle>แนวโน้มรายได้</CardTitle>
+          <span className="truncate text-small text-text-muted">
+            12 เดือนล่าสุด · ไม่ขึ้นกับตัวกรองช่วงเวลา
+          </span>
+        </div>
+        {/* Its OWN toggle, not just an echo of the card above.
+            Ben, 2026-09-10: the toggle belongs on both revenue surfaces. Both write the
+            same `?basis=` param, so flipping either one flips both — there is no second
+            piece of state that can drift out of sync with the first, and the chart is
+            reachable without scrolling back up to the card that owns the setting. */}
+        <RevenueBasisToggle active={basis} />
       </CardHeader>
       <CardContent>
         {everEarned ? (

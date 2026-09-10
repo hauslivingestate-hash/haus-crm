@@ -46,6 +46,9 @@ export interface PlanData {
   month: string;
   /** Tasks for `month`, plus one day either side so the ◀ ▶ arrows work across month ends. */
   tasks: Task[];
+  /** รายการรอ — every undated task, regardless of month. A backlog is not a property of
+   *  the month you happen to be looking at, and paging it by month would hide the pile. */
+  backlog: Task[];
   targets: Target[];
   quickActions: QuickActionRow[];
   /** This month's activity totals per action, for activity-source targets. */
@@ -179,6 +182,23 @@ export async function readTasks(
   return rows.map((r) => toTask(r, leadNames, listingNames));
 }
 
+/** One person's undated tasks — รายการรอ. Its own function rather than a null `from`/`to`
+    on readTasks: `gte`/`lte` can never match a NULL, so the two are different queries and
+    a shared one would have to branch on its own arguments to decide which. */
+export async function readBacklog(employeeCode: string): Promise<Task[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("employee_code", employeeCode)
+    .is("task_date", null)
+    .order("sort_order");
+  const rows = (data ?? []) as TaskRow[];
+  if (!rows.length) return [];
+  const { leadNames, listingNames } = await resolveEntityNames(supabase, rows);
+  return rows.map((r) => toTask(r, leadNames, listingNames));
+}
+
 type TargetRow = {
   id: number;
   employee_code: string;
@@ -247,7 +267,8 @@ export async function getPlanData(month?: string): Promise<PlanData | null> {
   const { from, to } = monthBounds(ym);
 
   const supabase = await createClient();
-  const [taskRes, targetRes, quickRes, actionRes, activityRes, revenueRes] = await Promise.all([
+  const [taskRes, backlogRes, targetRes, quickRes, actionRes, activityRes, revenueRes] =
+    await Promise.all([
     // ± a day so stepping off either end of the month still renders before the client
     // fetches the neighbouring month.
     supabase
@@ -257,6 +278,13 @@ export async function getPlanData(month?: string): Promise<PlanData | null> {
       .gte("task_date", addDays(from, -1))
       .lte("task_date", addDays(to, 1))
       .order("task_date")
+      .order("sort_order"),
+    // The backlog, whole. Not paged by month — see PlanData.backlog.
+    supabase
+      .from("tasks")
+      .select("*")
+      .eq("employee_code", employeeCode)
+      .is("task_date", null)
       .order("sort_order"),
     supabase
       .from("targets")
@@ -297,7 +325,13 @@ export async function getPlanData(month?: string): Promise<PlanData | null> {
   ]);
 
   const taskRows = (taskRes.data ?? []) as TaskRow[];
-  const { leadNames, listingNames } = await resolveEntityNames(supabase, taskRows);
+  const backlogRows = (backlogRes.data ?? []) as TaskRow[];
+  // Names resolved for both lists in one pass — a backlog item can be linked to a lead
+  // just as a planned one can, and two calls would be two round trips for one map.
+  const { leadNames, listingNames } = await resolveEntityNames(supabase, [
+    ...taskRows,
+    ...backlogRows,
+  ]);
 
   // One row per month; the window is one month, so this is a sum of at most one row.
   // Written as a reduce anyway so a widened window cannot silently read only the first.
@@ -334,6 +368,7 @@ export async function getPlanData(month?: string): Promise<PlanData | null> {
     today,
     month: ym,
     tasks: taskRows.map((r) => toTask(r, leadNames, listingNames)),
+    backlog: backlogRows.map((r) => toTask(r, leadNames, listingNames)),
     targets: ((targetRes.data ?? []) as TargetRow[]).map(toTarget),
     monthRevenue,
     quickActions: ((quickRes.data ?? []) as {

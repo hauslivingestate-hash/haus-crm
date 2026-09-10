@@ -1,6 +1,7 @@
 import { Topbar } from "@/components/Topbar";
 import { DailyPlan } from "@/components/DailyPlan";
 import { TargetsBoard } from "@/components/TargetsBoard";
+import { BacklogCard } from "@/components/BacklogCard";
 import { getPlanData } from "@/lib/plan";
 
 // The plan belongs to ONE person: whoever is signed in. Phase 5 #6 replaced the design
@@ -28,7 +29,12 @@ export default async function TodayPage() {
       <div className="p-4 lg:p-6 flex-1">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 items-start">
           <DailyPlan plan={plan} />
-          <TargetsBoard plan={plan} />
+          {/* The right rail is the two things that are not today: what you are measured
+              on, and what you have not scheduled yet. */}
+          <div className="flex flex-col gap-4">
+            <TargetsBoard plan={plan} />
+            <BacklogCard plan={plan} />
+          </div>
         </div>
       </div>
     </div>

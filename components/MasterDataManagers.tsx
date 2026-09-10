@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmDelete, usageWarning } from "@/components/ui/ConfirmDelete";
 import { useRouter } from "next/navigation";
 import { useMasterData, type RefItem } from "@/components/MasterDataProvider";
-import { NOTE_ACTION, type AttachMode } from "@/lib/actions";
+import { type AttachMode } from "@/lib/actions";
 import {
   addLookupValue,
   renameLookupValue,
@@ -521,7 +521,9 @@ export function ActionTypesManager({
         </Card>
       ))}
       <p className="text-label text-text-subtle">
-        กิจกรรมที่เพิ่มใหม่จะเข้ากลุ่ม “อื่นๆ” ก่อน — จัดกลุ่ม/ลำดับใหม่ต้องแก้ที่ตาราง
+        กิจกรรมที่เพิ่มใหม่จะเข้ากลุ่ม “อื่นๆ” และไปอยู่ในหมวด “งานอื่นๆ” ของแดชบอร์ด — การจัดกลุ่ม ลำดับ
+        ฝั่ง (<span className="num">side</span>) ขั้นตอนที่ผูก (<span className="num">stage_name</span>) และ
+        การซ่อนจากแดชบอร์ด (<span className="num">on_dashboard</span>) ต้องแก้ที่ตาราง
         <span className="num"> action_type</span> โดยตรง
       </p>
     </div>
@@ -566,12 +568,11 @@ export function KpiTemplatesManager({
     [rows, saved]
   );
 
-  // Loggable actions only — a KPI on the free-note action makes no sense (same rule as the
-  // probation rank editor). From `action_type`, not the seed.
+  // From `action_type`, not the seed. No exclusions any more: every action in the table is
+  // loggable work, so every one of them can carry a KPI.
   const actionOptions = React.useMemo(() => {
     const m = new Map<string, string[]>();
     for (const a of actionTypes) {
-      if (a.name === NOTE_ACTION) continue;
       const arr = m.get(a.group) ?? [];
       arr.push(a.name);
       m.set(a.group, arr);

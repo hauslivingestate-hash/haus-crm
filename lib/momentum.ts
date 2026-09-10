@@ -115,7 +115,10 @@ export interface TaskRepeat {
 export interface Task {
   id: number;
   employeeCode: string;
-  date: string;
+  /** The day this task is planned for. NULL = รายการรอ — captured, not yet scheduled.
+   *  Every date filter in the app excludes it for free: a NULL matches no range, so an
+   *  undated task cannot turn up in a day, a month or the calendar by accident. */
+  date: string | null;
   title: string;
   done: boolean;
   order: number;

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth";
-import { readTasks } from "@/lib/plan";
-import type { Task, TaskType, RecurFreq } from "@/lib/momentum";
+import { readBacklog, readTasks } from "@/lib/plan";
+import { todayISO, type Task, type TaskType, type RecurFreq } from "@/lib/momentum";
 
 // Phase 5 #6 — the Daily Plan's write path, and the last stub in Phase 5.
 //
@@ -49,7 +49,8 @@ async function writeAudit(
 /** What the add/edit sheet collects. Ids are the DB's; the date is chosen by the plan. */
 export interface TaskInput {
   title: string;
-  date: string;
+  /** null = รายการรอ, captured with no day chosen. */
+  date: string | null;
   type: TaskType;
   notes?: string | null;
   targetId?: number | null;
@@ -85,7 +86,7 @@ function toColumns(input: TaskInput): Row {
 type TaskState = {
   id: number;
   employee_code: string;
-  task_date: string;
+  task_date: string | null;
   done: boolean | null;
   activity_type: string | null;
   related_lead_id: string | null;
@@ -129,8 +130,12 @@ async function syncActivity(
   const { error } = await supabase.from("activities").insert({
     employee_code: employeeCode,
     action: task.activity_type,
-    // The TASK's date, not today — ticking a back-dated plan item logs it on that day.
-    activity_date: task.task_date,
+    /* The TASK's date, not today — ticking a back-dated plan item logs it on that day.
+       A รายการรอ item has no date, and the honest answer there is today: the work was
+       never scheduled, so the only thing anybody knows about when it happened is that it
+       happened now. `activities.activity_date` is NOT NULL, so this is also the
+       difference between a tick and a failed write. */
+    activity_date: task.task_date ?? todayISO(),
     count: Math.max(1, Math.min(50, opts?.count || 1)),
     remark: opts?.remark?.trim() || null,
     related_lead_id: task.related_lead_id,
@@ -153,13 +158,17 @@ export async function createTask(
 
   const supabase = await createClient();
 
-  // Append to the end of that day. Read the max rather than counting rows: a deleted task
-  // must not let the next one reuse its position.
-  const { data: last } = await supabase
+  // Append to the end of that day — or of the backlog, which orders itself the same way.
+  // Read the max rather than counting rows: a deleted task must not let the next one reuse
+  // its position.
+  const scope = supabase
     .from("tasks")
     .select("sort_order")
-    .eq("employee_code", auth.employeeCode)
-    .eq("task_date", input.date)
+    .eq("employee_code", auth.employeeCode);
+  const { data: last } = await (input.date === null
+    ? scope.is("task_date", null)
+    : scope.eq("task_date", input.date)
+  )
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -178,9 +187,10 @@ export async function createTask(
   await writeAudit(supabase, auth.employeeCode, id, "create", {}, columns);
   revalidate();
 
-  const [task] = await readTasks(auth.employeeCode, input.date, input.date).then((ts) =>
-    ts.filter((t) => t.id === id)
-  );
+  const [task] = await (input.date === null
+    ? readBacklog(auth.employeeCode)
+    : readTasks(auth.employeeCode, input.date, input.date)
+  ).then((ts) => ts.filter((t) => t.id === id));
   return task
     ? { ok: true, task }
     : { ok: false, error: "เพิ่มงานแล้วแต่อ่านกลับมาไม่ได้ กรุณารีเฟรช" };
@@ -209,7 +219,7 @@ export async function updateTask(taskId: number, input: TaskInput): Promise<Resu
   if (current.done) {
     const next: TaskState = {
       ...current,
-      task_date: columns.task_date as string,
+      task_date: columns.task_date as string | null,
       activity_type: (columns.activity_type as string | null) ?? null,
       related_lead_id: (columns.related_lead_id as string | null) ?? null,
       related_listing_id: (columns.related_listing_id as string | null) ?? null,
@@ -350,6 +360,70 @@ export async function saveQuickActions(actions: QuickActionInput[]): Promise<Res
     if (error) return { ok: false, error: error.message };
   }
 
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Give a รายการรอ item a day — or take one away, sending a planned task back to the pile.
+ *
+ * Its own function rather than updateTask with a new date, because the two are different
+ * moves and only one of them needs the whole form: scheduling changes a single column and
+ * the task's position, and routing it through updateTask would mean the caller had to
+ * reconstruct every other field first — the backlog card has a title and a date picker,
+ * not a form.
+ *
+ * The task lands at the END of its new day, never in the middle of a list somebody has
+ * already ordered.
+ */
+export async function scheduleTask(taskId: number, date: string | null): Promise<Result> {
+  const auth = await requireAuth();
+  if (!auth) return { ok: false, error: "ไม่พบสิทธิ์ผู้ใช้ กรุณาเข้าสู่ระบบใหม่" };
+  if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { ok: false, error: "วันที่ไม่ถูกต้อง" };
+  }
+
+  const supabase = await createClient();
+  const current = await ownTask(supabase, auth.employeeCode, taskId);
+  if (!current) return { ok: false, error: "ไม่พบงานนี้" };
+  if (current.task_date === date) return { ok: true };
+
+  const scope = supabase
+    .from("tasks")
+    .select("sort_order")
+    .eq("employee_code", auth.employeeCode);
+  const { data: last } = await (date === null ? scope.is("task_date", null) : scope.eq("task_date", date))
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const columns = {
+    task_date: date,
+    sort_order: ((last?.sort_order as number | undefined) ?? -1) + 1,
+  };
+  const { error } = await supabase
+    .from("tasks")
+    .update(columns)
+    .eq("id", taskId)
+    .eq("employee_code", auth.employeeCode);
+  if (error) return { ok: false, error: error.message };
+
+  /* A DONE task that moves days has to drag its activity with it, exactly as an edit
+     does — otherwise the KPI totals keep counting it on the day it used to be on. Rare
+     (you would have to tick something and then reschedule it) but silent, which is worse
+     than rare. */
+  if (current.done) {
+    const syncError = await syncActivity(
+      supabase,
+      auth.employeeCode,
+      { ...current, task_date: date },
+      true,
+      auth.permissions.includes("activity.log")
+    );
+    if (syncError) return { ok: false, error: syncError };
+  }
+
+  await writeAudit(supabase, auth.employeeCode, taskId, "schedule", current as unknown as Row, columns);
   revalidate();
   return { ok: true };
 }
