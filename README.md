@@ -33,7 +33,7 @@ app/                     หน้าเว็บ (App Router)
   layout.tsx             root: ฟอนต์ + ThemeProvider (สว่าง/มืด/ระบบ)
   (app)/layout.tsx       shell: Sidebar (ย่อได้, จำด้วย cookie) + Topbar + providers
   globals.css            design tokens — primitives → semantic → @theme map
-  page.tsx               / — แดชบอร์ด (KPI, pipeline, ผลงานเซล)
+  page.tsx               / — แดชบอร์ด แท็บ ขาย (ของตัวเอง) และ ทีม (performance.view_team; lib/teamDashboard.ts)
   pipeline/page.tsx      /pipeline — บอร์ดดีลตามสเตจ
   leads/page.tsx         /leads — ตาราง CRM ผู้ซื้อ
   listings/page.tsx      /listings — ตารางทรัพย์ (v_main_listing)

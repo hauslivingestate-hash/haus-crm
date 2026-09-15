@@ -26,7 +26,7 @@ export function RevenueTargetEditor({
         <CardTitle>เป้ารายได้ของ {nickname}</CardTitle>
       </CardHeader>
       <CardContent>
-        <RevenueTargetForm employeeCode={employeeCode} standing={standing} />
+        <RevenueTargetForm scope={{ kind: "employee", employeeCode }} standing={standing} />
         <p className="mt-3 text-small text-text-subtle">
           {nickname} จะเห็นแถบความคืบหน้าบนแดชบอร์ดของตัวเอง แต่แก้ตัวเลขเองไม่ได้ · ความคืบหน้านับจากคอมมิชชั่นของดีลที่เซ็นสัญญาในช่วงนั้น
           และไม่นับลีดที่สถานะเป็น Lose / Reject

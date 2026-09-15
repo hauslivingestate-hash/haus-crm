@@ -10,6 +10,7 @@ import { RevenueTargetForm } from "@/components/dashboard/RevenueTargetForm";
 import { RevenueBasisToggle } from "@/components/dashboard/RevenueBasisToggle";
 import { REVENUE_BASIS_HINT } from "@/lib/deals";
 import type { RevenueSummary } from "@/lib/salesDashboard";
+import type { TargetScope } from "@/lib/targetScope";
 
 /* เป้ารายได้ — commission SIGNED against the target for the selected period.
  *
@@ -28,22 +29,25 @@ import type { RevenueSummary } from "@/lib/salesDashboard";
  * marker is the honest part of this card.
  *
  * ── WHO SEES ตั้งเป้า ────────────────────────────────────────────────────────────
- * Only `targets.set` holders, and this card only ever shows the signed-in person's own
- * numbers — so a sale never sees it. Ben, 2026-09-10: the CEO sets the sale's target,
- * not the sale. A leader setting a SALE's figure does it on that person's record.
+ * Only `targets.set` holders, and on the sales tab this card only ever shows the
+ * signed-in person's own numbers — so a sale never sees it. Ben, 2026-09-10: the CEO
+ * sets the sale's target, not the sale. A leader setting a SALE's figure does it on that
+ * person's record. On the ทีม tab the same card carries the TEAM's number (`scope`), and
+ * the same permission decides who may edit it.
  */
 export function TargetRevenueCard({
   summary,
   range,
   standing,
-  employeeCode,
+  scope,
   canEdit,
 }: {
   summary: RevenueSummary;
   range: Range;
   /** period → baht, for the inline editor. */
   standing: Record<string, number>;
-  employeeCode: string;
+  /** Whose target — a person's or a team's. Decides which save the editor calls. */
+  scope: TargetScope;
   canEdit: boolean;
 }) {
   const [editing, setEditing] = React.useState(false);
@@ -78,7 +82,7 @@ export function TargetRevenueCard({
       <CardContent>
         {editing ? (
           <RevenueTargetForm
-            employeeCode={employeeCode}
+            scope={scope}
             standing={standing}
             onDone={() => setEditing(false)}
           />

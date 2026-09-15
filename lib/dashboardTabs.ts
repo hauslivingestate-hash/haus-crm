@@ -28,9 +28,9 @@ export interface DashboardTab {
 }
 
 /* Only tabs that are BUILT belong here. A tab that renders an empty shell reads as a
-   broken page, not as a promise — the ones still to come (ทีม on
-   `performance.view_team`, ทรัพย์ on `listings.marketing`, การตลาด on
-   `website.manage`) go in as they ship, one line each. */
+   broken page, not as a promise — the ones still to come (ทรัพย์ on
+   `listings.marketing`, การตลาด on `website.manage`) go in as they ship, one line
+   each. ทีม shipped 2026-09-16. */
 export const DASHBOARD_TABS: DashboardTab[] = [
   {
     id: "sales",
@@ -38,6 +38,13 @@ export const DASHBOARD_TABS: DashboardTab[] = [
     // The sale's own scoreboard. `performance.view_own` is the permission that already
     // means "may see their own numbers" — the same gate แผนวันนี้ sits behind.
     perms: ["performance.view_own", "performance.view_team"],
+  },
+  {
+    id: "team",
+    label: "ทีม",
+    // A team's revenue against the team target, member by member. The permission that
+    // already means "may see the team's numbers" — a leader holds it, a sale does not.
+    perms: ["performance.view_team"],
   },
 ];
 

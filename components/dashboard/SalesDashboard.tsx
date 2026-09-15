@@ -187,7 +187,7 @@ async function RevenueBlock({
         summary={summary}
         range={range}
         standing={standing}
-        employeeCode={employeeCode}
+        scope={{ kind: "employee", employeeCode }}
         canEdit={canSetTargets}
       />
     </>

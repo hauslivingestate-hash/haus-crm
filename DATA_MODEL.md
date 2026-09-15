@@ -742,6 +742,19 @@ spotlight, green day×agent heatmap grid.
 > — with a collapsible sidebar, breadcrumb topbar and an identity menu carrying the dark-mode
 > toggle. Rules and rationale: README → กติกา design system, and the header of `app/globals.css`.
 
+> **ทีม tab shipped 2026-09-16.** `components/dashboard/TeamDashboard.tsx` on
+> `performance.view_team`: the same tiles / target bar / trend as ขาย, fed by
+> `lib/teamDashboard.ts`, plus a per-person table. A team is `teams` + `main_1_hr.team_id`
+> (not "everyone the viewer can see"). New schema that day: **`team_revenue_targets`**
+> (team_id, period, period_key, target — the team twin of the revenue rows in `targets`;
+> supersedes the never-written `teams.revenue_goal`, left in place) and RPC
+> **`dash_revenue_by_agent(p_codes[], from, to, basis)`** (signed commission per member per
+> month; co-broke shares sum to the case once). Seeded from the Stone sheet the same day:
+> team `ทีมขาย` with the six sales (C-001, S-001…S-005), ฿3,000,000 / month team target, and
+> per-person monthly KPI targets Sourcing 10 · Survey 15 · New List 10 (as `targets` rows —
+> Sourcing and New List on their owner stages, Survey as an action). All writes carry
+> `audit_log` rows with `remark` naming the sheet.
+
 **The core metric split (same as HAUS V2), enforced in `lib/dashboard.ts`:**
 - **FLOW** (revenue, closed_count, new_leads, new_listings, actions) — summed across the
   selected months (`sumFlow`) → **obeys the picker**.

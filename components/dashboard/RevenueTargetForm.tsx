@@ -6,6 +6,8 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { PERIOD_LABEL, PERIOD_ORDER, type PeriodLength } from "@/lib/range";
 import { setRevenueTargets } from "@/lib/mutations/targets";
+import { setTeamRevenueTargets } from "@/lib/mutations/teamTargets";
+import type { TargetScope } from "@/lib/targetScope";
 
 /* ตั้งเป้ารายได้ — all five period lengths in one form.
  *
@@ -16,20 +18,21 @@ import { setRevenueTargets } from "@/lib/mutations/targets";
  * a Songkran month is not a March. So the leader sets a real number per length. Klaichan
  * CRM reached the same conclusion after trying the divided version first.
  *
- * ── ONE FORM, TWO HOMES ─────────────────────────────────────────────────────────
- * Used inline on the dashboard's เป้ารายได้ card (for someone setting their own) and on
- * an employee's record (for a leader setting a sale's). One component, so the two can
- * never drift into asking for different things.
+ * ── ONE FORM, THREE HOMES ───────────────────────────────────────────────────────
+ * Used inline on the dashboard's เป้ารายได้ card (for someone setting their own), on an
+ * employee's record (for a leader setting a sale's), and on the ทีม tab (for the team's
+ * number — `scope.kind === "team"`, which only changes where the save goes). One
+ * component, so none of them can drift into asking for different things.
  *
  * Blank or 0 removes that period's target rather than storing zero — "not set" and
  * "your target is nothing" read very differently on the card.
  */
 export function RevenueTargetForm({
-  employeeCode,
+  scope,
   standing,
   onDone,
 }: {
-  employeeCode: string;
+  scope: TargetScope;
   /** period → baht. Missing or 0 = not set. */
   standing: Record<string, number>;
   onDone?: () => void;
@@ -49,7 +52,10 @@ export function RevenueTargetForm({
     ) as Partial<Record<PeriodLength, number>>;
 
     setSaving(true);
-    const res = await setRevenueTargets(employeeCode, parsed);
+    const res =
+      scope.kind === "team"
+        ? await setTeamRevenueTargets(scope.teamId, parsed)
+        : await setRevenueTargets(scope.employeeCode, parsed);
     setSaving(false);
     if (!res.ok) {
       setError(res.error);
