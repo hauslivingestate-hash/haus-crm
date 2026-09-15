@@ -13,6 +13,7 @@
  * personal dashboard would quietly show the whole company's numbers as their own.
  */
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { caseGaps, toClosedCase, type CaseStatus, type DealGap, type RevenueBasis } from "@/lib/deals";
 import { periodKeyOf, periodMultiple, type PeriodLength, type Range } from "@/lib/range";
@@ -448,7 +449,7 @@ export async function getStageMovement(employeeCode: string, range: Range): Prom
  * lib/sla.ts, and Ben's decision of 2026-09-06. Klaichan defaults to 30 days, which means
  * no grade can ever be switched off. Here the absence of a number is the decision.
  */
-export async function getOverdueFollowUps(
+async function loadOverdueFollowUps(
   employeeCode: string,
   limit = 8
 ): Promise<OverdueFollowUps> {
@@ -600,6 +601,10 @@ export async function getOverdueFollowUps(
 
   return { rows: shown, totalLeads, totalListings };
 }
+
+/** Per-request memoised: the sidebar badge (lib/navCounts) and the dashboard card both ask
+    for the same person's list on the same render, and one read is enough. */
+export const getOverdueFollowUps = cache(loadOverdueFollowUps);
 
 
 /* ---------- กรวยการขาย ------------------------------------------------------------ */

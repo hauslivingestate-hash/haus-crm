@@ -13,6 +13,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getAuthContext } from "@/lib/auth";
 import { getLookups, getAssignableAgents } from "@/lib/lookups";
+import { getNavCounts } from "@/lib/navCounts";
 import {
   getLeaveRequests,
   getLeaveAllowances,
@@ -56,6 +57,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     activities,
     copyOverrides,
     checklistTemplates,
+    navCounts,
   ] = auth
     ? await Promise.all([
         getLookups(),
@@ -67,8 +69,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         getActivityFeed(),
         getCopyTemplateOverrides(),
         getChecklistTemplates(),
+        getNavCounts(auth),
       ])
-    : [undefined, [], [], undefined, undefined, [], [], {}, []];
+    : [undefined, [], [], undefined, undefined, [], [], {}, [], {}];
 
   return (
     <RbacProvider
@@ -95,7 +98,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                       both sides see the same queue instantly. */}
                   <LeaveProvider requests={leaveRequests} allowances={leaveAllowances}>
                     <ShellProvider initialCollapsed={collapsed}>
-                      <AppFrame sidebar={<Sidebar />}>{children}</AppFrame>
+                      <AppFrame sidebar={<Sidebar counts={navCounts} />}>{children}</AppFrame>
                       {/* Lead intake FAB — gated to leads.create (admin/back-office). The
                           only remaining FAB (CEO: "FAB เหลือแค่เพิ่มลีด"). */}
                       <LeadIntakeFab agents={agents} />

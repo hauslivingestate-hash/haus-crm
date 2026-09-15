@@ -40,6 +40,8 @@ app/                     หน้าเว็บ (App Router)
   styleguide/page.tsx    /styleguide — โทเคน + component ทั้งหมด
 components/
   Shell.tsx Sidebar.tsx Topbar.tsx IdentityMenu.tsx   เปลือกแอป (เมนู, breadcrumb, บัญชี/ธีม/ดูในมุมมอง)
+  GlobalSearch.tsx       ⌘K ค้นหาลีด/ทรัพย์/โครงการ/คน (server action `searchAll` ใน lib/search.ts)
+  lib/navCounts.ts       ตัวเลขบนเมนู — นับเฉพาะงานที่ต้องทำ ซ่อนเมื่อเป็น 0
   ui/                    component library (Button, Card, Stat, Table, ...)
 lib/
   supabase.ts            Supabase client (anon, read-only)
@@ -75,3 +77,5 @@ Redesign 2026-09-15: layout จาก reference "Shopall", สีจาก "Moon
 - หัวการ์ดแบบเขียนเอง (`h-11 … border-b`) เหลือไว้เฉพาะที่รายการ `divide-y` วางติดหัวโดยไม่มี `CardContent` — เส้นนั้นคือตัวคั่นหัวกับแถวแรก
 - โลโก้เป็นรูป (`public/brand/`, render ผ่าน `components/Brand.tsx`) — maroon ในโหมดสว่าง ขาวในโหมดมืด; `--maroon-900` คือสีหมึกของโลโก้ ห้ามใช้เป็นสี UI
 - Dark mode: `next-themes` + `class="dark"`; สลับได้จากเมนูบัญชี (avatar) — เปลี่ยน token ต้องเช็คทั้งสองธีม
+- ป้ายตัวเลขบนเมนู = งานที่รอทำ ไม่ใช่ยอดรวม และต้องนับด้วยกติกาเดียวกับหน้าที่มันชี้ไป (ดู lib/navCounts.ts)
+- ค้นหาได้เท่าที่เปิดเมนูดูได้ — สิทธิ์ของกลุ่มค้นหาอิงจาก `NAV` ใน lib/nav.ts ไม่มีรายการสิทธิ์ชุดที่สอง

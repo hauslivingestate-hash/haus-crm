@@ -10,6 +10,7 @@ import { useRbac } from "@/components/RbacProvider";
 import { Avatar } from "@/components/ui/Avatar";
 import { NotificationBell } from "@/components/NotificationBell";
 import { IdentityMenu } from "@/components/IdentityMenu";
+import { GlobalSearch } from "@/components/GlobalSearch";
 
 /* Page header: breadcrumb on the left, the page's own actions and the identity cluster on
  * the right.
@@ -72,6 +73,9 @@ export function Topbar({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        {/* ⌘K search — before the page's actions so it sits in the same place on every
+            page, whatever the page adds to its right. */}
+        <GlobalSearch />
         {actions}
         {/* Always present — deliberately outside the `actions` slot so pages that pass
             their own actions (or none) still get the bell. */}
