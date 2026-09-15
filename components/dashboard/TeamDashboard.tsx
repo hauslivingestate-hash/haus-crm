@@ -5,7 +5,7 @@ import { KpiRow } from "@/components/dashboard/KpiRow";
 import { TargetRevenueCard } from "@/components/dashboard/TargetRevenueCard";
 import { RevenueTrendCard } from "@/components/dashboard/RevenueTrendCard";
 import { TeamAgentsTable } from "@/components/dashboard/TeamAgentsTable";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { Skeleton, SkeletonStatRow } from "@/components/ui/Skeleton";
 import { SegmentedTrack } from "@/components/ui/Segmented";
 import { cn } from "@/lib/cn";
 import {
@@ -62,11 +62,7 @@ export function TeamDashboard({
         <Suspense
           fallback={
             <>
-              <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-                {[0, 1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-28 rounded-lg" />
-                ))}
-              </div>
+              <SkeletonStatRow />
               <Skeleton className="h-36 rounded-lg" />
               <Skeleton className="h-64 rounded-lg" />
             </>

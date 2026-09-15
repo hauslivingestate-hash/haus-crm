@@ -8,7 +8,7 @@ import { RevenueTrendCard } from "@/components/dashboard/RevenueTrendCard";
 import { FollowUpCard } from "@/components/dashboard/FollowUpCard";
 import { DailyPlan } from "@/components/DailyPlan";
 import { BacklogCard } from "@/components/BacklogCard";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { Skeleton, SkeletonStatRow } from "@/components/ui/Skeleton";
 import {
   type FunnelStep,
   getActivityTotals,
@@ -90,11 +90,7 @@ export function SalesDashboard({
           <Suspense
             fallback={
               <>
-                <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-                  {[0, 1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-28 rounded-lg" />
-                  ))}
-                </div>
+                <SkeletonStatRow />
                 <Skeleton className="h-36 rounded-lg" />
               </>
             }

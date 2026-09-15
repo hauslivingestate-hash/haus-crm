@@ -87,14 +87,30 @@ export function SkeletonTable({
   );
 }
 
-/* KPI card placeholder — mirrors <Stat />. */
+/* KPI tile placeholder — mirrors <Stat /> line for line: the icon square and label row,
+   the display-size number, one line of context. Same p-5, so the tile does not change
+   height when the number arrives. */
 export function SkeletonStat() {
   return (
-    <Card className="p-4">
-      <Skeleton className="h-3 w-20" />
-      <Skeleton className="mt-3 h-6 w-28" />
-      <Skeleton className="mt-2.5 h-3 w-24" />
+    <Card className="p-5">
+      <div className="flex items-center gap-2">
+        <Skeleton className="size-7 rounded-md" />
+        <Skeleton className="h-3.5 w-24" />
+      </div>
+      <Skeleton className="mt-3 h-8 w-32" />
+      <Skeleton className="mt-2 h-3.5 w-28" />
     </Card>
+  );
+}
+
+/* The four tiles as one row — the same grid the dashboards draw them in. */
+export function SkeletonStatRow() {
+  return (
+    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      {[0, 1, 2, 3].map((i) => (
+        <SkeletonStat key={i} />
+      ))}
+    </div>
   );
 }
 

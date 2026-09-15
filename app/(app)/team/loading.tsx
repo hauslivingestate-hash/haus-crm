@@ -7,6 +7,7 @@ export default function TeamLoading() {
       <Topbar title="ทีม / บุคคล" subtitle="กำลังโหลด…" actions={false} />
       <div className="p-4 lg:p-6">
         <SkeletonTable
+          toolbar
           minWidth="min-w-[720px]"
           columns={[
             { label: "พนักงาน", w: "w-32" },
