@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ImagePlus, Trash2, Star, Loader2, AlertCircle } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   compressPhoto,
@@ -119,16 +119,18 @@ export function ListingPhotoManager({
 
   return (
     <Card>
-      <div className="px-4 h-11 flex items-center gap-2 border-b border-border">
-        <span className="text-h3">รูปทรัพย์</span>
-        <span className="num text-label text-text-subtle">
-          {photos.length}/{MAX_PHOTOS_PER_LISTING}
-        </span>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <CardTitle>รูปทรัพย์</CardTitle>
+          <span className="num text-label text-text-subtle">
+            {photos.length}/{MAX_PHOTOS_PER_LISTING}
+          </span>
+        </div>
         {canEdit && (
           <button
             onClick={() => fileRef.current?.click()}
             disabled={working || remaining <= 0}
-            className="ml-auto h-8 px-3 rounded-md bg-accent text-text-onaccent text-small font-medium inline-flex items-center gap-1.5 hover:bg-accent-hover transition-colors disabled:opacity-50"
+            className="h-8 px-3 rounded-md bg-accent text-text-onaccent text-small font-medium inline-flex items-center gap-1.5 hover:bg-accent-hover transition-colors disabled:opacity-50"
           >
             {working ? (
               <Loader2 size={14} strokeWidth={2} className="animate-spin" />
@@ -149,7 +151,7 @@ export function ListingPhotoManager({
             e.target.value = ""; // allow re-picking the same file
           }}
         />
-      </div>
+      </CardHeader>
 
       {(progress || error) && (
         <div

@@ -72,5 +72,6 @@ Redesign 2026-09-15: layout จาก reference "Shopall", สีจาก "Moon
 - Status = จุดสีใน pill เทากลาง (`StatusBadge`) — pill ไม่ย้อมสีสถานะ
 - Segmented control ใช้ `SegmentedTrack` / `SegmentedItem` (pill navy) — ห้ามก๊อปคลาสเอง
 - `CardHeader` ไม่มีเส้นคั่น; `CardContent` ที่ตามหลังจะดึงขึ้นชิดเอง
+- หัวการ์ดแบบเขียนเอง (`h-11 … border-b`) เหลือไว้เฉพาะที่รายการ `divide-y` วางติดหัวโดยไม่มี `CardContent` — เส้นนั้นคือตัวคั่นหัวกับแถวแรก
 - โลโก้เป็นรูป (`public/brand/`, render ผ่าน `components/Brand.tsx`) — maroon ในโหมดสว่าง ขาวในโหมดมืด; `--maroon-900` คือสีหมึกของโลโก้ ห้ามใช้เป็นสี UI
 - Dark mode: `next-themes` + `class="dark"`; สลับได้จากเมนูบัญชี (avatar) — เปลี่ยน token ต้องเช็คทั้งสองธีม

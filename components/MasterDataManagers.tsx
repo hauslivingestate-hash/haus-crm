@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Plus } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
@@ -163,10 +163,12 @@ function RefListCard({
 }) {
   return (
     <Card>
-      <div className="px-4 h-11 flex items-center gap-2 border-b border-border">
-        <span className="text-h3">{title}</span>
-        {note && <span className="text-label text-text-subtle">· {note}</span>}
-      </div>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <CardTitle>{title}</CardTitle>
+          {note && <span className="text-label text-text-subtle">· {note}</span>}
+        </div>
+      </CardHeader>
       <CardContent>
         <VocabList table={table} items={items} placeholder={placeholder} warnFor={warnFor} />
       </CardContent>
@@ -506,10 +508,10 @@ export function ActionTypesManager({
     <div className="flex flex-col gap-4">
       {groups.map((g) => (
         <Card key={g.group}>
-          <div className="px-4 h-11 flex items-center justify-between border-b border-border">
-            <span className="text-h3">{g.group}</span>
+          <CardHeader>
+            <CardTitle>{g.group}</CardTitle>
             <Pill tone={ATTACH_LABEL[g.attach].tone}>{ATTACH_LABEL[g.attach].label}</Pill>
-          </div>
+          </CardHeader>
           <CardContent>
             <VocabList
               table="action_type"
