@@ -259,7 +259,7 @@ export function LeadAssignment({ leads, agents }: { leads: CrmRow[]; agents: Age
           {activeFilterCols > 0 && (
             <button
               onClick={clearFilters}
-              className="inline-flex items-center gap-1.5 text-small font-medium rounded-md px-3 py-1.5 border border-accent bg-accent-wash text-accent transition-colors hover:bg-accent-wash/70"
+              className="inline-flex items-center gap-1.5 text-small font-medium rounded-md px-3 py-1.5 border border-accent bg-accent-wash text-accent-ink transition-colors hover:bg-accent-wash/70"
             >
               <X size={14} strokeWidth={2} /> ล้างตัวกรอง ({activeFilterCols})
             </button>
@@ -314,7 +314,7 @@ export function LeadAssignment({ leads, agents }: { leads: CrmRow[]; agents: Age
                       >
                         <TD>
                           <div className="flex items-center gap-2.5">
-                            <Avatar name={r.lead_name} tone="crimson" />
+                            <Avatar name={r.lead_name} tone="accent" />
                             <div className="min-w-0">
                               <div className="font-medium truncate">{r.lead_name}</div>
                               <div className="text-label text-text-subtle num">{r.phone ?? "—"}</div>
@@ -521,7 +521,7 @@ function ValueFilter({
       <div className="fixed z-50 rounded-lg border border-border bg-surface shadow-pop p-2 flex flex-col gap-1.5" style={{ left, top, width }} onClick={(e) => e.stopPropagation()}>
         <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาค่า…" className="h-8" />
         <div className="flex items-center justify-between px-1">
-          <button onClick={toggleAllShown} className="text-label font-medium text-accent hover:underline">
+          <button onClick={toggleAllShown} className="text-label font-medium text-accent-ink hover:underline">
             {allShownSelected ? "ล้างที่แสดง" : "เลือกทั้งหมด"}
           </button>
           {selected.length > 0 && (

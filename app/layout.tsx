@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 // ROOT layout — html/body/fonts only, deliberately NO app chrome and NO providers.
 //
@@ -32,8 +33,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="th" className={`${plexSansThai.variable} ${plexMono.variable}`}>
-      <body>{children}</body>
+    // suppressHydrationWarning is for ONE attribute: next-themes writes class="dark" on
+    // <html> before React hydrates, and that is the only thing here that differs from
+    // the server markup.
+    <html lang="th" className={`${plexSansThai.variable} ${plexMono.variable}`} suppressHydrationWarning>
+      <body>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

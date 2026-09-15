@@ -20,7 +20,7 @@ export function AreaChart({
   goalLabel?: string;
   height?: number;
   format?: (n: number) => string;
-  /** Stroke/fill colour (defaults to the CRM accent; dashboard passes HAUS burgundy). */
+  /** Stroke/fill colour. Defaults to the accent; nothing overrides it today. */
   color?: string;
   className?: string;
 }) {

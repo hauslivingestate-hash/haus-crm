@@ -199,7 +199,7 @@ export function EmployeeRecord({
           {/* No photo upload: main_1_hr has no avatar column and there is no storage bucket
               yet, so the old picker only ever produced a preview that vanished on save. */}
           <div className="relative shrink-0">
-            <Avatar name={f.nickname || "?"} tone="crimson" className="h-16 w-16 text-h3" />
+            <Avatar name={f.nickname || "?"} tone="accent" className="h-16 w-16 text-h3" />
           </div>
           <div className="min-w-0">
             {editing ? (
@@ -535,7 +535,7 @@ function F({
       {edit ? (
         children
       ) : link && view ? (
-        <a href={view} target="_blank" rel="noreferrer" className="text-body text-accent hover:underline truncate">
+        <a href={view} target="_blank" rel="noreferrer" className="text-body text-accent-ink hover:underline truncate">
           เปิดลิงก์
         </a>
       ) : (

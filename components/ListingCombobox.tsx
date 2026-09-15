@@ -115,7 +115,7 @@ export function ListingCombobox({ value, onPick, placeholder }: {
             <div className="px-3 py-2 text-small text-text-subtle">กำลังค้นหา…</div>
           )}
           {!loading && query && matches.length === 0 && (
-            <button type="button" onClick={() => pick(q.trim().toUpperCase())} className="w-full text-left px-3 py-2 text-small text-accent hover:bg-accent-wash">
+            <button type="button" onClick={() => pick(q.trim().toUpperCase())} className="w-full text-left px-3 py-2 text-small text-accent-ink hover:bg-accent-wash">
               ใช้รหัส “{q.trim().toUpperCase()}”
             </button>
           )}

@@ -1,106 +1,129 @@
 "use client";
 
-import * as React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { Search, Eye, Check, ChevronsUpDown, LogOut, UserCheck, KeyRound } from "lucide-react";
-import { NAV } from "@/lib/nav";
+import { usePathname } from "next/navigation";
+import { ChevronsUpDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { NAV, navItemFor } from "@/lib/nav";
 import { cn } from "@/lib/cn";
-import { useMobileNav } from "@/components/MobileNav";
-import { useRbac, SELF_ID } from "@/components/RbacProvider";
+import { useShell } from "@/components/Shell";
+import { useRbac } from "@/components/RbacProvider";
 import { Avatar } from "@/components/ui/Avatar";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { IdentityMenu } from "@/components/IdentityMenu";
 
-/** Desktop: static rail in the layout grid. Mobile: off-canvas drawer overlay. */
+/** Desktop: static rail in the layout grid, 228px or collapsed to a 64px icon rail.
+ *  Mobile: off-canvas drawer overlay, never collapsed — there is nothing to save width for. */
 export function Sidebar() {
-  const { open, setOpen } = useMobileNav();
+  const { mobileOpen, setMobileOpen, collapsed } = useShell();
   return (
     <>
       {/* Desktop rail */}
-      <aside className="hidden lg:flex w-[228px] shrink-0 h-screen sticky top-0 bg-surface border-r border-border flex-col">
-        <SidebarBody />
+      <aside
+        className={cn(
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-surface lg:flex",
+          "transition-[width] duration-200",
+          collapsed ? "w-16" : "w-[228px]"
+        )}
+      >
+        <SidebarBody collapsed={collapsed} />
       </aside>
 
       {/* Mobile drawer */}
       <div
-        className={cn("lg:hidden fixed inset-0 z-40", open ? "" : "pointer-events-none")}
-        aria-hidden={!open}
+        className={cn("fixed inset-0 z-40 lg:hidden", mobileOpen ? "" : "pointer-events-none")}
+        aria-hidden={!mobileOpen}
       >
         <div
-          onClick={() => setOpen(false)}
+          onClick={() => setMobileOpen(false)}
           className={cn(
             "absolute inset-0 bg-black/40 transition-opacity",
-            open ? "opacity-100" : "opacity-0"
+            mobileOpen ? "opacity-100" : "opacity-0"
           )}
         />
         <aside
           className={cn(
-            "absolute left-0 top-0 h-full w-[270px] max-w-[82%] flex flex-col bg-surface border-r border-border shadow-pop transition-transform duration-200",
-            open ? "translate-x-0" : "-translate-x-full"
+            "absolute left-0 top-0 flex h-full w-[270px] max-w-[82%] flex-col border-r border-border bg-surface shadow-pop transition-transform duration-200",
+            mobileOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
-          <SidebarBody />
+          <SidebarBody collapsed={false} />
         </aside>
       </div>
     </>
   );
 }
 
-function SidebarBody() {
+function SidebarBody({ collapsed }: { collapsed: boolean }) {
   const pathname = usePathname();
-  const { can } = useRbac();
+  const { can, currentUser, roles } = useRbac();
+  const { setCollapsed } = useShell();
+  const current = navItemFor(pathname);
+  const roleLabel = currentUser.roleIds.length
+    ? currentUser.roleIds.map((id) => roles.find((r) => r?.id === id)?.name ?? id).join(" · ")
+    : "ไม่มีบทบาท";
 
   return (
     <>
-      {/* Brand */}
-      <div className="h-14 flex items-center px-4 border-b border-border">
-        <div className="leading-none">
-          <div className="text-h1 font-bold tracking-tight" style={{ color: "var(--maroon-900)" }}>
+      {/* Brand. The wordmark is the brand maroon until the logo file lands (Ben, 2026-09-15). */}
+      <div
+        className={cn(
+          "flex h-14 shrink-0 items-center border-b border-border",
+          collapsed ? "justify-center px-0" : "gap-2 px-4"
+        )}
+      >
+        <div className="min-w-0 leading-none">
+          <div
+            className={cn("font-bold tracking-tight", collapsed ? "text-h3" : "text-h1")}
+            style={{ color: "var(--maroon-900)" }}
+          >
             HAUS
           </div>
-          <div className="text-label uppercase text-text-subtle mt-0.5">Living Estate</div>
+          {!collapsed && (
+            <div className="mt-0.5 text-label uppercase text-text-subtle">Living Estate</div>
+          )}
         </div>
+        {!collapsed && <CollapseButton collapsed={false} onClick={() => setCollapsed(true)} />}
       </div>
-
-      {/* Search */}
-      <div className="px-3 pt-3">
-        <div className="flex items-center gap-2 h-8 px-2.5 rounded-md border border-border bg-surface-2 text-text-subtle text-small">
-          <Search size={14} strokeWidth={1.75} />
-          <span className="flex-1">ค้นหา…</span>
-          <kbd className="num text-label border border-border rounded px-1 bg-surface">⌘K</kbd>
+      {collapsed && (
+        <div className="flex justify-center border-b border-border py-1.5 lg:flex">
+          <CollapseButton collapsed onClick={() => setCollapsed(false)} />
         </div>
-      </div>
+      )}
 
       {/* Nav — items filtered by the viewer's permissions */}
-      <nav className="px-2 pt-3 pb-2 flex-1 flex flex-col overflow-y-auto">
-        {NAV.map((group) => {
+      <nav className={cn("flex flex-1 flex-col overflow-y-auto pb-2 pt-3", collapsed ? "px-2.5" : "px-2")}>
+        {NAV.map((group, gi) => {
           const items = group.items.filter((i) => can(i.perm));
           if (items.length === 0) return null;
           return (
             <div
               key={group.title || group.items[0]?.href}
-              className={cn("mb-3", group.bottom ? "mt-auto mb-0" : "last:mb-0")}
+              className={cn("mb-3", group.bottom ? "mb-0 mt-auto" : "last:mb-0")}
             >
-              {group.title && (
-                <div className="px-2 text-label uppercase text-text-subtle mb-1">{group.title}</div>
-              )}
+              {group.title &&
+                (collapsed ? (
+                  gi > 0 && <div className="mx-1 mb-2 border-t border-border" />
+                ) : (
+                  <div className="mb-1 px-2 text-label uppercase text-text-subtle">{group.title}</div>
+                ))}
               {items.map((item) => {
-                const active =
-                  item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                const active = current?.href === item.href;
                 const Icon = item.icon;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
+                    title={collapsed ? item.label : undefined}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-2.5 h-9 px-2 rounded-md text-body transition-colors",
+                      "flex h-9 items-center rounded-md text-body transition-colors",
+                      collapsed ? "justify-center px-0" : "gap-2.5 px-2",
                       active
-                        ? "bg-accent-wash text-text font-medium"
+                        ? "bg-accent-wash font-medium text-accent-ink"
                         : "text-text-muted hover:bg-surface-hover hover:text-text"
                     )}
                   >
-                    <Icon size={17} strokeWidth={1.75} className={active ? "text-accent" : ""} />
-                    {item.label}
+                    <Icon size={17} strokeWidth={1.75} className={cn("shrink-0", active && "text-accent")} />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
                   </Link>
                 );
               })}
@@ -109,164 +132,53 @@ function SidebarBody() {
         })}
       </nav>
 
-      {/* View-as switcher (design tool — stands in for the auth session) */}
-      <ViewAsSwitcher />
+      {/* Profile card → identity menu (account, theme, view-as, sign out) */}
+      <div className={cn("border-t border-border", collapsed ? "px-2.5 py-2.5" : "px-3 py-3")}>
+        <IdentityMenu placement="up">
+          {({ open, toggle }) => (
+            <button
+              onClick={toggle}
+              aria-expanded={open}
+              aria-haspopup="menu"
+              aria-label={collapsed ? currentUser.name : undefined}
+              title={collapsed ? currentUser.name : undefined}
+              className={cn(
+                "flex w-full items-center rounded-md transition-colors hover:bg-surface-hover",
+                collapsed ? "justify-center p-1.5" : "-m-1.5 gap-2 p-1.5",
+                open && "bg-surface-hover"
+              )}
+            >
+              <Avatar name={currentUser.name} tone="accent" className="size-7 text-label" />
+              {!collapsed && (
+                <>
+                  <span className="min-w-0 flex-1 text-left leading-tight">
+                    <span className="block truncate text-small text-text">{currentUser.name}</span>
+                    <span className="block truncate text-label text-text-subtle">{roleLabel}</span>
+                  </span>
+                  <ChevronsUpDown size={14} strokeWidth={1.75} className="shrink-0 text-text-subtle" />
+                </>
+              )}
+            </button>
+          )}
+        </IdentityMenu>
+      </div>
     </>
   );
 }
 
-function ViewAsSwitcher() {
-  const { users, roles, viewerId, setViewerId, currentUser, isAuthenticated, canViewAs, can } =
-    useRbac();
-  const router = useRouter();
-  const [open, setOpen] = React.useState(false);
-  const [signingOut, setSigningOut] = React.useState(false);
-  // Self-service password change is now CEO/HR/system_admin only (Ben, 2026-08-08) —
-  // everyone else asks one of them via Settings → บัญชีผู้ใช้. Sign-out below is unaffected,
-  // it's a separate control either way.
-  const canManageOwnAccount = can("people.manage_accounts");
-
-  const roleNames = (roleIds: string[]) =>
-    roleIds.length
-      ? roleIds.map((id) => roles.find((r) => r?.id === id)?.name ?? id).join(" · ")
-      : "ไม่มีบทบาท";
-
-  async function signOut() {
-    setSigningOut(true);
-    await supabaseBrowser().auth.signOut();
-    router.replace("/login");
-    router.refresh();
-  }
-
-  // Signed in without impersonation rights → who you are, plus the two things you can do
-  // with your own account.
-  if (isAuthenticated && !canViewAs) {
-    const identity = (
-      <>
-        <Avatar name={currentUser.name} tone="crimson" />
-        <span className="leading-tight min-w-0 flex-1">
-          <span className="block text-small text-text truncate">{currentUser.name}</span>
-          <span className="block text-label text-text-subtle truncate">
-            {roleNames(currentUser.roleIds)}
-          </span>
-        </span>
-      </>
-    );
-    return (
-      <div className="px-3 py-3 border-t border-border flex items-center gap-2">
-        {canManageOwnAccount ? (
-          <Link
-            href="/account"
-            className="flex items-center gap-2 min-w-0 flex-1 rounded-md p-1.5 -m-1.5 hover:bg-surface-hover transition-colors"
-          >
-            {identity}
-          </Link>
-        ) : (
-          <div className="flex items-center gap-2 min-w-0 flex-1 p-1.5 -m-1.5">{identity}</div>
-        )}
-        <button
-          onClick={signOut}
-          disabled={signingOut}
-          aria-label="ออกจากระบบ"
-          title="ออกจากระบบ"
-          className="size-7 grid place-items-center rounded-md text-text-subtle hover:bg-surface-hover hover:text-text transition-colors shrink-0 disabled:opacity-50"
-        >
-          <LogOut size={14} strokeWidth={1.75} />
-        </button>
-      </div>
-    );
-  }
-
+function CollapseButton({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) {
+  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const label = collapsed ? "ขยายเมนู" : "ย่อเมนู";
   return (
-    <div className="relative px-3 py-3 border-t border-border">
-      <div className="text-label uppercase text-text-subtle mb-1.5 flex items-center gap-1">
-        <Eye size={11} strokeWidth={2} /> ดูในมุมมอง
-      </div>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2 rounded-md p-1.5 -m-1.5 hover:bg-surface-hover transition-colors"
-      >
-        <Avatar name={currentUser.name} tone="crimson" />
-        <span className="leading-tight min-w-0 flex-1 text-left">
-          <span className="block text-small text-text truncate">{currentUser.name}</span>
-          <span className="block text-label text-text-subtle truncate">
-            {roleNames(currentUser.roleIds)}
-          </span>
-        </span>
-        <ChevronsUpDown size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 bottom-[calc(100%-4px)] left-3 right-3 mb-1 rounded-lg border border-border bg-surface shadow-pop overflow-hidden max-h-[60vh] overflow-y-auto">
-            {/* Signed-in admins get a way back to their own identity, and a way out. */}
-            {isAuthenticated && (
-              <>
-                {canManageOwnAccount && (
-                  <Link
-                    href="/account"
-                    onClick={() => setOpen(false)}
-                    className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-hover transition-colors"
-                  >
-                    <KeyRound size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
-                    <span className="text-small text-text">บัญชีของฉัน</span>
-                  </Link>
-                )}
-                <button
-                  onClick={() => {
-                    setViewerId(SELF_ID);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-2.5 py-2 text-left transition-colors",
-                    viewerId === SELF_ID ? "bg-accent-wash" : "hover:bg-surface-hover"
-                  )}
-                >
-                  <UserCheck size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
-                  <span className="text-small text-text flex-1">กลับเป็นตัวเอง</span>
-                  {viewerId === SELF_ID && (
-                    <Check size={14} strokeWidth={2.5} className="text-accent shrink-0" />
-                  )}
-                </button>
-                <button
-                  onClick={signOut}
-                  disabled={signingOut}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-hover transition-colors border-b border-border disabled:opacity-50"
-                >
-                  <LogOut size={14} strokeWidth={1.75} className="text-text-subtle shrink-0" />
-                  <span className="text-small text-text">ออกจากระบบ</span>
-                </button>
-              </>
-            )}
-            {users.map((u) => {
-              const on = u.id === viewerId;
-              return (
-                <button
-                  key={u.id}
-                  onClick={() => {
-                    setViewerId(u.id);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-2.5 py-2 text-left transition-colors",
-                    on ? "bg-accent-wash" : "hover:bg-surface-hover"
-                  )}
-                >
-                  <Avatar name={u.name} tone={on ? "crimson" : "neutral"} />
-                  <span className="leading-tight min-w-0 flex-1">
-                    <span className="block text-small text-text truncate">{u.name}</span>
-                    <span className="block text-label text-text-subtle truncate">
-                      {roleNames(u.roleIds)}
-                    </span>
-                  </span>
-                  {on && <Check size={14} strokeWidth={2.5} className="text-accent shrink-0" />}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      // Desktop only: the mobile drawer renders this body too and has nothing to collapse.
+      className="ml-auto hidden size-7 shrink-0 place-items-center rounded-md text-text-subtle transition-colors hover:bg-surface-hover hover:text-text lg:grid"
+    >
+      <Icon size={16} strokeWidth={1.75} />
+    </button>
   );
 }

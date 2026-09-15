@@ -176,8 +176,8 @@ export function SheetTable<T>({
           className={cn(
             "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[0.75rem] font-medium transition-colors",
             managing
-              ? "border-accent bg-accent-wash text-accent"
-              : "border-border-strong text-text-muted hover:border-accent hover:text-accent",
+              ? "border-accent bg-accent-wash text-accent-ink"
+              : "border-border-strong text-text-muted hover:border-accent hover:text-accent-ink",
           )}
         >
           <Columns3 size={13} /> คอลัมน์
@@ -533,7 +533,7 @@ function ColumnManager<T>({
 
       <button
         onClick={onReset}
-        className="mt-2.5 inline-flex items-center gap-1.5 text-[0.74rem] font-medium text-accent hover:underline"
+        className="mt-2.5 inline-flex items-center gap-1.5 text-[0.74rem] font-medium text-accent-ink hover:underline"
       >
         <RotateCcw size={12} /> คืนค่าเริ่มต้น
       </button>

@@ -237,7 +237,7 @@ function TargetRow({
             <span
               className={cn(
                 "text-label num shrink-0 rounded px-1.5 py-0.5",
-                focus ? "bg-accent-wash text-accent" : "bg-surface-2 text-text-subtle"
+                focus ? "bg-accent-wash text-accent-ink" : "bg-surface-2 text-text-subtle"
               )}
             >
               {t.focusLabel}
@@ -260,7 +260,7 @@ function TargetRow({
             <button
               onClick={onBump}
               disabled={busy}
-              className="num text-label font-semibold text-accent border border-accent rounded px-1.5 h-6 hover:bg-accent-wash transition-colors disabled:opacity-50"
+              className="num text-label font-semibold text-accent-ink border border-accent rounded px-1.5 h-6 hover:bg-accent-wash transition-colors disabled:opacity-50"
             >
               +1
             </button>

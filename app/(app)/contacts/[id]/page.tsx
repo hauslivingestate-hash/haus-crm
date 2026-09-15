@@ -36,7 +36,7 @@ export default async function ContactDetailPage({
         {/* Identity header — inline block (Shelter-style). Stacks on mobile. */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3 min-w-0">
-            <Avatar name={c.name} tone="crimson" className="h-10 w-10 shrink-0" />
+            <Avatar name={c.name} tone="accent" className="h-10 w-10 shrink-0" />
             <div className="min-w-0">
               <h1 className="text-h1 truncate">{c.name}</h1>
               <div className="flex items-center flex-wrap gap-1.5 mt-1">
@@ -79,7 +79,7 @@ export default async function ContactDetailPage({
             <CardContent className="flex flex-col gap-3 text-body">
               <Row label="เบอร์โทร">
                 {c.phone ? (
-                  <a href={`tel:${c.phone}`} className="num hover:text-accent transition-colors">
+                  <a href={`tel:${c.phone}`} className="num hover:text-accent-ink transition-colors">
                     {c.phone}
                   </a>
                 ) : (

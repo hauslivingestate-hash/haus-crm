@@ -50,7 +50,7 @@ const TYPE_META: { type: ChecklistItemType; label: string; icon: typeof CheckSqu
 
 const TIERS: FocusTier[] = ["exclusive", "a_list"];
 const TIER_ACTIVE: Record<FocusTier, string> = {
-  exclusive: "bg-accent-wash text-accent border-accent",
+  exclusive: "bg-accent-wash text-accent-ink border-accent",
   a_list: "bg-amber-bg text-amber border-amber",
 };
 
@@ -208,7 +208,7 @@ export function ChecklistTemplatesManager({
       <div className="flex flex-col gap-3">
         <Card className="p-6 text-center text-small text-text-subtle">
           ยังไม่มีเทมเพลต —{" "}
-          <button onClick={createTemplate} className="text-accent font-medium hover:underline">
+          <button onClick={createTemplate} className="text-accent-ink font-medium hover:underline">
             สร้างเทมเพลตแรก
           </button>
         </Card>
@@ -256,7 +256,7 @@ export function ChecklistTemplatesManager({
         </ul>
         <button
           onClick={createTemplate}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent border-t border-border hover:bg-surface-hover transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent-ink border-t border-border hover:bg-surface-hover transition-colors"
         >
           <Plus size={15} strokeWidth={2} /> สร้างเทมเพลต
         </button>
@@ -395,7 +395,7 @@ export function ChecklistTemplatesManager({
           )}
           <button
             onClick={() => addItem(selected.key)}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent border-t border-border hover:bg-surface-hover transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent-ink border-t border-border hover:bg-surface-hover transition-colors"
           >
             <Plus size={15} strokeWidth={2} /> เพิ่มงาน
           </button>

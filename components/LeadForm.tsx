@@ -202,7 +202,7 @@ export function LeadForm({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Avatar name={createdBy} tone="crimson" />
+            <Avatar name={createdBy} tone="accent" />
             <div className="leading-tight">
               <div className="text-label uppercase text-text-subtle">{mode === "admin" ? "รับลีด · บันทึกในนาม" : "เพิ่มลีดของฉัน"}</div>
               <div className="text-body font-semibold">{createdBy}</div>

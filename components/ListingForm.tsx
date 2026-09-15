@@ -359,7 +359,7 @@ function ProjectCombobox({
               type="button"
               onClick={createAndPick}
               disabled={creating}
-              className="w-full text-left px-3 py-2 border-t border-border text-small text-accent hover:bg-surface-hover transition-colors inline-flex items-center gap-1.5 disabled:opacity-50"
+              className="w-full text-left px-3 py-2 border-t border-border text-small text-accent-ink hover:bg-surface-hover transition-colors inline-flex items-center gap-1.5 disabled:opacity-50"
             >
               <Plus size={13} strokeWidth={2} />
               {creating ? "กำลังสร้าง…" : `สร้างโครงการใหม่ “${query}”`}

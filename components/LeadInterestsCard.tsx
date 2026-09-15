@@ -129,7 +129,7 @@ export function LeadInterestsCard({
                     <div className="flex items-center gap-2">
                       <span className="num text-body font-medium">{it.listing_id}</span>
                       {it.listing_id === dealListing && interests.length > 1 && (
-                        <span className="rounded-full bg-accent-wash px-1.5 py-0.5 text-label font-medium text-accent">
+                        <span className="rounded-full bg-accent-wash px-1.5 py-0.5 text-label font-medium text-accent-ink">
                           ดีล
                         </span>
                       )}

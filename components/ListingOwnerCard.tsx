@@ -52,14 +52,14 @@ export function ListingOwnerCard({
         {ownerName ? (
           <div className="p-4 flex flex-col gap-3">
             <div className="flex items-center gap-3">
-              <Avatar name={ownerName} tone="crimson" className="h-10 w-10" />
+              <Avatar name={ownerName} tone="accent" className="h-10 w-10" />
               <div className="min-w-0">
                 <div className="text-body font-medium truncate">{ownerName}</div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                   {ownerPhone && (
                     <a
                       href={`tel:${ownerPhone}`}
-                      className="num text-small text-text-muted hover:text-accent inline-flex items-center gap-1 transition-colors"
+                      className="num text-small text-text-muted hover:text-accent-ink inline-flex items-center gap-1 transition-colors"
                     >
                       <Phone size={12} strokeWidth={1.75} />
                       {ownerPhone}
@@ -113,7 +113,7 @@ export function ListingOwnerCard({
       {agent ? (
         <div className="p-4 flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <Avatar name={agent.nickname} tone="crimson" className="h-10 w-10" />
+            <Avatar name={agent.nickname} tone="accent" className="h-10 w-10" />
             <div className="min-w-0">
               <div className="text-body font-medium truncate">{agent.nickname}</div>
               <div className="text-label text-text-subtle">{agent.position ?? "—"}</div>
@@ -121,7 +121,7 @@ export function ListingOwnerCard({
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {agent.phone ? (
-              <a href={`tel:${agent.phone}`} className="num text-small text-text-muted hover:text-accent inline-flex items-center gap-1 transition-colors">
+              <a href={`tel:${agent.phone}`} className="num text-small text-text-muted hover:text-accent-ink inline-flex items-center gap-1 transition-colors">
                 <Phone size={12} strokeWidth={1.75} /> {agent.phone}
               </a>
             ) : (

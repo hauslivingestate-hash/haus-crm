@@ -153,7 +153,7 @@ export function LeadTimeline({
         ) : (
           current && (
             <span className="inline-flex items-center gap-1.5 text-small text-text-muted">
-              <Avatar name={nicknameOf(current)} tone="crimson" className="h-5 w-5" />{" "}
+              <Avatar name={nicknameOf(current)} tone="accent" className="h-5 w-5" />{" "}
               {nicknameOf(current)}
             </span>
           )

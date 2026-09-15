@@ -25,6 +25,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Banknote, Check, AlertTriangle, Hourglass, LoaderCircle, XCircle } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { SegmentedItem, SegmentedTrack } from "@/components/ui/Segmented";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useRbac } from "@/components/RbacProvider";
@@ -223,22 +224,13 @@ export function CloseDealCard(props: Props) {
           <div className="flex flex-col gap-3">
             <div>
               <div className={label}>ประเภทดีล</div>
-              <div className="inline-flex items-center gap-0.5 rounded-md bg-surface-2 p-0.5">
+              <SegmentedTrack>
                 {(["sale", "rent"] as const).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setDealType(k)}
-                    aria-pressed={dealType === k}
-                    className={cn(
-                      "h-7 rounded-[7px] px-3 text-small transition-colors",
-                      dealType === k ? "bg-surface text-text shadow-card" : "text-text-muted hover:text-text"
-                    )}
-                  >
+                  <SegmentedItem key={k} on={dealType === k} onClick={() => setDealType(k)}>
                     {DEAL_KIND_LABEL[k]}
-                  </button>
+                  </SegmentedItem>
                 ))}
-              </div>
+              </SegmentedTrack>
             </div>
 
             <div>

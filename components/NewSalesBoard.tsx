@@ -127,7 +127,7 @@ export function NewSalesBoard({
                   >
                     {i + 1}
                   </span>
-                  <Avatar name={e.nickname} tone="crimson" />
+                  <Avatar name={e.nickname} tone="accent" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-body font-semibold">{e.nickname}</span>
@@ -161,7 +161,7 @@ export function NewSalesBoard({
                         className={cn(
                           "h-6 px-2 rounded-md grid place-items-center text-label font-medium border",
                           ri <= ev.currentIndex
-                            ? "bg-accent-wash text-accent border-accent"
+                            ? "bg-accent-wash text-accent-ink border-accent"
                             : "border-border text-text-subtle"
                         )}
                       >

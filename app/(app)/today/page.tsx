@@ -13,7 +13,7 @@ export default async function TodayPage() {
 
   if (!plan) {
     return (
-      <div className="plan-theme flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col">
         <Topbar title="แผนวันนี้" actions={false} />
         <div className="p-6 text-body text-text-muted">
           บัญชีนี้ยังไม่ได้ผูกกับข้อมูลพนักงาน จึงยังไม่มีแผนงาน — ติดต่อผู้ดูแลระบบ
@@ -23,8 +23,7 @@ export default async function TodayPage() {
   }
 
   return (
-    // .plan-theme scopes the Solo Gang "Momentum" palette to this page only (globals.css).
-    <div className="plan-theme flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col">
       <Topbar title="แผนวันนี้" subtitle={`แผนงานและเป้าหมายของ ${plan.nickname}`} actions={false} />
       <div className="p-4 lg:p-6 flex-1">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 items-start">

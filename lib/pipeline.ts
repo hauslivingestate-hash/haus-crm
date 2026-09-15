@@ -22,7 +22,7 @@ const STAGE_DOT: Record<string, string> = {
   Follow: "bg-dot-violet",
   Appoint: "bg-dot-violet",
   Show: "bg-dot-amber",
-  Nego: "bg-dot-crimson",
+  Nego: "bg-dot-accent",
   Close: "bg-dot-green",
   Win: "bg-dot-green",
 };

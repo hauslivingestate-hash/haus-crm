@@ -137,7 +137,7 @@ export function ContactsBrowser({ contacts: scoped }: { contacts: ContactSummary
                   >
                     <TD>
                       <div className="flex items-center gap-2.5">
-                        <Avatar name={c.name} tone="crimson" />
+                        <Avatar name={c.name} tone="accent" />
                         <span className="font-medium">{c.name}</span>
                       </div>
                     </TD>
@@ -170,7 +170,7 @@ export function ContactsBrowser({ contacts: scoped }: { contacts: ContactSummary
                 onClick={() => router.push(`/contacts/${c.id}`)}
                 className="flex items-center gap-2.5 p-3 cursor-pointer active:bg-surface-hover transition-colors"
               >
-                <Avatar name={c.name} tone="crimson" />
+                <Avatar name={c.name} tone="accent" />
                 <span className="leading-tight min-w-0 flex-1">
                   <span className="block font-medium truncate">{c.name}</span>
                   <span className="block text-label text-text-subtle num">

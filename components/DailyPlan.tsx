@@ -305,7 +305,7 @@ export function DailyPlan({ plan }: { plan: PlanData }) {
           {date !== plan.today && (
             <button
               onClick={() => setDate(plan.today)}
-              className="text-small font-medium text-accent border border-accent rounded-md px-2.5 h-8 shrink-0 hover:bg-accent-wash transition-colors"
+              className="text-small font-medium text-accent-ink border border-accent rounded-md px-2.5 h-8 shrink-0 hover:bg-accent-wash transition-colors"
             >
               วันนี้
             </button>
@@ -385,7 +385,7 @@ export function DailyPlan({ plan }: { plan: PlanData }) {
               key={qa.id}
               onClick={() => addQuick(qa)}
               disabled={busy}
-              className="inline-flex items-center gap-1 rounded-full border border-border-strong px-2.5 py-1 text-small text-text-muted hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-full border border-border-strong px-2.5 py-1 text-small text-text-muted hover:border-accent hover:text-accent-ink transition-colors disabled:opacity-50"
             >
               <Plus size={12} strokeWidth={2} />
               {qa.label}
@@ -405,7 +405,7 @@ export function DailyPlan({ plan }: { plan: PlanData }) {
           {can("leave.request") && (
             <button
               onClick={() => setLeaveOpen(true)}
-              className="ml-auto inline-flex items-center gap-1 rounded-full border border-border-strong px-2.5 py-1 text-small text-text-muted hover:border-accent hover:text-accent transition-colors shrink-0"
+              className="ml-auto inline-flex items-center gap-1 rounded-full border border-border-strong px-2.5 py-1 text-small text-text-muted hover:border-accent hover:text-accent-ink transition-colors shrink-0"
             >
               <CalendarOff size={12} strokeWidth={1.75} /> ขอลา
             </button>
@@ -692,7 +692,7 @@ function TaskRow({
               <Link
                 href={`/listings/${t.relatedListingId}`}
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 text-label text-accent hover:underline"
+                className="inline-flex items-center gap-1 text-label text-accent-ink hover:underline"
               >
                 <Building2 size={11} strokeWidth={1.75} /> {t.relatedListingName ?? t.relatedListingId}
               </Link>
@@ -731,7 +731,7 @@ function TaskRatioBar({ tasks }: { tasks: Task[] }) {
       <div className="flex items-baseline justify-between mb-1.5">
         <span className="text-small text-text-muted">สัดส่วนงาน</span>
         <span className="text-small text-text-muted">
-          <span className="num font-bold text-accent">{bPct}%</span> สร้างยอด
+          <span className="num font-bold text-accent-ink">{bPct}%</span> สร้างยอด
         </span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden bg-surface-2">

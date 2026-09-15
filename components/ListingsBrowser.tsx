@@ -36,7 +36,7 @@ const STATUS_ORDER = [
 // Focus tiers — the high-value "potential" grades that get extra cross-team
 // attention. Active chip uses the tier's own tone so the filter itself signals priority.
 const POT_CHIPS: { key: PotentialGroup; label: string; active: string }[] = [
-  { key: "exclusive", label: "Exclusive", active: "bg-accent-wash text-accent border-accent" },
+  { key: "exclusive", label: "Exclusive", active: "bg-accent-wash text-accent-ink border-accent" },
   { key: "a_list", label: "A-List", active: "bg-amber-bg text-amber border-amber" },
 ];
 
@@ -128,7 +128,7 @@ export function ListingsBrowser({
      wall, and the default hidden set is nobody's job to guess. */
   const columns = React.useMemo<SheetColumn<ListingRow>[]>(() => [
     { key: "listing_id", label: "Listing ID", locked: true, width: 104,
-      cell: (l) => <span className="num text-accent">{l.listing_id}</span> },
+      cell: (l) => <span className="num text-accent-ink">{l.listing_id}</span> },
     { key: "name", label: "โครงการ", width: 210,
       cell: (l) => (
         <span className="flex items-center gap-2">

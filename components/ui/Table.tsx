@@ -8,8 +8,10 @@ export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTab
   );
 }
 
+/* A tinted header band rather than a rule under the column names, so the header reads as
+   a header even when the table sits directly under a card title with no divider. */
 export function THead({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("border-b border-border", className)} {...props} />;
+  return <thead className={cn("bg-surface-2 border-b border-border", className)} {...props} />;
 }
 
 export function TBody(props: React.HTMLAttributes<HTMLTableSectionElement>) {
@@ -29,7 +31,7 @@ export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
   return (
     <th
       className={cn(
-        "text-label uppercase text-text-subtle font-semibold text-left px-3 h-9 whitespace-nowrap",
+        "text-label uppercase text-text-subtle font-semibold text-left px-4 h-10 whitespace-nowrap first:rounded-tl-lg last:rounded-tr-lg",
         className
       )}
       {...props}
@@ -38,5 +40,5 @@ export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
 }
 
 export function TD({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("px-3 h-11 align-middle", className)} {...props} />;
+  return <td className={cn("px-4 h-12 align-middle", className)} {...props} />;
 }

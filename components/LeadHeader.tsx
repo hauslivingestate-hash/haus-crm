@@ -19,13 +19,13 @@ export function LeadHeader({ lead }: { lead: CrmRow }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
       <div className="flex items-center gap-3 min-w-0">
-        <Avatar name={lead.lead_name} tone="crimson" className="h-10 w-10 shrink-0" />
+        <Avatar name={lead.lead_name} tone="accent" className="h-10 w-10 shrink-0" />
         <div className="min-w-0">
           <div className="num text-[11px] text-text-subtle">{lead.lead_id}</div>
           <h1 className="text-h1 truncate">{lead.lead_name ?? lead.lead_id}</h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
             {lead.phone ? (
-              <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1 text-small text-text-muted hover:text-accent transition-colors num">
+              <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1 text-small text-text-muted hover:text-accent-ink transition-colors num">
                 <Phone size={12} strokeWidth={1.75} /> {lead.phone}
               </a>
             ) : (

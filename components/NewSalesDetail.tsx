@@ -61,7 +61,7 @@ export function NewSalesDetail({
           >
             {idx + 1}
           </span>
-          <Avatar name={e.nickname} tone="crimson" />
+          <Avatar name={e.nickname} tone="accent" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-h2">{e.nickname}</span>
@@ -102,7 +102,7 @@ export function NewSalesDetail({
                   <span
                     className={cn(
                       "size-7 rounded-full grid place-items-center num text-small font-semibold shrink-0",
-                      achieved ? "bg-green-bg text-green" : isNext ? "bg-accent-wash text-accent" : "bg-surface-2 text-text-subtle"
+                      achieved ? "bg-green-bg text-green" : isNext ? "bg-accent-wash text-accent-ink" : "bg-surface-2 text-text-subtle"
                     )}
                   >
                     {ri + 1}

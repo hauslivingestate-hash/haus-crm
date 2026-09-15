@@ -191,7 +191,7 @@ export default async function ProjectDetailPage({
               <CardContent>
                 <Link
                   href="/listings"
-                  className="inline-flex items-center gap-1.5 text-small text-accent hover:underline"
+                  className="inline-flex items-center gap-1.5 text-small text-accent-ink hover:underline"
                 >
                   <Building2 size={14} strokeWidth={1.75} /> ดูทรัพย์ทั้งหมด
                 </Link>

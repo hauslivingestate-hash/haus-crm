@@ -101,7 +101,7 @@ function CopyBlock({ label, text }: { label: string; text: string }) {
           onClick={doCopy}
           className={cn(
             "text-label inline-flex items-center gap-1 transition-colors",
-            copied ? "text-green" : "text-accent hover:underline"
+            copied ? "text-green" : "text-accent-ink hover:underline"
           )}
         >
           {copied ? (

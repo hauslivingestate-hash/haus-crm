@@ -116,7 +116,7 @@ export function TeamsManager({
             <button
               onClick={() => void run(() => createTeam("ทีมใหม่"))}
               disabled={busy}
-              className="text-small font-medium text-accent hover:underline disabled:opacity-50"
+              className="text-small font-medium text-accent-ink hover:underline disabled:opacity-50"
             >
               สร้างทีมแรก
             </button>
@@ -162,7 +162,7 @@ export function TeamsManager({
             <button
               onClick={() => void run(() => createTeam("ทีมใหม่"))}
               disabled={busy}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent border-t border-border hover:bg-surface-hover transition-colors disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent-ink border-t border-border hover:bg-surface-hover transition-colors disabled:opacity-50"
             >
               <Plus size={15} strokeWidth={2} /> สร้างทีม
             </button>
@@ -251,7 +251,7 @@ export function TeamsManager({
                 const other = !inTeam ? teamOf(e.code) : undefined;
                 return (
                   <li key={e.code} className="flex items-center gap-3 px-4 py-2.5">
-                    <Avatar name={e.nickname} tone="crimson" />
+                    <Avatar name={e.nickname} tone="accent" />
                     <div className="min-w-0 flex-1">
                       <div className="text-body font-medium inline-flex items-center gap-1.5">
                         {e.nickname}

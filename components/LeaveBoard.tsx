@@ -149,7 +149,7 @@ export function LeaveBoard() {
           <CardContent className="flex flex-col gap-2">
             {breaches.map((b) => (
               <div key={b.employeeId} className="flex items-center gap-2 flex-wrap">
-                <Avatar name={b.nickname} tone="crimson" className="h-6 w-6" />
+                <Avatar name={b.nickname} tone="accent" className="h-6 w-6" />
                 <span className="text-body font-medium w-14">{b.nickname}</span>
                 {b.rows.map((r) => (
                   <Pill key={r.type} tone="red">
@@ -176,7 +176,7 @@ export function LeaveBoard() {
                 key={r.id}
                 className="inline-flex items-center gap-2 rounded-full border border-border pl-1 pr-3 py-1"
               >
-                <Avatar name={r.nickname} tone="crimson" className="h-6 w-6" />
+                <Avatar name={r.nickname} tone="accent" className="h-6 w-6" />
                 <span className="text-small">{r.nickname}</span>
                 <span className="text-label text-text-subtle">{r.type}</span>
                 {r.status === "pending" && <Pill tone="amber">รออนุมัติ</Pill>}
@@ -247,7 +247,7 @@ export function LeaveBoard() {
                       {canManage && (
                         <TD>
                           <span className="inline-flex items-center gap-2">
-                            <Avatar name={r.nickname} tone="crimson" className="h-6 w-6" />
+                            <Avatar name={r.nickname} tone="accent" className="h-6 w-6" />
                             <span className="font-medium">{r.nickname}</span>
                           </span>
                         </TD>

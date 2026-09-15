@@ -38,6 +38,14 @@ export interface NavGroup {
 //   เซลล์ = what sales work on daily (leads, listings, assignment) ·
 //   คลังข้อมูล = reference data (contacts, projects, comparables) ·
 //   ผลงาน = performance (leadership-only) · ตั้งค่า = master data the CEO governs.
+/** Exported on its own: the topbar shows a gear for it next to the bell. */
+export const SETTINGS_NAV: NavItem = {
+  href: "/settings",
+  label: "ตั้งค่า",
+  icon: Settings,
+  perm: ["roles.manage", "masterdata.govern", "reference.manage", "teams.manage", "people.manage_accounts"],
+};
+
 export const NAV: NavGroup[] = [
   {
     title: "ภาพรวม",
@@ -108,13 +116,20 @@ export const NAV: NavGroup[] = [
     title: "",
     admin: true,
     bottom: true,
-    items: [
-      {
-        href: "/settings",
-        label: "ตั้งค่า",
-        icon: Settings,
-        perm: ["roles.manage", "masterdata.govern", "reference.manage", "teams.manage", "people.manage_accounts"],
-      },
-    ],
+    items: [SETTINGS_NAV],
   },
 ];
+
+/**
+ * The nav entry a path belongs to — the first crumb of the topbar breadcrumb and the
+ * sidebar's active item. Permissions are not consulted: a crumb names where you are,
+ * and you are there.
+ */
+export function navItemFor(pathname: string): NavItem | null {
+  for (const group of NAV) {
+    for (const item of group.items) {
+      if (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)) return item;
+    }
+  }
+  return null;
+}

@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/Sidebar";
-import { MobileNavProvider } from "@/components/MobileNav";
+import { AppFrame, ShellProvider, SIDEBAR_COOKIE } from "@/components/Shell";
 import { RbacProvider } from "@/components/RbacProvider";
 import { MasterDataProvider } from "@/components/MasterDataProvider";
 import { ChecklistProvider } from "@/components/ChecklistProvider";
@@ -10,6 +10,7 @@ import { ActivityProvider } from "@/components/ActivityProvider";
 import { LeaveProvider } from "@/components/LeaveProvider";
 import { LeadIntakeFab } from "@/components/LeadIntakeFab";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getAuthContext } from "@/lib/auth";
 import { getLookups, getAssignableAgents } from "@/lib/lookups";
 import {
@@ -35,6 +36,10 @@ import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const auth = AUTH_ENFORCED ? await getAuthContext() : null;
   if (AUTH_ENFORCED && !auth) redirect("/login");
+
+  // Sidebar collapse preference — read here so the first paint is already the right
+  // width. See components/Shell.tsx for why it is a cookie.
+  const collapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "1";
 
   // Reference vocabularies + assignable agents come from the DB so the intake form writes
   // FK-valid values. Without a session RLS returns nothing, so the providers keep their
@@ -89,15 +94,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   {/* Leave requests — filed from แผนวันนี้, decided on /วันลา. Shared so
                       both sides see the same queue instantly. */}
                   <LeaveProvider requests={leaveRequests} allowances={leaveAllowances}>
-                    <MobileNavProvider>
-                      <div className="grid grid-cols-1 lg:grid-cols-[228px_1fr] min-h-screen">
-                        <Sidebar />
-                        <main className="min-w-0 flex flex-col">{children}</main>
-                      </div>
+                    <ShellProvider initialCollapsed={collapsed}>
+                      <AppFrame sidebar={<Sidebar />}>{children}</AppFrame>
                       {/* Lead intake FAB — gated to leads.create (admin/back-office). The
                           only remaining FAB (CEO: "FAB เหลือแค่เพิ่มลีด"). */}
                       <LeadIntakeFab agents={agents} />
-                    </MobileNavProvider>
+                    </ShellProvider>
                   </LeaveProvider>
                 </ActivityProvider>
               </NotificationsProvider>

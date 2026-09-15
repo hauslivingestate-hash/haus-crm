@@ -112,7 +112,7 @@ export function MiniCalendar({
               <span
                 className={cn(
                   "size-1.5 rounded-full",
-                  status === "full" ? "bg-accent" : status === "partial" ? "bg-amber" : "bg-transparent"
+                  status === "full" ? "bg-accent" : status === "partial" ? "bg-dot-amber" : "bg-transparent"
                 )}
               />
             </button>

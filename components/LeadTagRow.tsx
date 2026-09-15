@@ -56,7 +56,7 @@ export function LeadTagRow({ leadId, tagId }: { leadId: string; tagId: string | 
             {tag.label}
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded border border-dashed border-border-strong px-1.5 py-0.5 text-label text-text-subtle hover:text-accent hover:border-accent transition-colors">
+          <span className="inline-flex items-center gap-1 rounded border border-dashed border-border-strong px-1.5 py-0.5 text-label text-text-subtle hover:text-accent-ink hover:border-accent transition-colors">
             <Plus size={11} strokeWidth={2} /> แท็ก
           </span>
         )}
@@ -92,7 +92,7 @@ export function LeadTagRow({ leadId, tagId }: { leadId: string; tagId: string | 
             {tag && (
               <button
                 onClick={() => pick(null)}
-                className="mt-1 border-t border-border pt-2 px-2 pb-1 text-left text-small text-text-muted hover:text-accent transition-colors"
+                className="mt-1 border-t border-border pt-2 px-2 pb-1 text-left text-small text-text-muted hover:text-accent-ink transition-colors"
               >
                 เอาแท็กออก
               </button>

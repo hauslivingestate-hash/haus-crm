@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowUpRight, Check, LoaderCircle, Pencil, Target, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { SegmentedItem, SegmentedTrack } from "@/components/ui/Segmented";
 import { cn } from "@/lib/cn";
 import { formatNumber, formatDate } from "@/lib/format";
 import { stageMeta } from "@/lib/pipeline";
@@ -304,7 +305,7 @@ export function MovementCard({
             title={showTargets ? "ซ่อนเป้าหมาย" : "แสดงเป้าหมาย"}
             className={cn(
               "inline-flex h-6 items-center gap-1 rounded-md px-2 text-small transition-colors",
-              showTargets ? "bg-accent-wash text-accent" : "bg-surface-2 text-text-muted hover:text-text"
+              showTargets ? "bg-accent-wash text-accent-ink" : "bg-surface-2 text-text-muted hover:text-text"
             )}
           >
             <Target size={12} strokeWidth={2} /> เป้า
@@ -322,7 +323,7 @@ export function MovementCard({
           )}
           <Link
             href="/leads"
-            className="inline-flex items-center gap-0.5 text-small font-medium text-accent transition-colors hover:text-accent-hover"
+            className="inline-flex items-center gap-0.5 text-small font-medium text-accent-ink transition-colors hover:text-accent"
           >
             ดูทั้งหมด <ArrowUpRight size={13} strokeWidth={2} />
           </Link>
@@ -500,22 +501,13 @@ function SectionHead({
         <h3 className="text-body font-medium text-text">{title}</h3>
         <p className="mt-0.5 text-small leading-snug text-text-subtle">{hint}</p>
       </div>
-      <div className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-surface-2 p-0.5">
+      <SegmentedTrack>
         {([["actions", "งานที่ทำ"], ["funnel", funnelLabel]] as const).map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => onView(k)}
-            aria-pressed={view === k}
-            className={cn(
-              "h-6 whitespace-nowrap rounded-[6px] px-2.5 text-small transition-colors",
-              view === k ? "bg-surface text-text shadow-card" : "text-text-muted hover:text-text"
-            )}
-          >
+          <SegmentedItem key={k} size="sm" on={view === k} onClick={() => onView(k)}>
             {label}
-          </button>
+          </SegmentedItem>
         ))}
-      </div>
+      </SegmentedTrack>
     </div>
   );
 }
@@ -811,7 +803,7 @@ function DrillModal({
                   {c.id ? (
                     <Link
                       href={c.side === "lead" ? `/leads/${c.id}` : `/listings/${c.id}`}
-                      className="min-w-0 flex-1 truncate text-body font-medium text-text transition-colors hover:text-accent hover:underline"
+                      className="min-w-0 flex-1 truncate text-body font-medium text-text transition-colors hover:text-accent-ink hover:underline"
                     >
                       {c.name}
                     </Link>

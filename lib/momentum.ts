@@ -54,7 +54,7 @@ export function monthBounds(ym: string): { from: string; to: string } {
 // Awareness split (Solo Gang's building/working/personal, cut for sales).
 export type TaskType = "build" | "work" | "personal";
 // Task-type colours map to the Solo Gang "Momentum" awareness triad on /today (see
-// .plan-theme in globals.css): build=accent(emerald), work=blue(indigo), personal=violet(rose).
+// globals.css): build=accent(orange), work=blue(navy), personal=violet.
 export const TASK_TYPES: Record<TaskType, { label: string; tone: "accent" | "blue" | "violet" }> = {
   build: { label: "สร้างยอด", tone: "accent" },
   work: { label: "พื้นฐาน", tone: "blue" },

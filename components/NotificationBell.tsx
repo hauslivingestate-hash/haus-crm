@@ -93,7 +93,7 @@ export function NotificationBell() {
               {unreadCount > 0 && (
                 <button
                   onClick={markAllRead}
-                  className="ml-auto inline-flex items-center gap-1 text-small font-medium text-accent hover:bg-accent-wash rounded-md px-2 h-7 transition-colors"
+                  className="ml-auto inline-flex items-center gap-1 text-small font-medium text-accent-ink hover:bg-accent-wash rounded-md px-2 h-7 transition-colors"
                 >
                   <CheckCheck size={14} strokeWidth={2} /> อ่านทั้งหมด
                 </button>

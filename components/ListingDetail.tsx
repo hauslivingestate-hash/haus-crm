@@ -408,7 +408,7 @@ export async function ListingDetail({ id, inDrawer = false }: { id: string; inDr
                   <div className="p-4 flex flex-col gap-3">
                     <div className="flex items-center gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="text-body font-medium truncate group-hover:text-accent transition-colors">
+                        <div className="text-body font-medium truncate group-hover:text-accent-ink transition-colors">
                           {project.name_thai}
                         </div>
                         <div className="text-small text-text-subtle truncate">{project.name_eng}</div>
@@ -477,7 +477,7 @@ export async function ListingDetail({ id, inDrawer = false }: { id: string; inDr
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-accent hover:underline shrink-0"
+                          className="inline-flex items-center gap-1 text-accent-ink hover:underline shrink-0"
                         >
                           {date ? <span className="num text-label">{formatDate(date)}</span> : "ดูประกาศ"}
                           <ExternalLink size={11} strokeWidth={1.75} />
@@ -578,7 +578,7 @@ function MediaLink({ href, label }: { href: string | null; label: string }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-label border border-accent/30 bg-accent-wash text-accent hover:bg-accent-wash/70 transition-colors"
+      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-label border border-accent/30 bg-accent-wash text-accent-ink hover:bg-accent-wash/70 transition-colors"
     >
       {label}
       <ExternalLink size={10} strokeWidth={2} />

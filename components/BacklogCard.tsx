@@ -67,7 +67,7 @@ export function BacklogCard({ plan }: { plan: PlanData }) {
         {plan.backlog.length > 0 && (
           <span
             title={`${plan.backlog.length} งานรอจัดวัน`}
-            className="num rounded-md bg-accent-wash px-2 py-0.5 text-small font-semibold text-accent"
+            className="num rounded-md bg-accent-wash px-2 py-0.5 text-small font-semibold text-accent-ink"
           >
             {plan.backlog.length}
           </span>

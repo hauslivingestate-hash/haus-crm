@@ -166,7 +166,7 @@ export function LoginForm() {
           className="absolute inset-0"
           style={{
             background:
-              "radial-gradient(120% 90% at 85% 15%, var(--crimson-12) 0%, transparent 55%), radial-gradient(90% 80% at 10% 90%, var(--bronze-12) 0%, transparent 60%)",
+              "radial-gradient(120% 90% at 85% 15%, var(--accent-wash) 0%, transparent 55%), radial-gradient(90% 80% at 10% 90%, var(--navy-12) 0%, transparent 60%)",
           }}
         />
         <div className="relative flex flex-col justify-end p-14">

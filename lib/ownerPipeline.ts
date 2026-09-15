@@ -37,7 +37,7 @@ const OWNER_STAGE_DOT: Record<string, string> = {
   "New List": "bg-dot-amber",
   "Owner Talk": "bg-dot-teal",
   "Owner Visit": "bg-dot-violet",
-  "Exclusive Offer": "bg-dot-crimson",
+  "Exclusive Offer": "bg-dot-accent",
 };
 
 /** The seeded stages, in pipeline order. The live list comes from the `owner_stage` table

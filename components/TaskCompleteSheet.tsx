@@ -92,7 +92,7 @@ export function TaskCompleteSheet({
             </span>
           )}
           {task.relatedListingId && (
-            <span className="inline-flex items-center gap-1 text-label text-accent">
+            <span className="inline-flex items-center gap-1 text-label text-accent-ink">
               <Building2 size={11} strokeWidth={1.75} />{" "}
               {task.relatedListingName ?? task.relatedListingId}
             </span>

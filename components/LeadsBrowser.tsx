@@ -216,7 +216,7 @@ export function LeadsBrowser({ crm, prefs, colors, sla }: {
      which is what made the chips redundant in the first place. */
   const columns = React.useMemo<SheetColumn<CrmRow>[]>(() => [
     { key: "lead_id", label: "Lead ID", locked: true, width: 96,
-      cell: (c) => <span className="num text-accent">{c.lead_id}</span> },
+      cell: (c) => <span className="num text-accent-ink">{c.lead_id}</span> },
     { key: "name", label: "ลูกค้า", width: 160, cell: (c) => <Val>{c.lead_name}</Val>,
       // The only field createLead refuses without. Being `required` also pins
       // the column visible — a hidden required field is an uncommittable row.
@@ -247,7 +247,7 @@ export function LeadsBrowser({ crm, prefs, colors, sla }: {
               className="inline-flex items-center gap-1 rounded transition-colors"
             >
               {tag ? <TagChip tag={tag} /> : (
-                <span className="inline-flex items-center gap-1 rounded border border-dashed border-border-strong px-1.5 text-label text-text-subtle hover:text-accent hover:border-accent transition-colors">
+                <span className="inline-flex items-center gap-1 rounded border border-dashed border-border-strong px-1.5 text-label text-text-subtle hover:text-accent-ink hover:border-accent transition-colors">
                   <Plus size={10} strokeWidth={2} /> แท็ก
                 </span>
               )}
@@ -337,7 +337,7 @@ export function LeadsBrowser({ crm, prefs, colors, sla }: {
         </div>
         <button
           onClick={() => setGroupBy((v) => !v)}
-          className={cn("inline-flex items-center gap-1.5 text-small font-medium rounded-md px-3 py-1.5 border transition-colors", groupBy ? "bg-accent-wash text-accent border-accent" : "border-border-strong text-text-muted hover:bg-surface-2")}
+          className={cn("inline-flex items-center gap-1.5 text-small font-medium rounded-md px-3 py-1.5 border transition-colors", groupBy ? "bg-accent-wash text-accent-ink border-accent" : "border-border-strong text-text-muted hover:bg-surface-2")}
         >
           <Tags size={14} strokeWidth={1.75} /> จัดกลุ่มตามแท็ก
         </button>
@@ -404,7 +404,7 @@ function StageFilter({
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "inline-flex items-center gap-1.5 text-small font-medium rounded-md px-3 py-1.5 border transition-colors",
-          active ? "bg-accent-wash text-accent border-accent" : "border-border-strong text-text-muted hover:bg-surface-2"
+          active ? "bg-accent-wash text-accent-ink border-accent" : "border-border-strong text-text-muted hover:bg-surface-2"
         )}
       >
         <ListFilter size={14} strokeWidth={1.75} />
@@ -424,7 +424,7 @@ function StageFilter({
                 }}
                 className="flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-small hover:bg-surface-hover transition-colors text-left"
               >
-                <span className={cn("truncate", o.key === value && "text-accent font-medium")}>{o.label}</span>
+                <span className={cn("truncate", o.key === value && "text-accent-ink font-medium")}>{o.label}</span>
                 <span className="inline-flex items-center gap-1.5 shrink-0">
                   <span className="num text-label text-text-subtle">{o.count}</span>
                   {o.key === value && <Check size={14} strokeWidth={2.5} className="text-accent" />}
@@ -578,7 +578,7 @@ function TagPopover({
               onPick(null);
               onClose();
             }}
-            className="mt-1 border-t border-border pt-2 px-2 pb-1 text-left text-small text-text-muted hover:text-accent transition-colors"
+            className="mt-1 border-t border-border pt-2 px-2 pb-1 text-left text-small text-text-muted hover:text-accent-ink transition-colors"
           >
             เอาแท็กออก
           </button>

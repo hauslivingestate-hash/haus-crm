@@ -194,7 +194,7 @@ export function ListingSectionBlock({
         />
         <span className="text-small font-medium">{section.label}</span>
         {filled > 0 && (
-          <span className="num text-label text-accent">กรอกแล้ว {filled}</span>
+          <span className="num text-label text-accent-ink">กรอกแล้ว {filled}</span>
         )}
         {section.hint && (
           <span className="text-label text-text-subtle ml-auto hidden sm:inline">

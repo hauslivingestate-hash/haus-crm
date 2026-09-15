@@ -91,7 +91,7 @@ export function SalesRankManager({
         <Card key={rank.id}>
           <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border">
             {/* Order + reorder — the ladder is sequential (Rank 1 ต้องผ่านก่อน Rank 2) */}
-            <span className="size-7 rounded-full bg-accent-wash text-accent grid place-items-center num text-small font-semibold shrink-0">
+            <span className="size-7 rounded-full bg-accent-wash text-accent-ink grid place-items-center num text-small font-semibold shrink-0">
               {i + 1}
             </span>
             <Input
@@ -173,7 +173,7 @@ export function SalesRankManager({
           )}
           <button
             onClick={() => addCriterion(rank.id)}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent border-t border-border hover:bg-surface-hover transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent-ink border-t border-border hover:bg-surface-hover transition-colors"
           >
             <Plus size={15} strokeWidth={2} /> เพิ่มเกณฑ์
           </button>
@@ -182,7 +182,7 @@ export function SalesRankManager({
 
       <button
         onClick={addRank}
-        className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-strong px-3 py-3 text-small font-medium text-text-muted hover:text-accent hover:border-accent transition-colors"
+        className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-strong px-3 py-3 text-small font-medium text-text-muted hover:text-accent-ink hover:border-accent transition-colors"
       >
         <Medal size={15} strokeWidth={1.75} /> เพิ่ม Rank
       </button>

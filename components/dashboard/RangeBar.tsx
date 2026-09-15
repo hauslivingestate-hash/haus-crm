@@ -2,10 +2,9 @@
 
 /* The dashboard's time filter, as a segmented control plus a custom window.
  *
- * Ported from Klaichan CRM, restyled onto this repo's tokens — the same control as
- * components/ui/Segmented.tsx, which it deliberately does NOT reuse: that one owns its
- * selection in React state, and this one's selection lives in the URL so the server can
- * read it before rendering.
+ * Ported from Klaichan CRM. Draws with the stateless parts of components/ui/Segmented
+ * rather than the stateful `Segmented`: that one owns its selection in React state, and
+ * this one's selection lives in the URL so the server can read it before rendering.
  *
  * ── WHY IT IS OPTIMISTIC RATHER THAN INSTANT ────────────────────────────────────
  * Tapping a preset rewrites the URL and the server re-renders with new SQL. The numbers
@@ -18,6 +17,7 @@ import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarRange, Check } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { SegmentedItem, SegmentedTrack } from "@/components/ui/Segmented";
 import { todayISO } from "@/lib/momentum";
 import { RANGE_PRESETS, rangeParams, shortDate, type RangeKey } from "@/lib/range";
 import { useTopmostEscape } from "@/lib/overlayStack";
@@ -48,25 +48,13 @@ export function RangeBar({ active, from, to }: { active: RangeKey; from?: string
       className={cn("flex flex-wrap items-center gap-2 transition-opacity", pending && "opacity-60")}
       aria-busy={pending}
     >
-      <div className="inline-flex items-center gap-0.5 bg-surface-2 rounded-md p-0.5">
-        {RANGE_PRESETS.map((r) => {
-          const on = r.key === active;
-          return (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => go(r.key)}
-              aria-pressed={on}
-              className={cn(
-                "h-7 px-3 rounded-[7px] text-small transition-colors",
-                on ? "bg-surface text-text shadow-card" : "text-text-muted hover:text-text"
-              )}
-            >
-              {r.label}
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedTrack>
+        {RANGE_PRESETS.map((r) => (
+          <SegmentedItem key={r.key} on={r.key === active} onClick={() => go(r.key)}>
+            {r.label}
+          </SegmentedItem>
+        ))}
+      </SegmentedTrack>
       <CustomRange active={active === "custom"} from={from} to={to} onPick={(a, b) => go("custom", a, b)} />
     </div>
   );
@@ -99,7 +87,7 @@ function CustomRange({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         className={cn(
-          "inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-small transition-colors",
+          "inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-small transition-colors",
           active
             ? "bg-accent text-text-onaccent"
             : "bg-surface-2 text-text-muted hover:text-text"

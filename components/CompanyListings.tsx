@@ -118,7 +118,7 @@ export function CompanyListings({
       key: agent.nickname,
       label: agent.nickname,
       count,
-      leading: <Avatar name={agent.nickname} tone="crimson" className="h-5 w-5" />,
+      leading: <Avatar name={agent.nickname} tone="accent" className="h-5 w-5" />,
     })),
   ];
   const currentAgent = agentOptions.find((o) => o.key === agentNick);
@@ -200,7 +200,7 @@ export function CompanyListings({
             <TBody>
               {list.map((l) => (
                 <TR key={l.listing_id} className="cursor-pointer" onClick={() => router.push(`/listings/${l.listing_id}`)}>
-                  <TD className="num text-small text-accent font-medium">
+                  <TD className="num text-small text-accent-ink font-medium">
                     <Link href={`/listings/${l.listing_id}`} onClick={(e) => e.stopPropagation()} className="hover:underline">
                       {l.listing_id}
                     </Link>
@@ -244,7 +244,7 @@ export function CompanyListings({
                   <TD>
                     {l.agent ? (
                       <span className="inline-flex items-center gap-2">
-                        <Avatar name={l.agent.nickname} tone="crimson" />
+                        <Avatar name={l.agent.nickname} tone="accent" />
                         <span className="text-small text-text-muted">{l.agent.nickname}</span>
                       </span>
                     ) : (
@@ -253,7 +253,7 @@ export function CompanyListings({
                   </TD>
                   <TD onClick={(e) => e.stopPropagation()} className="cursor-default">
                     {l.agent?.phone ? (
-                      <a href={`tel:${l.agent.phone}`} className="num text-small text-text-muted hover:text-accent inline-flex items-center gap-1 transition-colors">
+                      <a href={`tel:${l.agent.phone}`} className="num text-small text-text-muted hover:text-accent-ink inline-flex items-center gap-1 transition-colors">
                         <Phone size={12} strokeWidth={1.75} />{l.agent.phone}
                       </a>
                     ) : (
@@ -313,7 +313,7 @@ function FilterDropdown({
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "inline-flex items-center gap-1.5 text-small font-medium rounded-md px-3 py-1.5 border transition-colors",
-          active ? "bg-accent-wash text-accent border-accent" : "border-border-strong text-text-muted hover:bg-surface-2"
+          active ? "bg-accent-wash text-accent-ink border-accent" : "border-border-strong text-text-muted hover:bg-surface-2"
         )}
       >
         {active && activeLeading ? activeLeading : icon}
@@ -331,7 +331,7 @@ function FilterDropdown({
                 className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-small hover:bg-surface-hover transition-colors text-left"
               >
                 {o.leading && <span className="shrink-0">{o.leading}</span>}
-                <span className={cn("truncate flex-1", o.key === value && "text-accent font-medium")}>{o.label}</span>
+                <span className={cn("truncate flex-1", o.key === value && "text-accent-ink font-medium")}>{o.label}</span>
                 <span className="inline-flex items-center gap-1.5 shrink-0">
                   <span className="num text-label text-text-subtle">{o.count}</span>
                   {o.key === value && <Check size={14} strokeWidth={2.5} className="text-accent" />}

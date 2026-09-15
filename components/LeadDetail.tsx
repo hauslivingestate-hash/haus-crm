@@ -171,7 +171,7 @@ export async function LeadDetail({ id, inDrawer = false }: { id: string; inDrawe
               <Row label="ผู้ดูแล">
                 {lead.sale_id ? (
                   <span className="inline-flex items-center gap-2">
-                    <Avatar name={saleNickname} tone="crimson" className="h-5 w-5" />
+                    <Avatar name={saleNickname} tone="accent" className="h-5 w-5" />
                     <span className="text-text-muted">{saleNickname}</span>
                   </span>
                 ) : (

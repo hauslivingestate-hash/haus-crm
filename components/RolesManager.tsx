@@ -111,7 +111,7 @@ export function RolesManager({ config }: { config: RbacConfig }) {
           <button
             onClick={() => void run(() => createRole("บทบาทใหม่"))}
             disabled={busy}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent border-t border-border hover:bg-surface-hover transition-colors disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-small font-medium text-accent-ink border-t border-border hover:bg-surface-hover transition-colors disabled:opacity-50"
           >
             <Plus size={15} strokeWidth={2} /> สร้างบทบาท
           </button>

@@ -142,10 +142,10 @@ export function FollowUpCard({ data }: { data: OverdueFollowUps }) {
             <span className="text-text-subtle">
               แสดง {rows.length} จาก {total} รายการ
             </span>
-            <Link href="/leads" className="font-medium text-accent hover:text-accent-hover">
+            <Link href="/leads" className="font-medium text-accent-ink hover:text-accent">
               ดูลีดทั้งหมด
             </Link>
-            <Link href="/listings" className="font-medium text-accent hover:text-accent-hover">
+            <Link href="/listings" className="font-medium text-accent-ink hover:text-accent">
               ดูทรัพย์ทั้งหมด
             </Link>
           </div>
@@ -209,7 +209,7 @@ function Row({
         title={`ดูประวัติ ${row.name}${row.subtitle ? ` · ${row.subtitle}` : ""}`}
         className="min-w-0 flex-1 text-left leading-tight"
       >
-        <span className="block truncate text-body text-text hover:text-accent hover:underline">
+        <span className="block truncate text-body text-text hover:text-accent-ink hover:underline">
           {row.name}
         </span>
         {row.subtitle && (
@@ -234,7 +234,7 @@ function Row({
       </span>
 
       {claimed ? (
-        <span className="shrink-0 rounded-md bg-accent-wash px-1.5 py-0.5 text-label font-medium text-accent">
+        <span className="shrink-0 rounded-md bg-accent-wash px-1.5 py-0.5 text-label font-medium text-accent-ink">
           อยู่ในแผน
         </span>
       ) : (
@@ -336,7 +336,7 @@ function FollowUpDrawer({ row, onClose }: { row: FollowUpRow; onClose: () => voi
               {detail.phone ? (
                 <a
                   href={`tel:${detail.phone}`}
-                  className="num rounded-md bg-accent-wash px-3 py-1.5 font-medium text-accent"
+                  className="num rounded-md bg-accent-wash px-3 py-1.5 font-medium text-accent-ink"
                 >
                   {detail.phone}
                 </a>
@@ -380,7 +380,7 @@ function FollowUpDrawer({ row, onClose }: { row: FollowUpRow; onClose: () => voi
 
             <Link
               href={href}
-              className="inline-flex items-center gap-1.5 self-start text-small font-medium text-accent hover:text-accent-hover"
+              className="inline-flex items-center gap-1.5 self-start text-small font-medium text-accent-ink hover:text-accent"
             >
               เปิดข้อมูลทั้งหมด <ArrowUpRight size={13} strokeWidth={2} />
             </Link>

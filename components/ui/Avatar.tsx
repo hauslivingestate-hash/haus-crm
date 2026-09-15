@@ -7,7 +7,7 @@ export function Avatar({
   className,
 }: {
   name: string | null | undefined;
-  tone?: "crimson" | "neutral";
+  tone?: "accent" | "neutral";
   /** Optional profile image; falls back to initials when absent or empty. */
   src?: string | null;
   className?: string;
@@ -25,8 +25,8 @@ export function Avatar({
         "inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full text-label shrink-0",
         src
           ? "bg-surface-2"
-          : tone === "crimson"
-            ? "bg-accent-wash text-accent"
+          : tone === "accent"
+            ? "bg-accent-wash text-accent-ink"
             : "bg-surface-2 text-text-muted border border-border",
         className
       )}
