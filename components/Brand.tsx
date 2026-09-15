@@ -30,9 +30,11 @@ import stackedWhite from "@/public/brand/logo-stacked-white.png";
 type Variant = "lockup" | "mark" | "stacked";
 
 const ART: Record<Variant, { light: typeof logoMaroon; dark: typeof logoWhite; height: number }> = {
-  lockup: { light: logoMaroon, dark: logoWhite, height: 36 },
-  mark: { light: markMaroon, dark: markWhite, height: 32 },
-  stacked: { light: stackedMaroon, dark: stackedWhite, height: 112 },
+  // Ben, 2026-09-16: "about half" of the first cut (36 / 32 / 112). The PNGs are still
+  // exported at 2× the old sizes, so nothing needs re-cutting for these.
+  lockup: { light: logoMaroon, dark: logoWhite, height: 20 },
+  mark: { light: markMaroon, dark: markWhite, height: 18 },
+  stacked: { light: stackedMaroon, dark: stackedWhite, height: 64 },
 };
 
 export function Brand({ variant, className }: { variant: Variant; className?: string }) {
