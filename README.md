@@ -1,7 +1,7 @@
 # HAUS CRM
 
 ระบบ CRM หน้าเว็บของ **Haus Living Estate** — Next.js 15 + Tailwind v4 ต่อกับ Supabase
-สร้างตาม design system ใน [`haus-design-system`](../haus-design-system) (tokens, components, rules)
+design tokens อยู่ใน `app/globals.css` (semantic tokens เท่านั้น — อ่านหัวไฟล์ก่อนแก้สี)
 
 ## เริ่มใช้งาน
 
@@ -30,15 +30,16 @@ npm run dev                  # http://localhost:3000
 
 ```
 app/                     หน้าเว็บ (App Router)
-  layout.tsx             shell: ฟอนต์ + Sidebar
-  globals.css            design tokens (จาก haus-design-system/tokens.css)
+  layout.tsx             root: ฟอนต์ + ThemeProvider (สว่าง/มืด/ระบบ)
+  (app)/layout.tsx       shell: Sidebar (ย่อได้, จำด้วย cookie) + Topbar + providers
+  globals.css            design tokens — primitives → semantic → @theme map
   page.tsx               / — แดชบอร์ด (KPI, pipeline, ผลงานเซล)
   pipeline/page.tsx      /pipeline — บอร์ดดีลตามสเตจ
   leads/page.tsx         /leads — ตาราง CRM ผู้ซื้อ
   listings/page.tsx      /listings — ตารางทรัพย์ (v_main_listing)
   styleguide/page.tsx    /styleguide — โทเคน + component ทั้งหมด
 components/
-  Sidebar.tsx Topbar.tsx PipelineBoard.tsx   ส่วนประกอบหน้า
+  Shell.tsx Sidebar.tsx Topbar.tsx IdentityMenu.tsx   เปลือกแอป (เมนู, breadcrumb, บัญชี/ธีม/ดูในมุมมอง)
   ui/                    component library (Button, Card, Stat, Table, ...)
 lib/
   supabase.ts            Supabase client (anon, read-only)
@@ -61,9 +62,15 @@ lib/
 
 ## กติกา design system (ห้ามพลาด)
 
-- **ห้าม hard-code hex** ใน component — ใช้ token utility (`bg-surface`, `text-accent`, ...)
-- ทุกตัวเลขใส่ `className="num"` (IBM Plex Mono, tabular)
-- Status = จุดสี + ข้อความ (ไม่ใช่ pill ทึบ) · โครงสร้างด้วย border ไม่ใช่ shadow
-- Accent เดียวคือ crimson `#a32638` · โลโก้ maroon `#631222` ไม่ใช้เป็น UI accent
+Redesign 2026-09-15: layout จาก reference "Shopall", สีจาก "MoonRow" — ส้ม / navy / พื้นเทาเย็น / การ์ดขาว
 
-ดูรายละเอียดเต็มที่ [`../haus-design-system/DESIGN_SYSTEM.md`](../haus-design-system/DESIGN_SYSTEM.md)
+- **ห้าม hard-code hex** ใน component — ใช้ token utility (`bg-surface`, `text-accent`, ...) ทั้งหมดอยู่ใน `app/globals.css`
+- ทุกตัวเลขใส่ `className="num"` (IBM Plex Mono, tabular)
+- **Accent เดียวคือส้ม** (`--accent`) ใช้กับปุ่ม, แถบ, ไอคอน, ตัวเลขใหญ่ · **ข้อความเล็กสีส้มต้องใช้ `text-accent-ink`**
+  (ส้มสดบนขาวไม่ผ่าน AA ที่ 3.2:1; ink ผ่านที่ 4.7:1)
+- "blue" = navy (`--navy-500`) — ไม่มีน้ำเงินสดในระบบ · แดงเป็นแดงจริง ไม่ใช่ส้มแดง
+- Status = จุดสีใน pill เทากลาง (`StatusBadge`) — pill ไม่ย้อมสีสถานะ
+- Segmented control ใช้ `SegmentedTrack` / `SegmentedItem` (pill navy) — ห้ามก๊อปคลาสเอง
+- `CardHeader` ไม่มีเส้นคั่น; `CardContent` ที่ตามหลังจะดึงขึ้นชิดเอง
+- โลโก้ maroon `#631222` ใช้กับ wordmark เท่านั้น (รอไฟล์โลโก้จาก Ben)
+- Dark mode: `next-themes` + `class="dark"`; สลับได้จากเมนูบัญชี (avatar) — เปลี่ยน token ต้องเช็คทั้งสองธีม

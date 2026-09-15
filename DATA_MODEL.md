@@ -736,6 +736,12 @@ swap `theme.ts`'s `accent` to the CRM crimson and it re-themes in one place. Sig
 ported: editorial `SectionHead` ([ n / 07 ] + big display title), champagne `Recognition`
 spotlight, green day×agent heatmap grid.
 
+> **Superseded 2026-09-15.** The burgundy `theme.ts` dashboard is gone. The current
+> dashboard (`components/dashboard/SalesDashboard.tsx`, `KpiRow.tsx`) uses the app's own
+> tokens, and the app was rethemed the same day — orange accent, navy ink, cool grey canvas
+> — with a collapsible sidebar, breadcrumb topbar and an identity menu carrying the dark-mode
+> toggle. Rules and rationale: README → กติกา design system, and the header of `app/globals.css`.
+
 **The core metric split (same as HAUS V2), enforced in `lib/dashboard.ts`:**
 - **FLOW** (revenue, closed_count, new_leads, new_listings, actions) — summed across the
   selected months (`sumFlow`) → **obeys the picker**.
