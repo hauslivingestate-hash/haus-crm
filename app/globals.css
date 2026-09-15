@@ -13,7 +13,7 @@
 
 /* ---------------------------------------------------------------- PRIMITIVES */
 :root {
-  --maroon-900: #631222;   /* logo / brand anchor only — never a UI colour. Wordmark until the logo file lands. */
+  --maroon-900: #631222;   /* brand anchor only — never a UI colour. The logo itself is an image (components/Brand.tsx); this is the ink colour of that image, kept for anything that must match it (favicon, email). */
 
   --orange-500: #f4641e;   /* accent: buttons, bars, rings, active states */
   --orange-600: #d9520f;   /* accent hover / pressed */

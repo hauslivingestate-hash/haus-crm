@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { AUTH_ENFORCED } from "@/lib/supabaseConfig";
+import { Brand } from "@/components/Brand";
 
 // Real sign-in against Supabase Auth (wired 2026-08-03).
 //
@@ -68,16 +69,8 @@ export function LoginForm() {
       {/* Form column */}
       <div className="flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-16">
         <div className="w-full max-w-sm mx-auto">
-          {/* Brand — same treatment as the sidebar rail */}
-          <div className="leading-none mb-8">
-            <div
-              className="text-h1 font-bold tracking-tight"
-              style={{ color: "var(--maroon-900)" }}
-            >
-              HAUS
-            </div>
-            <div className="text-label uppercase text-text-subtle mt-0.5">Living Estate</div>
-          </div>
+          {/* Brand — the stacked cut; the rail uses the horizontal one */}
+          <Brand variant="stacked" className="mb-8" />
 
           <h1 className="text-h2">เข้าสู่ระบบ</h1>
           <p className="text-small text-text-muted mt-1">

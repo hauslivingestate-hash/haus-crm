@@ -9,6 +9,7 @@ import { useShell } from "@/components/Shell";
 import { useRbac } from "@/components/RbacProvider";
 import { Avatar } from "@/components/ui/Avatar";
 import { IdentityMenu } from "@/components/IdentityMenu";
+import { Brand } from "@/components/Brand";
 
 /** Desktop: static rail in the layout grid, 228px or collapsed to a 64px icon rail.
  *  Mobile: off-canvas drawer overlay, never collapsed — there is nothing to save width for. */
@@ -63,24 +64,14 @@ function SidebarBody({ collapsed }: { collapsed: boolean }) {
 
   return (
     <>
-      {/* Brand. The wordmark is the brand maroon until the logo file lands (Ben, 2026-09-15). */}
+      {/* Brand — the house mark alone on the icon rail, the full lockup otherwise. */}
       <div
         className={cn(
           "flex h-14 shrink-0 items-center border-b border-border",
-          collapsed ? "justify-center px-0" : "gap-2 px-4"
+          collapsed ? "justify-center px-0" : "justify-between gap-2 px-4"
         )}
       >
-        <div className="min-w-0 leading-none">
-          <div
-            className={cn("font-bold tracking-tight", collapsed ? "text-h3" : "text-h1")}
-            style={{ color: "var(--maroon-900)" }}
-          >
-            HAUS
-          </div>
-          {!collapsed && (
-            <div className="mt-0.5 text-label uppercase text-text-subtle">Living Estate</div>
-          )}
-        </div>
+        <Brand variant={collapsed ? "mark" : "lockup"} />
         {!collapsed && <CollapseButton collapsed={false} onClick={() => setCollapsed(true)} />}
       </div>
       {collapsed && (
