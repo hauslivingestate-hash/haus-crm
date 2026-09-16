@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Pencil, Plus, Crown } from "lucide-react";
+import { Search, Pencil, Plus, Crown, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +11,13 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { useRbac } from "@/components/RbacProvider";
-import { employeeFullName, DEPARTMENT_LABEL, type Employee } from "@/lib/team";
+import {
+  employeeFullName,
+  employeeSetupGaps,
+  DEPARTMENT_LABEL,
+  SETUP_GAP,
+  type Employee,
+} from "@/lib/team";
 
 // ทีม / บุคคล — the roster, from main_1_hr (Phase 6; it was a seeded array with invented
 // salaries for real colleagues).
@@ -140,11 +146,16 @@ export function TeamTable({ employees }: { employees: Employee[] }) {
                   </span>
                 </TD>
                 <TD>
-                  {e.status === "active" ? (
-                    <Pill tone="green">ทำงานอยู่</Pill>
-                  ) : (
-                    <Pill tone="neutral">พ้นสภาพ</Pill>
-                  )}
+                  <div className="flex flex-col items-start gap-1">
+                    {e.status === "active" ? (
+                      <Pill tone="green">ทำงานอยู่</Pill>
+                    ) : (
+                      <Pill tone="neutral">พ้นสภาพ</Pill>
+                    )}
+                    {/* Same permission as the บทบาท column, and for the same reason: without
+                        it `roleNames` is empty for everyone but yourself. */}
+                    {showRoles && <SetupWarning employee={e} />}
+                  </div>
                 </TD>
                 {/* null ≠ 0 — you are not allowed to see this person's activity log, which
                     is a different statement from "they logged nothing". */}
@@ -174,5 +185,25 @@ export function TeamTable({ employees }: { employees: Employee[] }) {
         </Table>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * "Not finished setting up" — the row half of the onboarding check.
+ *
+ * ⚠️ Render only behind roles.manage / people.manage. See employeeSetupGaps(): `user_roles`
+ * is own-row for everyone else, so an agent would see this on every colleague.
+ *
+ * One gap names itself, because that is the whole instruction ("ยังไม่มีบัญชีเข้าระบบ" →
+ * go make one). More than one would not fit the column; the record page lists them.
+ */
+function SetupWarning({ employee }: { employee: Employee }) {
+  const gaps = employeeSetupGaps(employee);
+  if (!gaps.length) return null;
+  return (
+    <Pill tone="amber" className="whitespace-nowrap">
+      <AlertTriangle size={11} strokeWidth={2} />
+      {gaps.length === 1 ? SETUP_GAP[gaps[0]].label : `ยังตั้งค่าไม่ครบ · ${gaps.length} ข้อ`}
+    </Pill>
   );
 }

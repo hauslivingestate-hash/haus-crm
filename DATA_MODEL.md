@@ -767,6 +767,19 @@ spotlight, green day×agent heatmap grid.
 > round trip. Shown on the roster, the record, the ทีม dashboard table, the ผู้ดูแล column
 > and the sidebar/topbar; everyone without a photo keeps their initials.
 
+> **Onboarding completeness shipped 2026-09-16.** Adding a salesperson is five steps across
+> four screens — ทีม → เพิ่มพนักงาน, then the photo on the record, then ตั้งค่า → บัญชีผู้ใช้,
+> → บทบาท & สิทธิ์, → ทีมขาย / โซน — and nothing linked them, so an abandoned row looked
+> identical to a finished one and the person simply could not sign in. `employeeSetupGaps()`
+> in `lib/team.ts` is the single definition of "incomplete": no `auth_user_id`, no
+> `user_roles` row, or ฝ่ายขาย with no `team_id`. Surfaced as an amber pill on the ทีม row
+> and an actionable checklist on the record, which deep-links to the right ตั้งค่า tab via
+> `?tab=` (read server-side in the page, so `SettingsView` needs no Suspense boundary).
+> ⚠️ **Both call sites are gated on `people.manage` / `roles.manage`** — `user_roles` SELECT
+> is own-row for everyone else, so an agent would otherwise see "ยังไม่มีบทบาท" on every
+> colleague. Terminated staff are exempt (a leaver *should* have no account), and only
+> ฝ่ายขาย needs a team: `teams` is ทีมขาย, and support/management legitimately have none.
+
 **The core metric split (same as HAUS V2), enforced in `lib/dashboard.ts`:**
 - **FLOW** (revenue, closed_count, new_leads, new_listings, actions) — summed across the
   selected months (`sumFlow`) → **obeys the picker**.

@@ -34,6 +34,9 @@ export interface Employee {
   zoneNames: string[];
   /** Role names from `user_roles` → `roles.name`. */
   roleNames: string[];
+  /** True when an auth account is linked (`main_1_hr.auth_user_id`). Without one the
+   *  person cannot sign in at all, however complete the rest of the record is. */
+  hasLogin: boolean;
   /** From `main_1_hr.team_id` → `teams.name`. ⚠️ `teams` is EMPTY and nobody holds
    *  `sales_leader`: the CEO has not named team leads yet, so this is undefined for
    *  everyone and `visible_employee_codes()` resolves to "just me" for all roles. */
@@ -101,6 +104,43 @@ export const DEPARTMENT_LABEL: Record<Department, string> = {
   sales: "ฝ่ายขาย",
   support: "ฝ่ายสนับสนุน",
 };
+
+// ── Onboarding completeness (2026-09-16) ─────────────────────────────────────
+//
+// Adding someone takes five steps across four screens — the record, the photo, the login
+// account, the role, then team/zone — and nothing links them. A row created and then
+// abandoned looks exactly like a finished one, so the person sits in the roster unable to
+// sign in and nobody is told. These three gaps are the ones that stop the app working for
+// them; the photo is cosmetic and zones only steer listing assignment, so neither counts.
+
+export type SetupGap = "login" | "role" | "team";
+
+export const SETUP_GAP: Record<SetupGap, { label: string; where: string; tab: string }> = {
+  login: { label: "ยังไม่มีบัญชีเข้าระบบ", where: "ตั้งค่า → บัญชีผู้ใช้", tab: "accounts" },
+  role: { label: "ยังไม่มีบทบาท", where: "ตั้งค่า → บทบาท & สิทธิ์", tab: "roles" },
+  team: { label: "ยังไม่ได้เข้าทีม", where: "ตั้งค่า → ทีมขาย", tab: "teams" },
+};
+
+/**
+ * Which onboarding steps this employee is still missing.
+ *
+ * ⚠️ ONLY MEANINGFUL BEHIND roles.manage / people.manage. `user_roles` SELECT is own-row
+ * for everyone else, so `roleNames` reads empty for a colleague who does hold a role —
+ * called unguarded, this would accuse most of the roster of having no role.
+ *
+ * Two deliberate exemptions:
+ *   • terminated — a leaver SHOULD have no account; flagging them is noise.
+ *   • team, for anyone outside ฝ่ายขาย — `teams` is ทีมขาย. Support and management
+ *     legitimately belong to none, and today 3 of 9 active people are in that position.
+ */
+export function employeeSetupGaps(e: Employee): SetupGap[] {
+  if (e.status !== "active") return [];
+  const gaps: SetupGap[] = [];
+  if (!e.hasLogin) gaps.push("login");
+  if (!e.roleNames.length) gaps.push("role");
+  if (e.department === "sales" && !e.teamName) gaps.push("team");
+  return gaps;
+}
 
 /** The sheet stores 'Active' / 'Terminate'; anything unrecognised counts as gone. */
 export function asEmployeeStatus(raw: string | null | undefined): EmployeeStatus {

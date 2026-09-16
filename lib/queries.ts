@@ -843,7 +843,7 @@ export async function getEmployees(): Promise<Employee[]> {
           "first_name_th,last_name_th,nickname,gender,nationality,phone,additional_phone," +
           "email,work_email,line_userid,birthday,date_started,emergency_contact," +
           "emergency_contact_phone,emergency_contact_relationship,remark,sales_sheet_url,team_id," +
-          "probation_start,probation_passed_at,avatar_path"
+          "probation_start,probation_passed_at,avatar_path,auth_user_id"
       )
       .order("employee_code"),
     supabase.from("zone_sales").select("zone_id,employee_code"),
@@ -932,6 +932,9 @@ export async function getEmployees(): Promise<Employee[]> {
       zoneCodes,
       zoneNames: zoneCodes.map((z) => zoneName.get(z) ?? z),
       roleNames: (rolesOf.get(code) ?? []).map((r) => roleName.get(r.role_id) ?? r.role_id),
+      // `authenticated` holds column-level SELECT on auth_user_id, so this is readable by
+      // everyone — but employeeSetupGaps() must still be gated, because roleNames is not.
+      hasLogin: e.auth_user_id != null,
       firstNameEn: e.first_name_en ?? undefined,
       lastNameEn: e.last_name_en ?? undefined,
       firstNameTh: e.first_name_th ?? undefined,

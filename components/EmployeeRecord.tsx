@@ -12,8 +12,9 @@
 // `update` on those columns was never revoked from `authenticated` — only `select` was.
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Lock, Check, X, MapPin } from "lucide-react";
+import { Pencil, Lock, Check, X, MapPin, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
@@ -26,7 +27,9 @@ import { setProbation } from "@/lib/mutations/probation";
 import { todayISO } from "@/lib/momentum";
 import {
   employeeFullName,
+  employeeSetupGaps,
   DEPARTMENT_LABEL,
+  SETUP_GAP,
   type Department,
   type Employee,
   type EmployeeStatus,
@@ -53,6 +56,9 @@ export function EmployeeRecord({
   const canMoney = can("financials.view_comp");
   const canPii = can("people.view_sensitive");
   const canManage = can("people.manage");
+  // employeeSetupGaps() reads roleNames, which RLS empties for anyone without one of these
+  // two — so the checklist is shown to the people who can actually close the gaps.
+  const canSeeSetup = can("people.manage") || can("roles.manage");
   const isNew = employee === null;
 
   const [mode, setMode] = React.useState<"view" | "edit">(initialMode);
@@ -252,6 +258,10 @@ export function EmployeeRecord({
       {error && (
         <Card className="p-3 text-small text-red bg-red-bg/50 border-red/30">{error}</Card>
       )}
+
+      {/* Saving a new record lands here (see save()), which makes this the one place the
+          remaining onboarding steps are guaranteed to be seen. */}
+      {employee && canSeeSetup && <SetupChecklist employee={employee} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {/* Role / placement */}
@@ -555,6 +565,42 @@ function LockedNote({ label }: { label: string }) {
       <CardContent className="flex items-center gap-2 py-4 text-small text-text-subtle">
         <Lock size={13} strokeWidth={1.75} />
         {label} — คุณไม่มีสิทธิ์เข้าถึงข้อมูลส่วนนี้
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The remaining onboarding steps, with where to go and do them.
+ *
+ * ⚠️ Gated on people.manage / roles.manage by the caller — employeeSetupGaps() would
+ * otherwise read every colleague as role-less, because `user_roles` SELECT is own-row.
+ *
+ * The row pill in TeamTable is the glance version; this is the actionable one. A warning
+ * that says "incomplete" without saying what or where would just start a hunt.
+ */
+function SetupChecklist({ employee }: { employee: Employee }) {
+  const gaps = employeeSetupGaps(employee);
+  if (!gaps.length) return null;
+  return (
+    <Card className="border-amber/30 bg-amber-bg/40">
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-small font-medium text-amber">
+          <AlertTriangle size={14} strokeWidth={2} /> ยังตั้งค่าไม่ครบ
+        </div>
+        <ul className="space-y-1">
+          {gaps.map((g) => (
+            <li key={g} className="flex flex-wrap items-baseline gap-x-2 text-small">
+              <span className="text-text">{SETUP_GAP[g].label}</span>
+              <Link
+                href={`/settings?tab=${SETUP_GAP[g].tab}`}
+                className="text-accent-ink hover:underline"
+              >
+                {SETUP_GAP[g].where}
+              </Link>
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );

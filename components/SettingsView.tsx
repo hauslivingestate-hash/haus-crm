@@ -75,6 +75,7 @@ export function SettingsView({
   checklistTemplates,
   roleOptions,
   colorLists,
+  initialSection,
 }: {
   zones: Zone[];
   /** Listings per property type — impact line for the delete confirm. */
@@ -100,10 +101,17 @@ export function SettingsView({
   checklistTemplates: ChecklistTemplate[];
   /** Roles a checklist step can be assigned to. */
   roleOptions: { id: string; name: string }[];
+  /** `?tab=` from the URL — how the onboarding checklist on a ทีม record links straight to
+   *  the section that closes the gap. Ignored when it names a section this viewer can't
+   *  see, so a stale or hand-typed link degrades to the default rather than an empty pane. */
+  initialSection?: string;
 }) {
   const { can } = useRbac();
   const visible = SECTIONS.filter((s) => can(s.perm));
-  const [section, setSection] = React.useState<SectionKey>(() => visible[0]?.key ?? "roles");
+  const [section, setSection] = React.useState<SectionKey>(
+    () =>
+      visible.find((s) => s.key === initialSection)?.key ?? visible[0]?.key ?? "roles"
+  );
 
   // Keep the selection valid as the viewer (view-as) changes and the visible set shifts.
   const visibleKeys = visible.map((s) => s.key).join(",");
