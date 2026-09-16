@@ -5,7 +5,12 @@ import { Topbar } from "@/components/Topbar";
 import { NewSalesDetail } from "@/components/NewSalesDetail";
 import { getEmployees, getProbationTallies, getAgentActivities } from "@/lib/queries";
 
-// One new sale's probation stats — click-through from the เซลล์ใหม่ leaderboard.
+/* The FULL PAGE for one new sale. Reached by opening /new-sales/S-006 cold — a pasted
+   link, a refresh, or any navigation that did not start on the leaderboard.
+
+   A click from the board does NOT land here: Next intercepts it and renders the same
+   <NewSalesDetail /> as a slide-over (app/(app)/new-sales/@drawer/(.)[id]/page.tsx).
+   Everything below the Topbar is shared, so the page and the drawer cannot disagree. */
 export default async function NewSalesDetailPage({
   params,
 }: {
@@ -27,20 +32,22 @@ export default async function NewSalesDetailPage({
   return (
     <>
       <Topbar title="เซลล์ใหม่" actions={false} />
-      <div className="p-4 lg:p-6 space-y-4">
+
+      <div className="px-4 pt-4 lg:px-6 lg:pt-6">
         <Link
           href="/new-sales"
           className="inline-flex items-center gap-1.5 text-small text-text-muted hover:text-text transition-colors"
         >
           <ArrowLeft size={14} strokeWidth={1.75} /> กลับไปอันดับเซลล์ใหม่
         </Link>
-        <NewSalesDetail
-          employeeCode={employee.code}
-          employees={employees}
-          tallies={tallies}
-          activities={activities}
-        />
       </div>
+
+      <NewSalesDetail
+        employeeCode={employee.code}
+        employees={employees}
+        tallies={tallies}
+        activities={activities}
+      />
     </>
   );
 }

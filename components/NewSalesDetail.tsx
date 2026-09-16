@@ -18,17 +18,24 @@ import { cn } from "@/lib/cn";
 // One new sale's full probation stats — the click-through from the เซลล์ใหม่ leaderboard.
 // Shows the whole ladder (achieved + upcoming ranks with per-criterion bars) and the
 // agent's recent logged activities. Same live derivation as the board (ProbationProvider).
+//
+// Rendered in two frames: the full page (/new-sales/[id]) and the drawer that intercepts a
+// click from the board (@drawer/(.)[id]). `inDrawer` changes the SHAPE, never the CONTENT —
+// same rule as LeadDetail, so the two can never show different figures.
 export function NewSalesDetail({
   employeeCode,
   employees = [],
   tallies = {},
   activities = [],
+  inDrawer = false,
 }: {
   employeeCode: string;
   employees?: Employee[];
   tallies?: Record<string, ActivityTally>;
   /** This agent's recent log rows, newest first (lib/queries getAgentActivities). */
   activities?: { date: string; action: string; count: number; remark: string | null }[];
+  /** Rendered inside the slide-over rather than as a page. Owns the padding either way. */
+  inDrawer?: boolean;
 }) {
   const { ranks } = useProbation();
   const rows = rankedNewSales(ranks, employees, tallies);
@@ -36,7 +43,7 @@ export function NewSalesDetail({
 
   if (idx === -1) {
     return (
-      <Card>
+      <Card className={cn("m-4 lg:m-5", !inDrawer && "lg:m-6")}>
         <CardContent className="py-10 text-center text-small text-text-subtle">
           ไม่พบเซลล์ใหม่คนนี้ในโปรแกรมโปรเบชั่น
         </CardContent>
@@ -49,8 +56,10 @@ export function NewSalesDetail({
   const acts = activities;
 
   return (
-    <div className="space-y-4">
-      {/* Identity header */}
+    <div className={cn("space-y-4", inDrawer ? "p-4 lg:p-5" : "p-4 lg:p-6")}>
+      {/* Identity header. In the drawer, pr-11 keeps the ring clear of the floating ✕,
+          which sits over the top-right of the panel — see components/ui/Drawer.tsx. */}
+      <div className={cn(inDrawer && "pr-11")}>
       <Card>
         <CardContent className="flex items-center gap-3 flex-wrap">
           <span
@@ -89,8 +98,16 @@ export function NewSalesDetail({
           </div>
         </CardContent>
       </Card>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4 items-start">
+      {/* `lg:` is a VIEWPORT query, not a container one: left on, the 340px side column
+          would still split a 600px panel on a wide monitor. The drawer stacks instead. */}
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-4 items-start",
+          !inDrawer && "lg:grid-cols-[1fr_340px]"
+        )}
+      >
         {/* The full ladder — every rank with its criteria */}
         <div className="flex flex-col gap-4">
           {ev.ranks.map((r, ri) => {
