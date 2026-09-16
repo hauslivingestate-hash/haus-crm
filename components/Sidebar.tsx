@@ -57,7 +57,7 @@ export function Sidebar({ counts = {} }: { counts?: NavCounts }) {
 
 function SidebarBody({ collapsed, counts }: { collapsed: boolean; counts: NavCounts }) {
   const pathname = usePathname();
-  const { can, currentUser, roles } = useRbac();
+  const { can, currentUser, roles, avatarUrl } = useRbac();
   const { setCollapsed } = useShell();
   const { pendingCount } = useLeave();
   const current = navItemFor(pathname);
@@ -150,7 +150,7 @@ function SidebarBody({ collapsed, counts }: { collapsed: boolean; counts: NavCou
                 open && "bg-surface-hover"
               )}
             >
-              <Avatar name={currentUser.name} tone="accent" className="size-7 text-label" />
+              <Avatar name={currentUser.name} src={avatarUrl} tone="accent" className="size-7 text-label" />
               {!collapsed && (
                 <>
                   <span className="min-w-0 flex-1 text-left leading-tight">

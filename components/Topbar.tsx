@@ -31,7 +31,7 @@ export function Topbar({
   actions?: React.ReactNode;
 }) {
   const { setMobileOpen } = useShell();
-  const { can, currentUser } = useRbac();
+  const { can, currentUser, avatarUrl } = useRbac();
   const pathname = usePathname();
   const parent = navItemFor(pathname);
   const showParent = parent !== null && parent.label !== title;
@@ -102,7 +102,7 @@ export function Topbar({
                 open ? "bg-surface-2" : "hover:bg-surface-hover"
               )}
             >
-              <Avatar name={currentUser.name} tone="accent" className="size-7 text-label" />
+              <Avatar name={currentUser.name} src={avatarUrl} tone="accent" className="size-7 text-label" />
               <ChevronDown size={14} strokeWidth={1.75} className="text-text-subtle" />
             </button>
           )}

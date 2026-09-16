@@ -20,7 +20,6 @@ import { useMasterData } from "@/components/MasterDataProvider";
 import { useRbac } from "@/components/RbacProvider";
 import { setLeadTag, createLead } from "@/lib/mutations/leads";
 import { formatBaht, formatDate } from "@/lib/format";
-import { leadStatusDot } from "@/lib/status";
 import { compareValues, orderIndex } from "@/lib/sort";
 import { cn } from "@/lib/cn";
 

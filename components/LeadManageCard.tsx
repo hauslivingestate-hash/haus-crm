@@ -31,7 +31,7 @@ import { updateLead } from "@/lib/mutations/leads";
 import { stageMeta, CLOSED_STAGES } from "@/lib/pipeline";
 import { useMasterData } from "@/components/MasterDataProvider";
 import { LEAD_POTENTIALS } from "@/lib/leads";
-import { leadStatusDot } from "@/lib/status";
+import { lookupDot } from "@/lib/tables/fills";
 import { useRouter } from "next/navigation";
 
 const LEAD_STATUSES = ["Active", "Win", "Lose", "Reject"];
@@ -63,7 +63,7 @@ export function LeadManageCard({
 }) {
   const router = useRouter();
   const { can } = useRbac();
-  const { pipelineStages } = useMasterData();
+  const { pipelineStages, colors } = useMasterData();
   const editable = can("leads.edit") || can("leads.assign") || can("roles.manage");
 
   // One write path for all three — updateLead already validates the field name, re-reads
@@ -82,19 +82,19 @@ export function LeadManageCard({
      sheet rows carry stages and grades that were later renamed, and a pill row with
      nothing lit reads as "unset" — the next tap would then overwrite a real value the
      user was never shown. */
-  /* The LIST comes from ตั้งค่า (the pipeline_stage table, in its stored order); the Thai
-     label and the dot colour come from lib/pipeline.ts for stages it knows, and fall back
-     to the stage's own name for one added since. That split is deliberate: the business
-     owns which stages exist, the code owns how a known stage is drawn. */
+  /* The LIST and the COLOUR both come from ตั้งค่า — the pipeline_stage table in its
+     stored order, and the swatch chosen in สีสถานะ. lib/pipeline.ts only supplies the
+     label (the stored name) and the em dash for an empty stage. */
   const stageOpts: PillOption<string>[] = withCurrent(
-    pipelineStages.map((s) => {
-      const m = stageMeta(s.id);
-      return { value: s.id, label: m.label, dot: m.dot };
-    }),
+    pipelineStages.map((s) => ({
+      value: s.id,
+      label: stageMeta(s.id).label,
+      dot: lookupDot(colors.pipeline_stage, s.id),
+    })),
     stage
   );
   const statusOpts: PillOption<string>[] = withCurrent(
-    LEAD_STATUSES.map((s) => ({ value: s, label: s, dot: leadStatusDot(s) })),
+    LEAD_STATUSES.map((s) => ({ value: s, label: s, dot: lookupDot(colors.lead_status, s) })),
     status
   );
   const gradeOpts: PillOption<string>[] = withCurrent(

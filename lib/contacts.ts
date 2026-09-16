@@ -49,9 +49,9 @@ export interface ContactDemand {
   leadId: string;
   interest: string;
   budget: number | null;
-  /** The pipeline stage, shown as stored (lib/pipeline.ts). */
+  /** The pipeline stage, shown as stored (lib/pipeline.ts). Colour it at render with
+      lookupDot(colors.pipeline_stage, stageLabel) — the label IS the stored value. */
   stageLabel: string;
-  stageDot: string; // bg-* token
   deal: "buy" | "rent";
 }
 

@@ -19,7 +19,7 @@ import { useRbac } from "@/components/RbacProvider";
 import { useMasterData } from "@/components/MasterDataProvider";
 import { updateListing } from "@/lib/mutations/listings";
 import { ownerStageMeta } from "@/lib/ownerPipeline";
-import { listingStatusDot } from "@/lib/status";
+import { lookupDot } from "@/lib/tables/fills";
 
 const label = "text-label uppercase tracking-wide text-text-subtle mb-1.5";
 
@@ -44,7 +44,7 @@ export function ListingManageCard({
 }) {
   const router = useRouter();
   const { can } = useRbac();
-  const { listingStatuses, ownerStages } = useMasterData();
+  const { listingStatuses, ownerStages, colors } = useMasterData();
   const editable = can("listings.edit") || can("roles.manage");
 
   const save = React.useCallback(
@@ -59,18 +59,19 @@ export function ListingManageCard({
 
   // List and labels both from ตั้งค่า (owner_stage, in stored order) — the stage is shown
   // under the name it is stored as, so Settings and this card can never disagree. Only the
-  // dot colour comes from code.
+  // dot colour comes from code: owner_stage has no colour in สีสถานะ yet.
   const stageOpts: PillOption<string>[] = withCurrent(
     ownerStages.map((s) => ({ value: s.id, label: s.label, dot: ownerStageMeta(s.id).dot })),
     ownerStage
   );
-  // The status vocabulary is governed in ตั้งค่า, so it is read from the live list rather
-  // than a constant here — a status added there must appear without a code change.
+  // The status vocabulary AND its colour are governed in ตั้งค่า, so both are read from
+  // the live data rather than a constant here — a status added or recoloured there must
+  // show without a code change.
   const statusOpts: PillOption<string>[] = withCurrent(
     listingStatuses.map((s) => ({
       value: s.label,
       label: s.label,
-      dot: listingStatusDot(s.label),
+      dot: lookupDot(colors.listing_status, s.label),
     })),
     listingStatus
   );

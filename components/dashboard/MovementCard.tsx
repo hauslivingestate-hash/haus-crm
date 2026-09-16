@@ -9,6 +9,8 @@ import { cn } from "@/lib/cn";
 import { formatNumber, formatDate } from "@/lib/format";
 import { stageMeta } from "@/lib/pipeline";
 import { ownerStageMeta } from "@/lib/ownerPipeline";
+import { useMasterData } from "@/components/MasterDataProvider";
+import { lookupDot } from "@/lib/tables/fills";
 import { PERIOD_LABEL, type PeriodLength } from "@/lib/range";
 import { actionMetric, ownerStageMetric, stageMetric, type WorkMetric } from "@/lib/workTargets";
 import { drillKey, type DrillCase, type DrillTarget } from "@/lib/movementDrill";
@@ -112,6 +114,9 @@ export function MovementCard({
       list can never describe a different window than the bar that opened it. */
   searchParams: { range?: string; from?: string; to?: string };
 }) {
+  // Buyer-stage dots wear the ตั้งค่า colour; owner stages keep their code colour until
+  // owner_stage has one in สีสถานะ.
+  const { colors } = useMasterData();
   const [ownerView, setOwnerView] = React.useState<View>("actions");
   const [buyerView, setBuyerView] = React.useState<View>("actions");
   const [drill, setDrill] = React.useState<{ target: DrillTarget; label: string } | null>(null);
@@ -226,7 +231,7 @@ export function MovementCard({
       // system is the event, and asking somebody to also log "I received a lead" would
       // both double-count it and go undone.
       n: isIntake ? newLeads : slot?.n ?? 0,
-      dot: meta.dot,
+      dot: lookupDot(colors.pipeline_stage, stage),
       delta: isIntake ? null : slot?.prev == null ? null : slot.n - slot.prev,
       metric,
       target: goal(metric),
@@ -249,7 +254,7 @@ export function MovementCard({
       key: f.stage,
       label: meta.label,
       n: f.reached,
-      dot: meta.dot,
+      dot: lookupDot(colors.pipeline_stage, f.stage),
       sub: cohort > 0 ? `${Math.round((f.reached / cohort) * 100)}%` : "—",
       moves,
       subTitle: `${f.reached} จาก ${cohort} ลีดที่รับเข้ามาใน${range.label} ไปถึงขั้นนี้`,

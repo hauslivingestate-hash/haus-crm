@@ -9,6 +9,8 @@ import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
 import { ROLE_LABEL, ROLE_TONE } from "@/lib/contacts";
 import { getContact } from "@/lib/queries";
+import { getLookupColors } from "@/lib/tables/colors";
+import { lookupDot } from "@/lib/tables/fills";
 import { formatBaht, formatRent } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -18,7 +20,7 @@ export default async function ContactDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const c = await getContact(id);
+  const [c, colors] = await Promise.all([getContact(id), getLookupColors()]);
   if (!c) notFound();
 
   return (
@@ -128,7 +130,7 @@ export default async function ContactDetailPage({
                         </span>
                       )}
                       <span className={cn("shrink-0", d.budget == null && "ml-auto")}>
-                        <StatusBadge color={d.stageDot}>{d.stageLabel}</StatusBadge>
+                        <StatusBadge color={lookupDot(colors.pipeline_stage, d.stageLabel)}>{d.stageLabel}</StatusBadge>
                       </span>
                     </div>
                   ))

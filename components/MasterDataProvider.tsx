@@ -6,6 +6,7 @@ import { PROPERTY_TYPES, POTENTIALS } from "@/lib/masterdata";
 import { SEED_LEAD_TAGS, type LeadTag } from "@/lib/tags";
 import { STAGES } from "@/lib/pipeline";
 import { OWNER_STAGES } from "@/lib/ownerPipeline";
+import { EMPTY_COLORS, type LookupColors } from "@/lib/tables/fills";
 
 // Shared LIVE store for the governed reference vocabularies (property type, marketing
 // channel, contact-by, gender, nationality) — the single source both the Settings managers
@@ -63,6 +64,10 @@ interface MasterDataValue {
      a session that loaded no lookups. The LIST is the database's. */
   pipelineStages: RefItem[];
   ownerStages: RefItem[];
+  /** The colour each status / stage / grade wears, chosen in ตั้งค่า → สีสถานะ. Read it
+      through lookupDot / lookupFill (lib/tables/fills.ts). Empty without a session, which
+      renders every dot neutral rather than inventing a colour. */
+  colors: LookupColors;
 }
 
 const Ctx = React.createContext<MasterDataValue | null>(null);
@@ -90,6 +95,7 @@ export interface MasterDataInitial {
   pipelineStages?: RefItem[];
   ownerStages?: RefItem[];
   leadTags?: LeadTag[];
+  colors?: LookupColors;
 }
 
 export function MasterDataProvider({
@@ -152,6 +158,7 @@ export function MasterDataProvider({
   const ownerStages = seeded(initial?.ownerStages, () =>
     OWNER_STAGES.map((s) => ({ id: s.key, label: s.key }))
   );
+  const colors = initial?.colors ?? EMPTY_COLORS;
 
   const value: MasterDataValue = {
     propertyTypes,
@@ -180,6 +187,7 @@ export function MasterDataProvider({
     priceRemarks,
     pipelineStages,
     ownerStages,
+    colors,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

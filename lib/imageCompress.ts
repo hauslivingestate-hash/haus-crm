@@ -19,6 +19,16 @@ export const PHOTO_TARGET_BYTES = 1024 * 1024; // 1 MB
 export const PHOTO_MAX_INPUT_BYTES = 25 * 1024 * 1024; // 25 MB
 export const MAX_PHOTOS_PER_LISTING = 20;
 
+/* Profile photos are a different job from listing photos and get their own numbers.
+   64px is the largest the app ever draws one (the ทีม record header), so 320 covers a 4x
+   display and still lands around 20–40 KB as WebP. Square, because every avatar in the app
+   is a circle — cropping here rather than leaning on object-cover means we store the pixels
+   we actually show instead of a 16:9 frame with the sides thrown away at render. */
+export const AVATAR_EDGE = 320;
+/** Mirrors the bucket's own file_size_limit so a refusal reads as Thai, not a raw
+    storage error. Nothing compressed to 320px square ever comes close. */
+export const AVATAR_MAX_BYTES = 512 * 1024;
+
 export interface CompressResult {
   blob: Blob;
   ext: "webp" | "jpg";
@@ -94,6 +104,57 @@ export async function compressPhoto(file: File): Promise<CompressResult> {
   }
 
   return { blob, ext, width, height, originalBytes: file.size };
+}
+
+/**
+ * Square profile photo, centre-cropped, at AVATAR_EDGE.
+ *
+ * Centre is the honest default for a crop nobody is asked to position: faces sit in the
+ * middle of a portrait far more often than not, and offering a drag-to-position UI for a
+ * 24px circle would cost more attention than it returns. The long side is trimmed equally
+ * from both ends, so nothing is scaled out of proportion.
+ *
+ * Shares the WebP-with-JPEG-fallback rule of compressPhoto above, including the check on
+ * the type `toBlob` actually returned — it hands back a PNG rather than erroring on a
+ * browser with no WebP encoder, and a PNG of a photograph is larger than what we started
+ * with.
+ */
+export async function compressAvatar(file: File): Promise<CompressResult> {
+  if (!file.type.startsWith("image/")) throw new Error("ไฟล์นี้ไม่ใช่รูปภาพ");
+  if (file.size > PHOTO_MAX_INPUT_BYTES) {
+    throw new Error(`ไฟล์ใหญ่เกิน ${Math.round(PHOTO_MAX_INPUT_BYTES / 1024 / 1024)} MB`);
+  }
+
+  const img = await loadImage(file);
+  const edge = Math.min(img.width, img.height);
+  const sx = Math.round((img.width - edge) / 2);
+  const sy = Math.round((img.height - edge) / 2);
+  // Never upscale: a 120px picture stays 120px rather than being blown up to 320 and
+  // looking softer than the file we were given.
+  const out = Math.min(AVATAR_EDGE, edge);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = out;
+  canvas.height = out;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("เบราว์เซอร์นี้ย่อรูปไม่ได้");
+  ctx.drawImage(img, sx, sy, edge, edge, 0, 0, out, out);
+
+  let blob = await toBlob(canvas, "image/webp", PHOTO_QUALITY);
+  let ext: CompressResult["ext"] = "webp";
+  if (!blob || blob.type !== "image/webp") {
+    blob = await toBlob(canvas, "image/jpeg", PHOTO_QUALITY);
+    ext = "jpg";
+  }
+  if (!blob) throw new Error("บีบอัดรูปไม่สำเร็จ");
+  if (blob.size > AVATAR_MAX_BYTES) {
+    // Only reachable with a pathological source; still better than a raw 413 from storage.
+    const retry = await toBlob(canvas, ext === "webp" ? "image/webp" : "image/jpeg", 0.7);
+    if (retry && retry.size < blob.size) blob = retry;
+    if (blob.size > AVATAR_MAX_BYTES) throw new Error("รูปนี้ใหญ่เกินไป กรุณาใช้รูปอื่น");
+  }
+
+  return { blob, ext, width: out, height: out, originalBytes: file.size };
 }
 
 /** "2.4 MB" / "312 KB" — for the before/after line in the uploader. */

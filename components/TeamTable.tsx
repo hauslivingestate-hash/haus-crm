@@ -91,7 +91,7 @@ export function TeamTable({ employees }: { employees: Employee[] }) {
               >
                 <TD>
                   <div className="flex items-center gap-2.5">
-                    <Avatar name={e.nickname} tone="accent" />
+                    <Avatar name={e.nickname} src={e.avatarUrl} tone="accent" />
                     <div className="min-w-0">
                       <div className="font-medium">{e.nickname}</div>
                       <div className="text-label text-text-subtle truncate">

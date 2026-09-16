@@ -10,6 +10,7 @@ import "server-only";
    reference data readable by any authenticated user — the RLS that matters is
    on WRITING them, which lib/mutations/reference.ts gates. */
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { EMPTY_COLORS, type ColorMap, type LookupColors } from "./fills";
 import type { SlaWindows } from "@/lib/sla";
@@ -27,7 +28,7 @@ const TABLES = [
     A failure returns the empty map rather than throwing: a grid with no fills
     is a readable grid, and failing a page because a colour could not be read
     would be a worse outcome than a monochrome table. */
-export async function getLookupColors(): Promise<LookupColors> {
+async function loadLookupColors(): Promise<LookupColors> {
   const supabase = await createClient();
 
   const results = await Promise.all(
@@ -44,6 +45,10 @@ export async function getLookupColors(): Promise<LookupColors> {
 
   return { ...EMPTY_COLORS, ...Object.fromEntries(results) } as LookupColors;
 }
+
+/** Per-request memo. The app shell reads these for MasterDataProvider (every status dot)
+    and a grid page reads them again for its fills — one round trip, not two. */
+export const getLookupColors = cache(loadLookupColors);
 
 /** The same five lists, shaped for ตั้งค่า → สีสถานะ: every value with the
     colour it currently wears, ordered the way the grids order them.

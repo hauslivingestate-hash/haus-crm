@@ -58,7 +58,7 @@ export function TeamAgentsTable({
                         href={`/team/${encodeURIComponent(a.code)}`}
                         className="inline-flex items-center gap-2 text-text transition-colors hover:text-accent-ink"
                       >
-                        <Avatar name={a.nickname} tone="neutral" className="size-6 text-label" />
+                        <Avatar name={a.nickname} src={a.avatarUrl} tone="neutral" className="size-6 text-label" />
                         <span className="font-medium">{a.nickname}</span>
                         <span className="num text-label text-text-subtle">{a.code}</span>
                       </Link>

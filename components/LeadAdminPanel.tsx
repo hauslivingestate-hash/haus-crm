@@ -6,9 +6,11 @@ import { Phone, Check, Clock, AlertCircle } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Dot } from "@/components/ui/Dot";
 import { useRbac } from "@/components/RbacProvider";
+import { useMasterData } from "@/components/MasterDataProvider";
 import { setLeadComplaint } from "@/lib/mutations/leads";
 import { COMPLAINT_STATUSES, isContacted } from "@/lib/leads";
 import { stageMeta } from "@/lib/pipeline";
+import { lookupDot } from "@/lib/tables/fills";
 import { cn } from "@/lib/cn";
 
 const fieldCls =
@@ -29,6 +31,7 @@ interface Props {
 export function LeadAdminPanel({ leadId, stage, customerComplain, complainStatus, complainRemark }: Props) {
   const router = useRouter();
   const { can } = useRbac();
+  const { colors } = useMasterData();
 
   const [hasComplaint, setHasComplaint] = React.useState(!!complainStatus);
   const [text, setText] = React.useState(customerComplain ?? "");
@@ -103,7 +106,7 @@ export function LeadAdminPanel({ leadId, stage, customerComplain, complainStatus
               </span>
             )}
             <span className="ml-auto inline-flex items-center gap-1.5 text-label text-text-subtle whitespace-nowrap">
-              <Dot className={stg.dot} /> {stg.label}
+              <Dot className={lookupDot(colors.pipeline_stage, stage)} /> {stg.label}
             </span>
           </div>
           <div className="text-label text-text-subtle mt-1">อัตโนมัติจากสเตจไปป์ไลน์ (เซลขยับ Lead → Call = ติดต่อแล้ว)</div>

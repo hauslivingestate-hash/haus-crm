@@ -30,6 +30,8 @@ interface SessionIdentity {
   employeeCode: string | null;
   name: string;
   permissions: string[];
+  /** Own profile photo URL, or null for initials. */
+  avatarUrl?: string | null;
 }
 
 interface RbacValue {
@@ -53,6 +55,14 @@ interface RbacValue {
    * silently rewriting who the viewer *is* would let it act on someone else's records.
    */
   employeeCode: string | null;
+  /**
+   * The signed-in person's photo, for the avatar in the shell. null = draw initials.
+   *
+   * Goes null while impersonating: "view as" swaps the NAME under the avatar, and leaving
+   * your own face above someone else's name is the one combination that actively misleads
+   * about who the app thinks you are.
+   */
+  avatarUrl: string | null;
   perms: Set<string>;
   /** True if any of the given permission keys is granted (or none required). */
   can: (keys?: string | string[]) => boolean;
@@ -173,6 +183,8 @@ export function RbacProvider({
     setViewerId,
     currentUser,
     employeeCode: session?.employeeCode ?? null,
+    avatarUrl:
+      session && !(canViewAs && viewerId !== SELF_ID) ? session.avatarUrl ?? null : null,
     perms,
     can,
     isAuthenticated: !!session,

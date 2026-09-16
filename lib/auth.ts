@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { avatarUrl } from "@/lib/avatar";
 
 // Server-side identity: who is signed in, which employee row they are, and what they may do.
 //
@@ -26,6 +27,9 @@ export interface AuthContext {
   employeeCode: string | null;
   nickname: string | null;
   teamId: string | null;
+  /** Own profile photo as a public URL, or null for initials. Carried on the identity so
+   *  the shell's avatar costs no extra round trip — see my_identity(). */
+  avatarUrl: string | null;
   /** Union of every permission across the roles this employee holds. */
   permissions: string[];
 }
@@ -36,6 +40,7 @@ interface IdentityRow {
   nickname: string | null;
   team_id: string | null;
   status: string | null;
+  avatar_path: string | null;
   permissions: string[] | null;
 }
 
@@ -71,6 +76,7 @@ async function loadAuthContext(): Promise<AuthContext | null> {
     employeeCode: null,
     nickname: null,
     teamId: null,
+    avatarUrl: null,
     permissions: [],
   };
 
@@ -86,6 +92,7 @@ async function loadAuthContext(): Promise<AuthContext | null> {
     employeeCode: row.employee_code,
     nickname: row.nickname,
     teamId: row.team_id,
+    avatarUrl: avatarUrl(row.avatar_path),
     permissions: row.permissions ?? [],
   };
 }

@@ -70,12 +70,14 @@ Redesign 2026-09-15: layout จาก reference "Shopall", สีจาก "Moon
 - ทุกตัวเลขใส่ `className="num"` (IBM Plex Mono, tabular)
 - **Accent เดียวคือส้ม** (`--accent`) ใช้กับปุ่ม, แถบ, ไอคอน, ตัวเลขใหญ่ · **ข้อความเล็กสีส้มต้องใช้ `text-accent-ink`**
   (ส้มสดบนขาวไม่ผ่าน AA ที่ 3.2:1; ink ผ่านที่ 4.7:1)
-- "blue" = navy (`--navy-500`) — ไม่มีน้ำเงินสดในระบบ · แดงเป็นแดงจริง ไม่ใช่ส้มแดง
+- "blue" = navy (`--navy-500`) — ไม่มีน้ำเงินสดในระบบ · แดงเป็นแดงจริง ไม่ใช่ส้มแดง · ยกเว้น `--dot-blue` (จุดสถานะ) ที่เป็นน้ำเงินจริง เพราะจุด navy 8px อ่านเป็นเทาเข้ม
 - Status = จุดสีใน pill เทากลาง (`StatusBadge`) — pill ไม่ย้อมสีสถานะ
+- **สีของสถานะ / สเตจ มาจาก ตั้งค่า → สีสถานะ เท่านั้น** — ช่องตารางใช้ `lookupFill`, จุดใช้ `lookupDot` (lib/tables/fills.ts; client อ่านจาก `useMasterData().colors`, server จาก `getLookupColors()`) · ห้ามแมป สถานะ→สี ในโค้ด (ยกเว้น owner stage ที่ยังไม่มีสีใน Settings)
 - Segmented control ใช้ `SegmentedTrack` / `SegmentedItem` (pill navy) — ห้ามก๊อปคลาสเอง
 - `CardHeader` ไม่มีเส้นคั่น; `CardContent` ที่ตามหลังจะดึงขึ้นชิดเอง
 - หัวการ์ดแบบเขียนเอง (`h-11 … border-b`) เหลือไว้เฉพาะที่รายการ `divide-y` วางติดหัวโดยไม่มี `CardContent` — เส้นนั้นคือตัวคั่นหัวกับแถวแรก
 - โลโก้เป็นรูป (`public/brand/`, render ผ่าน `components/Brand.tsx`) — maroon ในโหมดสว่าง ขาวในโหมดมืด; `--maroon-900` คือสีหมึกของโลโก้ ห้ามใช้เป็นสี UI
 - Dark mode: `next-themes` + `class="dark"`; สลับได้จากเมนูบัญชี (avatar) — เปลี่ยน token ต้องเช็คทั้งสองธีม
 - ป้ายตัวเลขบนเมนู = งานที่รอทำ ไม่ใช่ยอดรวม และต้องนับด้วยกติกาเดียวกับหน้าที่มันชี้ไป (ดู lib/navCounts.ts)
+- รูปโปรไฟล์: เก็บ **path** ใน `main_1_hr.avatar_path` (bucket `avatars`) แล้วแปลงเป็น URL ด้วย `lib/avatar.ts` — ห้ามเก็บ URL เต็มลง DB · ไม่มีรูป = ใช้ตัวย่อชื่อ (`<Avatar>` จัดการให้) · ตั้งรูปได้เฉพาะ `people.manage` / `roles.manage` ที่หน้า ทีม ▸ รายบุคคล
 - ค้นหาได้เท่าที่เปิดเมนูดูได้ — สิทธิ์ของกลุ่มค้นหาอิงจาก `NAV` ใน lib/nav.ts ไม่มีรายการสิทธิ์ชุดที่สอง

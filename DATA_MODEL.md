@@ -755,6 +755,18 @@ spotlight, green day×agent heatmap grid.
 > Sourcing and New List on their owner stages, Survey as an action). All writes carry
 > `audit_log` rows with `remark` naming the sheet.
 
+> **Staff profile photos shipped 2026-09-16.** `main_1_hr.avatar_path` + the public
+> **`avatars`** storage bucket. The row stores the PATH; the public URL is derived in
+> `lib/avatar.ts` so a project move cannot orphan every row, and each filename carries a
+> random segment (unguessable, and the cache-buster when a photo is replaced). Set on the
+> ทีม record by `people.manage` / `roles.manage` only (Ben's call — HR/CEO set the photos),
+> enforced in `lib/mutations/avatar.ts` AND independently by the `avatars_*` policies on
+> `storage.objects`. ⚠️ `authenticated` holds COLUMN-level select on `main_1_hr`, so the
+> migration had to `grant select (avatar_path)` — a new column is invisible to the app
+> otherwise. `my_identity()` gained `avatar_path` so the shell's own avatar costs no extra
+> round trip. Shown on the roster, the record, the ทีม dashboard table, the ผู้ดูแล column
+> and the sidebar/topbar; everyone without a photo keeps their initials.
+
 **The core metric split (same as HAUS V2), enforced in `lib/dashboard.ts`:**
 - **FLOW** (revenue, closed_count, new_leads, new_listings, actions) — summed across the
   selected months (`sumFlow`) → **obeys the picker**.

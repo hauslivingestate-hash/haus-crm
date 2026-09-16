@@ -48,6 +48,9 @@ export interface Employee {
   lastNameTh?: string;
   /** Nickname — what the app shows everywhere. */
   nickname: string;
+  /** Profile photo, already resolved to a public URL (lib/avatar.ts). null = no photo,
+   *  and every Avatar falls back to initials. Set by HR/CEO on the ทีม record. */
+  avatarUrl?: string | null;
   gender?: Gender;
   nationality?: string;
 

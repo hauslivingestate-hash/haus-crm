@@ -17,7 +17,7 @@ import { Pencil, Lock, Check, X, MapPin } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
-import { Avatar } from "@/components/ui/Avatar";
+import { AvatarPicker } from "@/components/AvatarPicker";
 import { Input } from "@/components/ui/Input";
 import { useRbac } from "@/components/RbacProvider";
 import { formatDate } from "@/lib/format";
@@ -196,11 +196,15 @@ export function EmployeeRecord({
       {/* Identity header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <div className="flex items-start gap-3 min-w-0">
-          {/* No photo upload: main_1_hr has no avatar column and there is no storage bucket
-              yet, so the old picker only ever produced a preview that vanished on save. */}
-          <div className="relative shrink-0">
-            <Avatar name={f.nickname || "?"} tone="accent" className="h-16 w-16 text-h3" />
-          </div>
+          {/* The photo saves on pick, not on บันทึก — see components/AvatarPicker.tsx.
+              A new employee has no code until the trigger mints one, so the picker stays
+              inert until this record has been saved once. */}
+          <AvatarPicker
+            employeeCode={employee?.code ?? ""}
+            nickname={f.nickname}
+            src={employee?.avatarUrl ?? null}
+            canEdit={canManage}
+          />
           <div className="min-w-0">
             {editing ? (
               <Input

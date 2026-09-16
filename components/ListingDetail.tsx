@@ -61,7 +61,9 @@ import {
   daysOnMarketLabel,
   dealType,
 } from "@/lib/format";
-import { listingStatusDot, potentialTone } from "@/lib/status";
+import { potentialTone } from "@/lib/status";
+import { getLookupColors } from "@/lib/tables/colors";
+import { lookupDot } from "@/lib/tables/fills";
 import { cn } from "@/lib/cn";
 
 const DEAL_LABEL: Record<string, string> = {
@@ -72,7 +74,7 @@ const DEAL_LABEL: Record<string, string> = {
 };
 
 export async function ListingDetail({ id, inDrawer = false }: { id: string; inDrawer?: boolean }) {
-  const listing = await getListing(id);
+  const [listing, colors] = await Promise.all([getListing(id), getLookupColors()]);
   if (!listing) notFound();
 
   const deal = dealType(listing.asking_price, listing.rental_price);
@@ -159,7 +161,7 @@ export async function ListingDetail({ id, inDrawer = false }: { id: string; inDr
             {listing.potential && (
               <Pill tone={potentialTone(listing.potential)}>{listing.potential}</Pill>
             )}
-            <StatusBadge color={listingStatusDot(listing.listing_status)}>
+            <StatusBadge color={lookupDot(colors.listing_status, listing.listing_status)}>
               {listing.listing_status ?? "—"}
             </StatusBadge>
             <ListingEditButton listing={listing} />
@@ -342,7 +344,7 @@ export async function ListingDetail({ id, inDrawer = false }: { id: string; inDr
               </CardHeader>
               <CardContent className="flex flex-col gap-3 text-small">
                 <Row label="สถานะประกาศ">
-                  <StatusBadge color={listingStatusDot(listing.listing_status)}>
+                  <StatusBadge color={lookupDot(colors.listing_status, listing.listing_status)}>
                     {listing.listing_status ?? "—"}
                   </StatusBadge>
                 </Row>

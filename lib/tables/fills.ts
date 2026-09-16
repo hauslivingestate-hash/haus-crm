@@ -51,6 +51,18 @@ export function lookupFill(map: ColorMap | undefined, value: string | null | und
   return s ? { hue: s.cssVar } : undefined;
 }
 
+/** The dot a value with no colour wears — the same grey the grid's unfilled cell is. */
+export const NEUTRAL_DOT = "bg-text-subtle";
+
+/** The same colour as a DOT, for every surface that is not a grid: StatusBadge, the
+    pipeline dot beside a stage name, the pill pickers. Same map, same rule as
+    lookupFill — a value with no colour, or not in the list, renders neutral. The class
+    is the swatch's strong twin (`bg-dot-*`), never the pastel: see lib/tables/palette. */
+export function lookupDot(map: ColorMap | undefined, value: string | null | undefined): string {
+  if (!map || !value) return NEUTRAL_DOT;
+  return swatch(map[value])?.dot ?? NEUTRAL_DOT;
+}
+
 /** The follow-up cell's colour, from the record's GRADE.
 
     Replaces the flat 7/30-day rule this file shipped with earlier, which

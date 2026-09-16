@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
-  Search, Check, Sparkles, Download, Filter, X,
+  Search, Check, Download, Filter, X,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronsUpDown, ChevronUp, ChevronDown,
 } from "lucide-react";
 import type { CrmRow } from "@/lib/queries";
@@ -17,8 +17,9 @@ import { StatusBadge, Dot } from "@/components/ui/Dot";
 import { assignLead } from "@/lib/mutations/leads";
 import type { AgentOption } from "@/components/LeadForm";
 import { useRbac } from "@/components/RbacProvider";
+import { useMasterData } from "@/components/MasterDataProvider";
 import { formatBaht, formatDate } from "@/lib/format";
-import { leadStatusDot } from "@/lib/status";
+import { lookupDot } from "@/lib/tables/fills";
 import { STAGES, stageMeta } from "@/lib/pipeline";
 import { compareValues, orderIndex, type SortDir } from "@/lib/sort";
 import { useSort } from "@/components/ui/SortHeader";
@@ -54,6 +55,8 @@ type FilterCol = "type" | "source" | "stage" | "status" | "assigned";
 export function LeadAssignment({ leads, agents }: { leads: CrmRow[]; agents: AgentOption[] }) {
   const router = useRouter();
   const { can } = useRbac();
+  // Status and stage dots wear the ตั้งค่า colour — the same map the Lead grid fills from.
+  const { colors } = useMasterData();
   const canAssign = can("leads.assign");
   // Optimistic layer over the server rows so the select reflects the pick immediately;
   // router.refresh() reconciles, and a failed write rolls the row back.
@@ -326,9 +329,9 @@ export function LeadAssignment({ leads, agents }: { leads: CrmRow[]; agents: Age
                         <TD className="num text-small text-text-muted">{r.listing_code ?? "—"}</TD>
                         <TD className="num text-right text-text-muted">{r.budgetBaht != null ? formatBaht(r.budgetBaht) : "—"}</TD>
                         <TD>
-                          <span className="inline-flex items-center gap-1.5 text-body whitespace-nowrap"><Dot className={stg.dot} />{stg.label}</span>
+                          <span className="inline-flex items-center gap-1.5 text-body whitespace-nowrap"><Dot className={lookupDot(colors.pipeline_stage, r.stage)} />{stg.label}</span>
                         </TD>
-                        <TD>{r.status ? <StatusBadge color={leadStatusDot(r.status)}>{r.status}</StatusBadge> : "—"}</TD>
+                        <TD>{r.status ? <StatusBadge color={lookupDot(colors.lead_status, r.status)}>{r.status}</StatusBadge> : "—"}</TD>
                         <TD onClick={(e) => e.stopPropagation()} className="cursor-default">
                           <div className="flex items-center gap-1.5">
                             <select

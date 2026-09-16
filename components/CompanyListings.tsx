@@ -14,7 +14,9 @@ import { SortHeader, useSort } from "@/components/ui/SortHeader";
 import { StatusBadge } from "@/components/ui/Dot";
 import { Pill } from "@/components/ui/Pill";
 import { formatBaht, formatRent, formatNumber } from "@/lib/format";
-import { listingStatusDot, potentialTone, potentialGroup } from "@/lib/status";
+import { potentialTone, potentialGroup } from "@/lib/status";
+import { lookupDot } from "@/lib/tables/fills";
+import { useMasterData } from "@/components/MasterDataProvider";
 import { compareValues, orderIndex } from "@/lib/sort";
 import type { StaffMember } from "@/lib/queries";
 import { cn } from "@/lib/cn";
@@ -67,6 +69,7 @@ export function CompanyListings({
   covers?: Record<string, string>;
 }) {
   const router = useRouter();
+  const { colors } = useMasterData();
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState("all");
   const [potFilter, setPotFilter] = React.useState("all");
@@ -118,7 +121,7 @@ export function CompanyListings({
       key: agent.nickname,
       label: agent.nickname,
       count,
-      leading: <Avatar name={agent.nickname} tone="accent" className="h-5 w-5" />,
+      leading: <Avatar name={agent.nickname} src={agent.avatarUrl} tone="accent" className="h-5 w-5" />,
     })),
   ];
   const currentAgent = agentOptions.find((o) => o.key === agentNick);
@@ -226,7 +229,7 @@ export function CompanyListings({
                     {l.area_sqm ? `${formatNumber(l.area_sqm)}` : "—"}<span className="text-text-subtle"> ตร.ม.</span>
                   </TD>
                   <TD><Pill tone={potentialTone(l.potential)}>{l.potential}</Pill></TD>
-                  <TD><StatusBadge color={listingStatusDot(l.listing_status)}>{l.listing_status}</StatusBadge></TD>
+                  <TD><StatusBadge color={lookupDot(colors.listing_status, l.listing_status)}>{l.listing_status}</StatusBadge></TD>
                   <TD className="text-right num">
                     {l.asking_price == null && l.rental_price == null ? (
                       <span className="text-text-subtle">—</span>
@@ -244,7 +247,7 @@ export function CompanyListings({
                   <TD>
                     {l.agent ? (
                       <span className="inline-flex items-center gap-2">
-                        <Avatar name={l.agent.nickname} tone="accent" />
+                        <Avatar name={l.agent.nickname} src={l.agent.avatarUrl} tone="accent" />
                         <span className="text-small text-text-muted">{l.agent.nickname}</span>
                       </span>
                     ) : (

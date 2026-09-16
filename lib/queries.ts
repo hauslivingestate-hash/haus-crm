@@ -10,6 +10,7 @@ import {
   type ContactSummary,
 } from "@/lib/contacts";
 import { stageMeta } from "@/lib/pipeline";
+import { avatarUrl } from "@/lib/avatar";
 import type { LeadActivityRow, LeadAuditRow } from "@/lib/leadTimeline";
 import {
   DEFAULT_LEAVE_ALLOWANCES,
@@ -406,13 +407,15 @@ export interface StaffMember {
   position: string | null;
   phone: string | null;
   lineUserId: string | null;
+  /** Profile photo URL, or null for initials. */
+  avatarUrl: string | null;
 }
 
 export async function getStaffDirectory(): Promise<StaffMember[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("main_1_hr")
-    .select("employee_code,nickname,position,phone,line_userid")
+    .select("employee_code,nickname,position,phone,line_userid,avatar_path")
     .order("employee_code");
   return ((data ?? []) as {
     employee_code: string;
@@ -420,12 +423,14 @@ export async function getStaffDirectory(): Promise<StaffMember[]> {
     position: string | null;
     phone: string | null;
     line_userid: string | null;
+    avatar_path: string | null;
   }[]).map((e) => ({
     code: e.employee_code,
     nickname: e.nickname ?? e.employee_code,
     position: e.position,
     phone: e.phone,
     lineUserId: e.line_userid,
+    avatarUrl: avatarUrl(e.avatar_path),
   }));
 }
 
@@ -838,7 +843,7 @@ export async function getEmployees(): Promise<Employee[]> {
           "first_name_th,last_name_th,nickname,gender,nationality,phone,additional_phone," +
           "email,work_email,line_userid,birthday,date_started,emergency_contact," +
           "emergency_contact_phone,emergency_contact_relationship,remark,sales_sheet_url,team_id," +
-          "probation_start,probation_passed_at"
+          "probation_start,probation_passed_at,avatar_path"
       )
       .order("employee_code"),
     supabase.from("zone_sales").select("zone_id,employee_code"),
@@ -932,6 +937,7 @@ export async function getEmployees(): Promise<Employee[]> {
       firstNameTh: e.first_name_th ?? undefined,
       lastNameTh: e.last_name_th ?? undefined,
       nickname: e.nickname ?? code,
+      avatarUrl: avatarUrl(e.avatar_path),
       gender: asGender(e.gender),
       nationality: e.nationality ?? undefined,
       phone: e.phone ?? undefined,
@@ -1648,7 +1654,6 @@ async function loadPeople(): Promise<Map<string, Contact>> {
       interest: wants || l.interested || l.listing_code || "ไม่ระบุความต้องการ",
       budget: numOrNull(l.budget),
       stageLabel: stage.label,
-      stageDot: stage.dot,
       deal: l.lead_type === "Buyer - Rent" ? "rent" : "buy",
     });
   }

@@ -22,9 +22,10 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Dot, StatusBadge } from "@/components/ui/Dot";
 import { GradeChip } from "@/components/ui/GradeChip";
 import { useRbac } from "@/components/RbacProvider";
+import { useMasterData } from "@/components/MasterDataProvider";
 import type { InterestedLead } from "@/lib/queries";
 import { stageMeta } from "@/lib/pipeline";
-import { leadStatusDot } from "@/lib/status";
+import { lookupDot } from "@/lib/tables/fills";
 import { formatBaht, formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -40,6 +41,7 @@ export function ListingInterestedLeads({
   nicknameOf: Record<string, string>;
 }) {
   const { can } = useRbac();
+  const { colors } = useMasterData();
   const [showAll, setShowAll] = React.useState(false);
 
   const live = leads.filter((l) => !CLOSED.has(l.lead_status ?? ""));
@@ -101,14 +103,14 @@ export function ListingInterestedLeads({
                           {l.lead_name ?? l.lead_id}
                         </span>
                         {isClosed && (
-                          <StatusBadge color={leadStatusDot(l.lead_status)}>
+                          <StatusBadge color={lookupDot(colors.lead_status, l.lead_status)}>
                             {l.lead_status}
                           </StatusBadge>
                         )}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-label text-text-subtle">
                         <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                          <Dot className={stg.dot} /> {stg.label}
+                          <Dot className={lookupDot(colors.pipeline_stage, l.pipeline_stage)} /> {stg.label}
                         </span>
                         {l.budget != null && <span className="num">{formatBaht(l.budget)}</span>}
                         {/* The phone is the point of this card — but only for whoever may

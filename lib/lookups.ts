@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import type { RefItem } from "@/components/MasterDataProvider";
 import { TAG_TONE_ORDER, type LeadTag } from "@/lib/tags";
+import { getLookupColors } from "@/lib/tables/colors";
+import type { LookupColors } from "@/lib/tables/fills";
 
 // The governed reference vocabularies, read from the DB rather than the seed constants.
 //
@@ -39,6 +41,9 @@ export interface Lookups {
   pipelineStages: RefItem[];
   ownerStages: RefItem[];
   leadTags: LeadTag[];
+  /** The colour each status / stage / grade wears (ตั้งค่า → สีสถานะ). One map for the
+      grids' cell fills and for every status dot, so no surface can disagree with another. */
+  colors: LookupColors;
 }
 
 /** Lookup tables keyed by `name` — the stored value IS the label. */
@@ -69,7 +74,7 @@ export async function getLookups(): Promise<Lookups> {
   const supabase = await createClient();
 
   const nameEntries = Object.entries(NAME_TABLES) as [keyof typeof NAME_TABLES, string][];
-  const [nameResults, zoneResult, tagResult, stageResult, ownerStageResult] = await Promise.all([
+  const [nameResults, zoneResult, tagResult, stageResult, ownerStageResult, colors] = await Promise.all([
     Promise.all(
       nameEntries.map(([, table]) => supabase.from(table).select("name").order("name"))
     ),
@@ -82,9 +87,11 @@ export async function getLookups(): Promise<Lookups> {
       .order("id"),
     supabase.from("pipeline_stage").select("name,sort_order").order("sort_order"),
     supabase.from("owner_stage").select("name,sort_order").order("sort_order"),
+    getLookupColors(),
   ]);
 
   const out = {} as Lookups;
+  out.colors = colors;
   nameEntries.forEach(([key], i) => {
     const rows = (nameResults[i].data ?? []) as { name: string }[];
     out[key] = rows.map((r) => ({ id: r.name, label: r.name }));

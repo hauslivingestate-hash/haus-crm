@@ -1,7 +1,9 @@
 "use client";
 
-/* ตั้งค่า → สีสถานะ — which colour each status, stage and grade wears in the
-   ทรัพย์ and Lead grids.
+/* ตั้งค่า → สีสถานะ — which colour each status, stage and grade wears, everywhere:
+   the cell fill in the ทรัพย์ and Lead grids AND the status dot on every other surface
+   (Lead Database, listing pages, the pill pickers, the dashboard funnel). One choice,
+   one colour — see lib/tables/fills.ts (lookupFill / lookupDot).
 
    COLOUR ONLY. You cannot add, rename or delete a value here, and that is not
    an oversight: these five lists are structural. `pipeline_stage` is read by
@@ -18,7 +20,9 @@ import { useRouter } from "next/navigation";
 import { Check, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Dot } from "@/components/ui/Dot";
 import { PALETTE } from "@/lib/tables/palette";
+import { NEUTRAL_DOT } from "@/lib/tables/fills";
 import { setLookupColor, setSlaDays } from "@/lib/mutations/reference";
 
 export interface ColorableValue {
@@ -40,7 +44,8 @@ export function StatusColorsManager({ lists }: { lists: ColorableList[] }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-small text-text-muted">
-        สีที่เลือกที่นี่คือสีพื้นของช่องในตาราง ทรัพย์ และ Lead · เว้นว่างได้ ช่องนั้นจะไม่มีสีพื้น
+        สีที่เลือกที่นี่ใช้ทั้งแอป — เป็นสีพื้นของช่องในตาราง ทรัพย์ และ Lead และเป็นจุดสีของสถานะ/สเตจในทุกหน้า ·
+        เว้นว่างได้ ช่องนั้นจะไม่มีสีพื้นและจุดจะเป็นสีเทา
         <br />
         <b className="font-medium">SLA</b> = ไม่ติดต่อเกินกี่วันถึงจะขึ้นสีแดง ·
         มีเฉพาะ &quot;เกรด&quot; · <b className="font-medium">เว้นว่าง = ไม่มี SLA สำหรับเกรดนั้น</b>
@@ -92,20 +97,22 @@ function Row({ table, value, hasSla }: { table: string; value: ColorableValue; h
     });
   };
 
-  const swatchFor = (token: string | null) =>
-    token ? PALETTE.find((p) => p.token === token)?.cssVar : undefined;
+  const swatchOf = (token: string | null) => (token ? PALETTE.find((p) => p.token === token) : undefined);
+  const wash = swatchOf(current)?.cssVar;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2.5 last:border-0">
-      {/* The value, shown wearing its own colour — the point is to preview the
-          cell, so this is the same wash the grid paints. */}
+      {/* The value, shown wearing its own colour both ways — the same wash the grid
+          paints, with the same dot the badges draw — so what is picked here is what
+          appears everywhere. */}
       <span
-        style={swatchFor(current) ? ({ "--wash-hue": swatchFor(current) } as React.CSSProperties) : undefined}
+        style={wash ? ({ "--wash-hue": wash } as React.CSSProperties) : undefined}
         className={cn(
-          "min-w-[9rem] rounded border border-border px-2 py-1 text-small font-medium",
+          "inline-flex min-w-[9rem] items-center gap-1.5 rounded border border-border px-2 py-1 text-small font-medium",
           current ? "cell-wash" : "bg-surface",
         )}
       >
+        <Dot className={swatchOf(current)?.dot ?? NEUTRAL_DOT} />
         {value.name}
       </span>
 

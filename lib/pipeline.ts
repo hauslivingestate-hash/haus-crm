@@ -5,7 +5,6 @@ export interface StageMeta {
   key: string;
   /** What to show. The STORED NAME, verbatim — see below. */
   label: string;
-  dot: string; // tailwind bg-* token utility
 }
 
 /* ⚠️ THE LABEL IS THE STORED NAME. Do not add a translation table here.
@@ -15,34 +14,27 @@ export interface StageMeta {
    word and every other screen shows another — with any stage added later rendering in its
    own name anyway, beside ones that do not. Ben, 2026-09-10: the buyer pipeline is English.
 
-   Only the COLOUR is decided here, because a colour is not a name. */
-const STAGE_DOT: Record<string, string> = {
-  Lead: "bg-dot-blue",
-  Call: "bg-dot-teal",
-  Follow: "bg-dot-violet",
-  Appoint: "bg-dot-violet",
-  Show: "bg-dot-amber",
-  Nego: "bg-dot-accent",
-  Close: "bg-dot-green",
-  Win: "bg-dot-green",
-};
+   The COLOUR is not decided here either (2026-09-16). It is the swatch chosen in
+   ตั้งค่า → สีสถานะ, drawn with lookupDot(colors.pipeline_stage, stage) — the same map the
+   Lead grid fills its cells from, so a stage cannot be one colour in the grid and another
+   beside its name. This file is the ORDER and the fallback list, nothing more. */
 
 /** The seeded stages, in pipeline order. The live list comes from the `pipeline_stage`
     table via MasterDataProvider; this is the fallback when no lookups were loaded. */
 export const STAGES: StageMeta[] = [
   "Lead", "Call", "Follow", "Appoint", "Show", "Nego", "Close", "Win",
-].map((key) => ({ key, label: key, dot: STAGE_DOT[key] ?? "bg-text-subtle" }));
+].map((key) => ({ key, label: key }));
 
 export const STAGE_MAP: Record<string, StageMeta> = Object.fromEntries(
   STAGES.map((s) => [s.key, s])
 );
 
-/** Display for a stored stage. A stage added in ตั้งค่า renders under its own name with a
-    neutral dot — unknown to this file, but never invisible. An empty stage shows an em dash
-    rather than pretending to be `Lead`, which the previous version did. */
+/** Display for a stored stage. A stage added in ตั้งค่า renders under its own name —
+    unknown to this file, but never invisible. An empty stage shows an em dash rather than
+    pretending to be `Lead`, which the previous version did. */
 export function stageMeta(key: string | null | undefined): StageMeta {
-  if (!key) return { key: "", label: "—", dot: "bg-text-subtle" };
-  return { key, label: key, dot: STAGE_DOT[key] ?? "bg-text-subtle" };
+  if (!key) return { key: "", label: "—" };
+  return { key, label: key };
 }
 
 export const CLOSED_STAGES = ["Close", "Win"];

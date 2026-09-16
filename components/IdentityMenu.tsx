@@ -33,7 +33,7 @@ export function IdentityMenu({
   /** The trigger. Receives the open state so it can mark itself pressed. */
   children: (state: { open: boolean; toggle: () => void }) => React.ReactNode;
 }) {
-  const { users, roles, viewerId, setViewerId, currentUser, isAuthenticated, canViewAs, can } =
+  const { users, roles, viewerId, setViewerId, currentUser, isAuthenticated, canViewAs, can, avatarUrl } =
     useRbac();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -70,7 +70,7 @@ export function IdentityMenu({
           >
             {/* Identity */}
             <div className="flex items-center gap-2.5 border-b border-border px-3 py-2.5">
-              <Avatar name={currentUser.name} tone="accent" className="size-8 text-small" />
+              <Avatar name={currentUser.name} src={avatarUrl} tone="accent" className="size-8 text-small" />
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block truncate text-body font-medium text-text">{currentUser.name}</span>
                 <span className="block truncate text-label text-text-subtle">

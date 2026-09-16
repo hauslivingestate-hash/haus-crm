@@ -81,6 +81,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               employeeCode: auth.employeeCode,
               name: auth.nickname ?? auth.email ?? "ผู้ใช้",
               permissions: auth.permissions,
+              avatarUrl: auth.avatarUrl,
             }
           : null
       }

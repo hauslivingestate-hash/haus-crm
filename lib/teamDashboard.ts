@@ -3,6 +3,7 @@ import { periodKeyOf, periodMultiple, type Range } from "@/lib/range";
 import { todayISO } from "@/lib/momentum";
 import type { RevenueBasis } from "@/lib/deals";
 import type { RevenueSummary, TrendPoint } from "@/lib/salesDashboard";
+import { avatarUrl } from "@/lib/avatar";
 
 /* แดชบอร์ดทีม — the reads behind the ทีม tab.
  *
@@ -73,6 +74,8 @@ export async function getVisibleTeams(): Promise<TeamOption[]> {
 export interface AgentRevenue {
   code: string;
   nickname: string;
+  /** Profile photo URL, or null for initials. */
+  avatarUrl: string | null;
   actual: number;
   cases: number;
   /** This person's OWN official target for the range, 0 when none is set. */
@@ -153,7 +156,9 @@ export async function getTeamRevenueSummary(
           .eq("period", range.period)
           .in("period_key", ["", key])
       : null,
-    codes.length ? supabase.from("main_1_hr").select("employee_code,nickname").in("employee_code", codes) : null,
+    codes.length
+      ? supabase.from("main_1_hr").select("employee_code,nickname,avatar_path").in("employee_code", codes)
+      : null,
     codes.length
       ? supabase
           .from("main_6_buyer_crm")
@@ -177,19 +182,25 @@ export async function getTeamRevenueSummary(
   for (const r of ((agentTargetRes?.data ?? []) as { employee_code: string; period_key: string; target: number }[])) {
     targetRows.set(r.employee_code, [...(targetRows.get(r.employee_code) ?? []), r]);
   }
-  const nickname = new Map(
-    ((peopleRes?.data ?? []) as { employee_code: string; nickname: string | null }[]).map((p) => [
+  const people = new Map(
+    ((peopleRes?.data ?? []) as {
+      employee_code: string;
+      nickname: string | null;
+      avatar_path: string | null;
+    }[]).map((p) => [
       p.employee_code,
-      p.nickname || p.employee_code,
+      { nickname: p.nickname || p.employee_code, avatarUrl: avatarUrl(p.avatar_path) },
     ])
   );
 
   const agents: AgentRevenue[] = codes
     .map((code) => {
       const got = byCode.get(code) ?? { actual: 0, cases: 0 };
+      const person = people.get(code);
       return {
         code,
-        nickname: nickname.get(code) ?? code,
+        nickname: person?.nickname ?? code,
+        avatarUrl: person?.avatarUrl ?? null,
         actual: got.actual,
         cases: got.cases,
         target: resolveTarget(targetRows.get(code) ?? [], key, range).amount,
