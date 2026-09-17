@@ -12,6 +12,8 @@ export function AreaChart({
   goalLabel = "เป้า",
   height = 200,
   format = (n) => String(n),
+  formatAxis,
+  yTicks = 4,
   color = "var(--color-accent)",
   className,
 }: {
@@ -20,6 +22,11 @@ export function AreaChart({
   goalLabel?: string;
   height?: number;
   format?: (n: number) => string;
+  /** Short form for the y-axis and the goal label — "฿5.7 ล้าน" is too long to repeat
+      four times down the left edge. Falls back to `format`. */
+  formatAxis?: (n: number) => string;
+  /** Roughly how many horizontal gridlines. 0 hides the axis entirely (sparkline mode). */
+  yTicks?: number;
   /** Stroke/fill colour. Defaults to the accent; nothing overrides it today. */
   color?: string;
   className?: string;
@@ -40,14 +47,32 @@ export function AreaChart({
     return () => ro.disconnect();
   }, []);
 
-  const padX = 6;
+  const axisFmt = formatAxis ?? format;
+  const showY = yTicks > 0;
+
+  // The left gutter exists only when there is an axis to put in it, so sparkline mode
+  // still draws edge to edge.
+  const padLeft = showY ? 54 : 6;
+  const padRight = 6;
   const padTop = 10;
   const axisH = 20; // room for x labels
   const plotH = height - axisH;
   const n = data.length;
 
-  const maxVal = Math.max(goal ?? 0, ...data.map((d) => d.value), 1) * 1.12;
-  const x = (i: number) => (n <= 1 ? padX : padX + (i * (w - padX * 2)) / (n - 1));
+  /* ── THE SCALE HAS TO CONTAIN THE GOAL, AND END ON A ROUND NUMBER ──────────────
+     Scaling to the data alone clips the goal line: a ฿8M target over a ฿2.4M best month
+     would be drawn above the top edge and silently vanish — and a target you are nowhere
+     near is exactly when the line matters most.
+
+     The ceiling is then rounded UP to a whole tick rather than padded by a percentage, so
+     the axis reads 0 / 2M / 4M / 6M instead of 0 / 1.87M / 3.74M. Round numbers are the
+     difference between an axis someone reads and one they ignore. */
+  const rawMax = Math.max(goal ?? 0, ...data.map((d) => d.value), 1);
+  const ticks = niceTicks(rawMax, showY ? yTicks : 1);
+  const maxVal = ticks[ticks.length - 1] || 1;
+
+  const plotW = Math.max(1, w - padLeft - padRight);
+  const x = (i: number) => (n <= 1 ? padLeft : padLeft + (i * plotW) / (n - 1));
   const y = (v: number) => padTop + (1 - v / maxVal) * (plotH - padTop);
 
   const linePath = smoothPath(data.map((d, i) => ({ x: x(i), y: y(d.value) })));
@@ -91,21 +116,55 @@ export function AreaChart({
           </linearGradient>
         </defs>
 
+        {/* ── Y AXIS ───────────────────────────────────────────────────────────────
+            Solid hairlines. Dashing reads as "threshold", which is exactly what the goal
+            line below is — so only that one is dashed, and the distinction stays legible.
+            Horizontal only: the x values are months, and a vertical line per month is
+            twelve lines saying nothing the labels do not. */}
+        {showY &&
+          ticks.map((t) => (
+            <g key={t}>
+              <line
+                x1={padLeft}
+                x2={w - padRight}
+                y1={y(t)}
+                y2={y(t)}
+                stroke="var(--color-border)"
+                strokeWidth={1}
+              />
+              <text
+                x={padLeft - 8}
+                y={y(t) + 3}
+                textAnchor="end"
+                fontSize={10}
+                fill="var(--color-text-subtle)"
+              >
+                {axisFmt(t)}
+              </text>
+            </g>
+          ))}
+
         {/* Goal reference line */}
         {goal != null && goal > 0 && (
           <g>
             <line
-              x1={padX}
-              x2={w - padX}
+              x1={padLeft}
+              x2={w - padRight}
               y1={y(goal)}
               y2={y(goal)}
-              stroke="var(--color-text-subtle)"
+              stroke="var(--color-text-muted)"
               strokeWidth={1}
               strokeDasharray="4 4"
-              opacity={0.7}
             />
-            <text x={w - padX} y={y(goal) - 4} textAnchor="end" fontSize={10} fill="var(--color-text-subtle)">
-              {goalLabel}
+            <text
+              x={w - padRight}
+              y={y(goal) - 4}
+              textAnchor="end"
+              fontSize={10}
+              fontWeight={500}
+              fill="var(--color-text-muted)"
+            >
+              {goalLabel} {axisFmt(goal)}
             </text>
           </g>
         )}
@@ -140,7 +199,7 @@ export function AreaChart({
       {hv && (
         <div
           className="pointer-events-none absolute -translate-x-1/2 -translate-y-full rounded-md border border-border bg-surface px-2 py-1 shadow-pop"
-          style={{ left: Math.min(Math.max(x(hover!), 40), w - 40), top: y(hv.value) - 6 }}
+          style={{ left: Math.min(Math.max(x(hover!), padLeft + 20), w - 40), top: y(hv.value) - 6 }}
         >
           <div className="text-label text-text-subtle">{hv.label}</div>
           <div className="num text-small font-semibold">{format(hv.value)}</div>
@@ -148,6 +207,21 @@ export function AreaChart({
       )}
     </div>
   );
+}
+
+/* Axis ticks a person would have chosen: 0 and then steps of 1, 2 or 5 times a power of
+   ten, extended past the data so the top of the scale is itself a round number. `count` is
+   a target, not a promise — rounding the step up can return one tick fewer. */
+function niceTicks(max: number, count: number): number[] {
+  if (!(max > 0) || count < 1) return [0, Math.max(max, 1)];
+  const raw = max / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+  const out: number[] = [];
+  // 1e-9 guards the float error that would otherwise drop the top tick exactly on `max`.
+  for (let v = 0; v <= max + step - 1e-9; v += step) out.push(Number(v.toFixed(6)));
+  return out;
 }
 
 /* MONOTONE cubic, not Catmull-Rom or a fixed-tension spline.

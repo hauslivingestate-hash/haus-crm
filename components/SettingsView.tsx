@@ -67,6 +67,7 @@ export function SettingsView({
   accounts,
   employees,
   actionTypes,
+  actionCategories,
   actionUsage,
   propertyTypeCodes,
   rbac,
@@ -84,7 +85,9 @@ export function SettingsView({
   /** Real roster (main_1_hr) — the team builder picks its members from this. */
   employees: Employee[];
   /** Governed activity vocabulary — rank criteria and activities are FKs to it. */
-  actionTypes: { name: string; group: string; attach: AttachMode }[];
+  actionTypes: { name: string; group: string; attach: AttachMode; category: string | null }[];
+  /** `action_category` — the หมวด picker's options. */
+  actionCategories: string[];
   /** Logged activities per action, for the delete confirm. */
   actionUsage: Record<string, number>;
   /** property_type name → listing-id letter. */
@@ -253,7 +256,7 @@ export function SettingsView({
               title="ประเภทกิจกรรม"
               desc="ชุดกิจกรรมกลางที่ปุ่มบันทึกและหน้าผลงานใช้ · จัดการโดย CEO"
             />
-            <ActionTypesManager actionTypes={actionTypes} usage={actionUsage} />
+            <ActionTypesManager actionTypes={actionTypes} categories={actionCategories} usage={actionUsage} />
           </>
         )}
         {section === "kpi" && (

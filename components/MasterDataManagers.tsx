@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDelete, usageWarning } from "@/components/ui/ConfirmDelete";
+import { PillSelect } from "@/components/ui/PillSelect";
 import { useRouter } from "next/navigation";
 import { useMasterData, type RefItem } from "@/components/MasterDataProvider";
 import { type AttachMode } from "@/lib/actions";
@@ -16,12 +17,15 @@ import {
   deleteLookupValue,
   saveLeadTag,
   deleteLeadTag,
+  setActionCategory,
   type LookupTable,
 } from "@/lib/mutations/reference";
 import {
   KIND_LABEL,
+  PCT_METRIC_LABEL,
   SOURCE_LABEL,
   type KpiTemplate,
+  type PctMetric,
   type TemplateKind,
   type TemplateSource,
 } from "@/lib/masterdata";
@@ -83,11 +87,16 @@ function VocabList({
   items,
   placeholder,
   warnFor,
+  rowAccessory,
 }: {
   table: LookupTable;
   items: RefItem[];
   placeholder: string;
   warnFor?: (label: string) => React.ReactNode;
+  /** Rendered between the name and the delete button. One list needs a second control per
+      row (ประเภทกิจกรรม picks a หมวด); the other eight do not, and a render prop keeps
+      that from becoming a prop every caller has to think about. */
+  rowAccessory?: (item: RefItem) => React.ReactNode;
 }) {
   const { run, busy, error } = useRefWriter();
   const [draft, setDraft] = React.useState("");
@@ -105,7 +114,7 @@ function VocabList({
     <div className="flex flex-col gap-1.5">
       <ErrorNote error={error} />
       {items.map((it) => (
-        <div key={it.id} className="flex items-center gap-2">
+        <div key={it.id} className="flex flex-wrap items-center gap-2">
           <Input
             value={edits[it.id] ?? it.label}
             disabled={busy}
@@ -114,8 +123,9 @@ function VocabList({
               const next = e.target.value.trim();
               if (next && next !== it.label) void run(() => renameLookupValue(table, it.label, next));
             }}
-            className="flex-1"
+            className="min-w-40 flex-1"
           />
+          {rowAccessory?.(it)}
           <ConfirmDelete
             onDelete={() => void run(() => deleteLookupValue(table, it.label))}
             confirmLabel={`ลบ “${it.label}”?`}
@@ -478,11 +488,15 @@ const ATTACH_LABEL: Record<AttachMode, { label: string; tone: "violet" | "accent
 
 export function ActionTypesManager({
   actionTypes = [],
+  categories = [],
   usage = {},
 }: {
   /** From `action_type` — the governed list every activity, task, target and rank
    *  criterion is an FK to. */
-  actionTypes?: { name: string; group: string; attach: AttachMode }[];
+  actionTypes?: { name: string; group: string; attach: AttachMode; category: string | null }[];
+  /** From `action_category` — what the หมวด picker offers, and what the ทีม tab's heatmap
+   *  filters by. Editable in the card below, like any other reference list. */
+  categories?: string[];
   /** Rows in `activities` per action, for the delete confirm. */
   usage?: Record<string, number>;
 }) {
@@ -498,6 +512,24 @@ export function ActionTypesManager({
     return [...m.values()];
   }, [actionTypes]);
 
+  const categoryOf = React.useMemo(
+    () => new Map(actionTypes.map((a) => [a.name, a.category])),
+    [actionTypes]
+  );
+
+  // ไม่ระบุ is offered as an option rather than left as "no pill selected": clearing a
+  // category is a deliberate act, and a row showing nothing selected is indistinguishable
+  // from a row that failed to load.
+  const options = React.useMemo(
+    () => [
+      ...categories.map((c) => ({ value: c, label: c })),
+      { value: UNFILED, label: "ไม่ระบุ" },
+    ],
+    [categories]
+  );
+
+  const unfiled = actionTypes.filter((a) => !a.category).length;
+
   if (!groups.length) {
     return (
       <Card className="p-6 text-center text-small text-text-subtle">ยังไม่มีประเภทกิจกรรม</Card>
@@ -506,6 +538,14 @@ export function ActionTypesManager({
 
   return (
     <div className="flex flex-col gap-4">
+      <RefListCard
+        title="หมวดกิจกรรม"
+        note="ใช้กรองการ์ด 'กิจกรรมรายวัน' บนแดชบอร์ดทีม — ลบหมวดที่ยังมีกิจกรรมอยู่ไม่ได้ ต้องย้ายออกก่อน"
+        table="action_category"
+        items={categories.map((c) => ({ id: c, label: c }))}
+        placeholder="เพิ่มหมวด…"
+      />
+
       {groups.map((g) => (
         <Card key={g.group}>
           <CardHeader>
@@ -518,10 +558,19 @@ export function ActionTypesManager({
               items={g.items}
               placeholder="เพิ่มกิจกรรม…"
               warnFor={(it) => usageWarning(usage[it] ?? 0, "กิจกรรมที่บันทึกไว้")}
+              rowAccessory={(it) => (
+                <CategoryPicker name={it.label} current={categoryOf.get(it.label) ?? null} options={options} />
+              )}
             />
           </CardContent>
         </Card>
       ))}
+
+      {unfiled > 0 && (
+        <p className="text-label text-text-subtle">
+          ยังไม่ได้จัดหมวด {unfiled} กิจกรรม — จะไปรวมอยู่ใต้ “ไม่ระบุ” บนการ์ดกิจกรรมรายวัน
+        </p>
+      )}
       <p className="text-label text-text-subtle">
         กิจกรรมที่เพิ่มใหม่จะเข้ากลุ่ม “อื่นๆ” และไปอยู่ในหมวด “งานอื่นๆ” ของแดชบอร์ด — การจัดกลุ่ม ลำดับ
         ฝั่ง (<span className="num">side</span>) ขั้นตอนที่ผูก (<span className="num">stage_name</span>) และ
@@ -529,6 +578,41 @@ export function ActionTypesManager({
         <span className="num"> action_type</span> โดยตรง
       </p>
     </div>
+  );
+}
+
+/** The sentinel the ไม่ระบุ pill carries. PillSelect is keyed on a string, and the column
+    is nullable — this is the one place the two meet. */
+const UNFILED = "__none__";
+
+/* One action's หมวด. PillSelect rather than a dropdown for the same reason the lead board
+   uses it: every option is on screen and filing an action is one tap, so a CEO can sort
+   twenty-two of them in a sitting instead of opening twenty-two menus. */
+function CategoryPicker({
+  name,
+  current,
+  options,
+}: {
+  name: string;
+  current: string | null;
+  options: { value: string; label: string }[];
+}) {
+  const router = useRouter();
+  return (
+    <PillSelect
+      value={current ?? UNFILED}
+      options={options}
+      size="sm"
+      aria-label={`หมวดของ ${name}`}
+      onChange={async (next) => {
+        const r = await setActionCategory(name, next === UNFILED ? null : next);
+        if (!r.ok) return r.error;
+        // The pill already moved optimistically; this refreshes the counts and the
+        // "ยังไม่ได้จัดหมวด" line underneath, which are computed from the server value.
+        router.refresh();
+        return null;
+      }}
+    />
   );
 }
 
@@ -594,6 +678,8 @@ export function KpiTemplatesManager({
         source: "activity",
         activityType: actionOptions[0]?.items[0] ?? "Call",
         defaultTarget: 0,
+        shape: "count",
+        onTracker: false,
       },
     ]);
   };
@@ -601,14 +687,36 @@ export function KpiTemplatesManager({
   const patch = (key: string, p: Partial<KpiTemplate>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
 
-  // Source switch keeps activityType coherent: activity gets a default action;
-  // pipeline/manual carry none.
-  const setSource = (r: KpiDraft, source: TemplateSource) =>
+  /* ONE control for "what does this count", across both shapes.
+     A count KPI is scored on an action or a pipeline; a pct KPI is scored on a share of a
+     population, and each population needs its own query — so the two pct options are a
+     closed set rather than anything the CEO can invent. Combining them into one select is
+     what keeps shape and pctMetric from ever disagreeing: the table has a CHECK that
+     refuses a pct row without a population, and a form with two separate controls would
+     let somebody build that row and only find out on บันทึก. */
+  const countsFromValue = (r: KpiDraft) => (r.shape === "pct" ? `pct:${r.pctMetric ?? ""}` : r.source);
+
+  const setCountsFrom = (r: KpiDraft, value: string) => {
+    if (value.startsWith("pct:")) {
+      patch(r.key, {
+        shape: "pct",
+        pctMetric: value.slice(4) as PctMetric,
+        // A pct KPI has no target to set and no action to count — both are cleared rather
+        // than left behind where a later edit could resurrect them.
+        activityType: undefined,
+        defaultTarget: 0,
+      });
+      return;
+    }
+    const source = value as TemplateSource;
     patch(r.key, {
+      shape: "count",
+      pctMetric: undefined,
       source,
       activityType:
         source === "activity" ? (r.activityType ?? actionOptions[0]?.items[0] ?? "Call") : undefined,
     });
+  };
 
   // Always try/catch: a rejected action is not a { ok: false } result, and an uncaught one
   // leaves the bar reading "กำลังบันทึก…" with nothing saved and nothing said.
@@ -638,29 +746,36 @@ export function KpiTemplatesManager({
               onChange={(e) => patch(r.key, { label: e.target.value })}
               className="flex-1 min-w-[140px]"
             />
+            {r.shape === "count" && (
+              <Select
+                value={r.kind}
+                onChange={(e) => patch(r.key, { kind: e.target.value as TemplateKind })}
+                aria-label="ชนิดการวัด"
+                className="w-28"
+              >
+                {(Object.keys(KIND_LABEL) as TemplateKind[]).map((k) => (
+                  <option key={k} value={k}>{KIND_LABEL[k]}</option>
+                ))}
+              </Select>
+            )}
             <Select
-              value={r.kind}
-              onChange={(e) => patch(r.key, { kind: e.target.value as TemplateKind })}
-              aria-label="ชนิดการวัด"
-              className="w-28"
-            >
-              {(Object.keys(KIND_LABEL) as TemplateKind[]).map((k) => (
-                <option key={k} value={k}>{KIND_LABEL[k]}</option>
-              ))}
-            </Select>
-            <Select
-              value={r.source}
-              onChange={(e) => setSource(r, e.target.value as TemplateSource)}
-              aria-label="แหล่งข้อมูล"
-              className="w-40"
+              value={countsFromValue(r)}
+              onChange={(e) => setCountsFrom(r, e.target.value)}
+              aria-label="นับจาก"
+              className="w-52"
             >
               {(Object.keys(SOURCE_LABEL) as TemplateSource[]).map((s) => (
                 <option key={s} value={s}>{SOURCE_LABEL[s]}</option>
               ))}
+              <optgroup label="สัดส่วน (เป้า 100% เสมอ)">
+                {(Object.keys(PCT_METRIC_LABEL) as PctMetric[]).map((m) => (
+                  <option key={m} value={`pct:${m}`}>{PCT_METRIC_LABEL[m]}</option>
+                ))}
+              </optgroup>
             </Select>
             {/* The linked action — the metric this template counts (same vocabulary as
                 ประเภทกิจกรรม / Rank เซลล์ใหม่). Only for activity-sourced templates. */}
-            {r.source === "activity" && (
+            {r.shape === "count" && r.source === "activity" && (
               <Select
                 value={r.activityType ?? ""}
                 onChange={(e) => patch(r.key, { activityType: e.target.value })}
@@ -676,13 +791,41 @@ export function KpiTemplatesManager({
                 ))}
               </Select>
             )}
-            <Input
-              value={String(r.defaultTarget)}
-              onChange={(e) => patch(r.key, { defaultTarget: Number(e.target.value) || 0 })}
-              className="w-24 num text-right"
-              inputMode="numeric"
-              aria-label="เป้าเริ่มต้น"
-            />
+            {/* A pct KPI's target is always 100% of its population — there is nothing to
+                type, so the box is not shown rather than shown and ignored. */}
+            {r.shape === "count" && (
+              <Input
+                value={String(r.defaultTarget)}
+                onChange={(e) => patch(r.key, { defaultTarget: Number(e.target.value) || 0 })}
+                className="w-24 num text-right"
+                inputMode="numeric"
+                aria-label="เป้าเริ่มต้น"
+              />
+            )}
+            {/* On the ทีม dashboard, and in which week of the month it is the focus. */}
+            <label className="flex shrink-0 items-center gap-1.5 text-small text-text-muted">
+              <input
+                type="checkbox"
+                checked={r.onTracker}
+                onChange={(e) => patch(r.key, { onTracker: e.target.checked })}
+                className="size-3.5 accent-[var(--accent)]"
+              />
+              แดชบอร์ดทีม
+            </label>
+            <Select
+              value={r.focusWeek == null ? "" : String(r.focusWeek)}
+              onChange={(e) =>
+                patch(r.key, { focusWeek: e.target.value ? Number(e.target.value) : undefined })
+              }
+              aria-label="สัปดาห์โฟกัส"
+              className="w-24"
+              disabled={!r.onTracker}
+            >
+              <option value="">ไม่กำหนด</option>
+              {[1, 2, 3, 4].map((w) => (
+                <option key={w} value={w}>สัปดาห์ {w}</option>
+              ))}
+            </Select>
             <ConfirmDelete
               onDelete={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}
               confirmLabel={`ลบ “${r.label}”?`}

@@ -16,6 +16,24 @@ export function formatBaht(value: number | null | undefined): string {
   return `฿${value.toLocaleString("en-US")}`;
 }
 
+/* Axis/label form: ฿8M · ฿850K · ฿120. Shorter than formatBaht ("฿8 ล้าน") because this
+   one is repeated four times down a chart's left edge, where every character is width the
+   plot does not get. Latin M/K rather than ล้าน/พัน for the same reason — the team reads
+   both, and these are the units the finance sheet already uses. */
+export function formatBahtShort(value: number | null | undefined): string {
+  if (value == null) return "—";
+  const n = Math.abs(value);
+  if (n >= 1_000_000) {
+    const m = value / 1_000_000;
+    return `฿${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
+  }
+  if (n >= 1_000) {
+    const k = value / 1_000;
+    return `฿${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
+  }
+  return `฿${Math.round(value)}`;
+}
+
 // Rent / monthly price: ฿85,000/ด.
 export function formatRent(value: number | null | undefined): string {
   if (value == null) return "—";

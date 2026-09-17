@@ -74,6 +74,14 @@ const LOOKUPS = {
     label: "ไปป์ไลน์เจ้าของ",
     uses: [{ table: "main_4_listing_database", column: "owner_stage", noun: "ทรัพย์" }],
   },
+  action_category: {
+    label: "หมวดกิจกรรม",
+    // The FK is ON DELETE SET NULL — deleting a category must never delete the actions
+    // filed under it. deleteLookupValue still REFUSES while any action points at it, the
+    // same as every other list here: silently unfiling five actions is not something a
+    // CEO should discover from the heatmap afterwards. Move them, then delete.
+    uses: [{ table: "action_type", column: "category", noun: "ประเภทกิจกรรม" }],
+  },
   action_type: {
     label: "ประเภทกิจกรรม",
     uses: [
@@ -393,6 +401,48 @@ export async function setSlaDays(
     action: "sla",
     changed_by: auth.employeeCode,
     after: { sla_days: days },
+  });
+  done();
+  return { ok: true };
+}
+
+/** หมวดกิจกรรม — which category an action is filed under, for the ทีม tab's heatmap.
+ *
+ *  A separate action from `renameLookupValue` because this writes a COLUMN on
+ *  `action_type`, not a row in a lookup list: the category is an attribute of the
+ *  action, and the categories themselves are their own governed list (`action_category`,
+ *  editable through the same add/rename/delete path as any other).
+ *
+ *  `null` clears it. That is a real state, not a mistake — an action nobody has filed yet
+ *  shows under ไม่ระบุ on the heatmap rather than being counted somewhere arbitrary, and
+ *  the CEO can leave it there deliberately.
+ *
+ *  The FK does the validating: a category that is not in `action_category` is refused by
+ *  the database, so there is no list of names in this file to fall out of date. */
+export async function setActionCategory(
+  action: string,
+  category: string | null,
+): Promise<Result> {
+  const auth = await requireManage();
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("action_type")
+    .update({ category })
+    .eq("name", action);
+  if (error) {
+    // 23503 = foreign_key_violation: the category was deleted between the page load and
+    // the click. Said in Thai rather than leaking the constraint name.
+    return { ok: false, error: error.code === "23503" ? "ไม่มีหมวดนี้แล้ว — โหลดหน้าใหม่" : error.message };
+  }
+
+  await supabase.from("audit_log").insert({
+    entity: "action_type",
+    entity_id: action,
+    action: "category",
+    changed_by: auth.employeeCode,
+    after: { category },
   });
   done();
   return { ok: true };

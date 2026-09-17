@@ -55,7 +55,16 @@ export function KpiRow({
             : undefined
         }
       />
-      <Stat icon={Handshake} label="ดีลที่ปิดได้" value={cases} hint={range.label} />
+      <Stat
+        icon={Handshake}
+        label="ดีลที่ปิดได้"
+        value={cases}
+        /* มูลค่าเฉลี่ย/ดีล — HAUS V2 carried this beside the headline figure, and it is the
+           number that separates "a good month" from "one big month". Revenue ÷ deals, so
+           it needs no new query. Falls back to the range when there is nothing to divide:
+           an average of zero deals is not zero, it is undefined. */
+        hint={cases > 0 ? `เฉลี่ย ${formatBaht(Math.round(actual / cases))}/ดีล` : range.label}
+      />
       <Stat icon={UserPlus} label="ลีดใหม่" value={newLeads} hint={`รับเข้า${range.label}`} />
     </div>
   );

@@ -26,7 +26,7 @@ import {
 } from "@/lib/team";
 import { todayISO } from "@/lib/momentum";
 import { withCase, type ClosedCase } from "@/lib/deals";
-import type { KpiTemplate, TemplateKind, TemplateSource } from "@/lib/masterdata";
+import type { KpiTemplate, PctMetric, TemplateKind, TemplateSource } from "@/lib/masterdata";
 import { comboKey, type CopyGrade, type CopyTemplate, type CopyType } from "@/lib/listingCopy";
 import type {
   ChecklistItemType,
@@ -42,6 +42,10 @@ type KpiRow = {
   source: TemplateSource;
   activity_type: string | null;
   default_target: number | string;
+  shape: string | null;
+  pct_metric: PctMetric | null;
+  focus_week: number | null;
+  on_tracker: boolean | null;
 };
 type CopyRow = {
   grade: CopyGrade;
@@ -1181,24 +1185,37 @@ export async function getZones(): Promise<Zone[]> {
  * ever defined. The same trap already bit the task form in Phase 5.
  */
 export async function getActionTypes(): Promise<
-  { name: string; group: string; attach: AttachMode }[]
+  { name: string; group: string; attach: AttachMode; category: string | null }[]
 > {
   const supabase = await createClient();
   const { data } = await supabase
     .from("action_type")
-    .select("name,group_label,attach,sort_order")
+    .select("name,group_label,attach,sort_order,category")
     .eq("is_active", true)
     .order("sort_order");
   return ((data ?? []) as {
     name: string;
     group_label: string | null;
     attach: string | null;
+    category: string | null;
   }[]).map((a) => ({
     name: a.name,
     group: a.group_label ?? "อื่นๆ",
     attach: (["lead", "listing", "either", "none"] as AttachMode[]).find((m) => m === a.attach) ??
       "either",
+    /** `action_category`, or null for an action nobody has filed yet — a real state the
+     *  heatmap shows as ไม่ระบุ rather than hiding. Set in ตั้งค่า ▸ ประเภทกิจกรรม. */
+    category: a.category,
   }));
+}
+
+/** หมวดกิจกรรม — the governed category list the heatmap's pills and the ประเภทกิจกรรม
+ *  picker both read. Its own table for the usual reason: a CHECK constraint would need a
+ *  migration to rename a category, and the pills would have to name them in code. */
+export async function getActionCategories(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("action_category").select("name,sort_order").order("sort_order");
+  return ((data ?? []) as { name: string }[]).map((c) => c.name);
 }
 
 /** Logged activities per action name — the impact line on the delete confirm in
@@ -1275,7 +1292,7 @@ export async function getKpiTemplates(): Promise<KpiTemplate[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("kpi_template")
-    .select("id, label, kind, source, activity_type, default_target")
+    .select("id, label, kind, source, activity_type, default_target, shape, pct_metric, focus_week, on_tracker")
     .order("sort");
   if (error) throw new Error(`getKpiTemplates: ${error.message}`);
   return ((data ?? []) as KpiRow[]).map((r) => ({
@@ -1285,6 +1302,10 @@ export async function getKpiTemplates(): Promise<KpiTemplate[]> {
     source: r.source,
     activityType: r.activity_type ?? undefined,
     defaultTarget: Number(r.default_target),
+    shape: r.shape === "pct" ? "pct" : "count",
+    pctMetric: r.pct_metric ?? undefined,
+    focusWeek: r.focus_week ?? undefined,
+    onTracker: r.on_tracker === true,
   }));
 }
 

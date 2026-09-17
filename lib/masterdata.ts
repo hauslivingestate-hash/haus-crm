@@ -21,6 +21,16 @@ export const POTENTIALS: string[] = ["Exclusive", "A List", "Normal"];
 
 export type TemplateKind = "count" | "baht" | "check";
 export type TemplateSource = "activity" | "pipeline" | "manual";
+export type KpiShape = "count" | "pct";
+export type PctMetric = "owner_talk" | "buyer_follow";
+
+/* The two population shares the tracker can compute, and what each one measures.
+   HAUS V2's rule: "once per month per qualified owner" — the share of ACTIVE records
+   whose last-contact date falls inside the window. It resets on the 1st and climbs. */
+export const PCT_METRIC_LABEL: Record<PctMetric, string> = {
+  owner_talk: "% ทรัพย์ที่คุยกับเจ้าของแล้ว",
+  buyer_follow: "% ลีดที่ติดตามแล้ว",
+};
 
 // The metric templates a manager picks from when assigning monthly targets — the
 // definitions behind the Momentum targets (lib/momentum.ts). Rows live in `kpi_template`;
@@ -34,6 +44,17 @@ export interface KpiTemplate {
   /** For source="activity": the CRM action this metric counts. */
   activityType?: string;
   defaultTarget: number;
+  /** 'count' = done against a target. 'pct' = a share of a population, where the target is
+   *  always 100% and there is nothing for the CEO to set. */
+  shape: KpiShape;
+  /** Required for shape='pct', forbidden otherwise — the DB enforces both. A closed set:
+   *  each population share needs its own query, so a new one is a code change. */
+  pctMetric?: PctMetric;
+  /** 1–4: the week of the month this KPI is the team's focus. Null = no rhythm. */
+  focusWeek?: number;
+  /** Whether it appears on the ทีม tab's KPI card. Off by default, so adding a target
+   *  preset never silently changes what the whole team is scored on in public. */
+  onTracker: boolean;
 }
 
 export const KIND_LABEL: Record<TemplateKind, string> = {

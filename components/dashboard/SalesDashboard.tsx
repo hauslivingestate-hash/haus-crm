@@ -193,8 +193,17 @@ async function RevenueBlock({
 /* Its own block, and it takes no range: the trend is the one card the filter does not
    touch, so it must not re-render when the filter changes. */
 async function TrendBlock({ employeeCode, basis }: { employeeCode: string; basis: RevenueBasis }) {
-  const rows = await getRevenueTrend(employeeCode, basis, 12);
-  return <RevenueTrendCard rows={rows} basis={basis} />;
+  /* The STANDING monthly figure, for the threshold line — the trend is twelve months, so
+     the monthly target is the only one that belongs on it.
+
+     Read unconditionally, NOT behind `targets.set` like the editor above: a salesperson
+     may always see their own number (RLS is own-row on `targets`), and a chart that hides
+     the line from the person being measured by it would be the wrong way round. */
+  const [rows, standing] = await Promise.all([
+    getRevenueTrend(employeeCode, basis, 12),
+    getStandingRevenueTargets(employeeCode),
+  ]);
+  return <RevenueTrendCard rows={rows} basis={basis} monthlyTarget={standing.month ?? 0} />;
 }
 
 /* ONE card for both halves and both views, as in Klaichan — not a pipeline card beside

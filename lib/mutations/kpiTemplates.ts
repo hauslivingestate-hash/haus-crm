@@ -37,6 +37,13 @@ export async function saveKpiTemplates(rows: KpiTemplate[]): Promise<Result> {
     if (!Number.isFinite(r.defaultTarget) || r.defaultTarget < 0) {
       return { ok: false, error: `${r.label}: เป้าตั้งต้นต้องไม่ติดลบ` };
     }
+    // The table's coherence check refuses these too; saying it here names the row.
+    if (r.shape === "pct" && !r.pctMetric) {
+      return { ok: false, error: `${r.label}: KPI แบบเปอร์เซ็นต์ต้องเลือกว่านับจากอะไร` };
+    }
+    if (r.focusWeek != null && !(r.focusWeek >= 1 && r.focusWeek <= 4)) {
+      return { ok: false, error: `${r.label}: สัปดาห์โฟกัสต้องเป็น 1–4` };
+    }
   }
 
   const supabase = await createClient();
@@ -61,8 +68,14 @@ export async function saveKpiTemplates(rows: KpiTemplate[]): Promise<Result> {
       label: r.label.trim(),
       kind: r.kind,
       source: r.source,
-      activity_type: r.source === "activity" ? (r.activityType ?? null) : null,
+      // A pct KPI counts a population, never an action — a leftover activity_type would
+      // make the row read as two different metrics depending on who looked at it.
+      activity_type: r.shape === "count" && r.source === "activity" ? (r.activityType ?? null) : null,
       default_target: r.defaultTarget,
+      shape: r.shape,
+      pct_metric: r.shape === "pct" ? (r.pctMetric ?? null) : null,
+      focus_week: r.focusWeek ?? null,
+      on_tracker: r.onTracker,
       sort: i + 1,
       updated_at: new Date().toISOString(),
     },
@@ -91,5 +104,7 @@ export async function saveKpiTemplates(rows: KpiTemplate[]): Promise<Result> {
 
   revalidatePath("/settings");
   revalidatePath("/today");
+  // The ทีม tab's KPI card reads this list.
+  revalidatePath("/");
   return { ok: true };
 }

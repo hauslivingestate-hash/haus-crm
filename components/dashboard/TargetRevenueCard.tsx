@@ -60,6 +60,16 @@ export function TargetRevenueCard({
   // target exists AND the period is genuinely part-way through.
   const behind = target > 0 && elapsed < 1 && pct < elapsed * 100;
 
+  /* คาดทั้งช่วง — a straight-line projection: where the period lands if the rest of it runs
+     at the pace so far. HAUS V2 showed this beside the headline; it is the figure that
+     turns "71% with a week to go" into a decision.
+
+     ⚠️ WITHHELD BELOW 10% ELAPSED. One deal signed on the 2nd of a 30-day month projects
+     to fifteen times itself — noise dressed as a forecast, and the number a leader would
+     quote in a meeting. `elapsed` is 1 for a custom range (lib/range.ts), so an arbitrary
+     window never shows one either, which is right: a window that is over is not a pace. */
+  const projected = elapsed >= 0.1 && elapsed < 1 ? Math.round(actual / elapsed) : null;
+
   return (
     <Card>
       <CardHeader>
@@ -131,6 +141,17 @@ export function TargetRevenueCard({
                   ? `ผ่านมาแล้ว ${Math.round(elapsed * 100)}% ของช่วงเวลา`
                   : "จบช่วงเวลาแล้ว"}
             </div>
+
+            {projected != null && (
+              <div className="mt-1 text-small text-text-subtle">
+                คาดทั้งช่วง <span className="num font-medium text-text">{formatBaht(projected)}</span>
+                {target > 0 && (
+                  <span className={cn("ml-1.5 font-medium", projected >= target ? "text-green" : "text-amber")}>
+                    {projected >= target ? "ทันเป้า" : "ไม่ถึงเป้า"}
+                  </span>
+                )}
+              </div>
+            )}
 
             {behind && (
               <p className="mt-3 rounded-md bg-amber-bg px-3 py-2 text-small text-amber">

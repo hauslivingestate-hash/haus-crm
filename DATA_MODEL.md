@@ -837,3 +837,31 @@ snapshot cards at integration.
 _Update this file whenever we review another source tab or design one of the backlog
 surfaces. Design rationale lives in the team's design-system notes; the pre-handover
 test gate lives in [HANDOVER_CHECKLIST.md](./HANDOVER_CHECKLIST.md)._
+
+---
+
+## 2026-09-17 — แดชบอร์ดทีม: หมวดกิจกรรม + KPI
+
+> **`action_category`** (ใหม่) — `name` PK, `sort_order`. หมวดของกิจกรรมสำหรับตัวกรองการ์ด
+> กิจกรรมรายวัน: ฝั่งเจ้าของ · ฝั่งผู้ซื้อ · สำรวจ · ธุรการ · บริษัท. `action_type.category`
+> เป็น FK มาที่นี่ (ON UPDATE CASCADE / ON DELETE SET NULL) แก้ได้ที่ ตั้งค่า ▸ ประเภทกิจกรรม
+>
+> **`kpi_template`** เพิ่ม `shape` (`count`|`pct`), `focus_week` (1–4), `on_tracker`,
+> `pct_metric` (`owner_talk`|`buyer_follow`), `stage_name`, `owner_stage_name` — ตารางนี้
+> กลายเป็น "ลิสต์เดียวว่า KPI ของบริษัทคืออะไร" แทนที่จะกระจายอยู่สามที่
+>
+> **RPC ใหม่** — `dash_activity_heatmap(codes, from, to)` (คน × วัน × หมวด),
+> `dash_team_kpi(codes, from, to)` (activity / stage / owner_stage ตามกติกาเดียวกับ funnel เดิม),
+> `dash_team_coverage(codes, from, to)` (Owner Talk % / Buyer Follow %) · ทั้งหมด SECURITY
+> INVOKER และผู้เรียกยังกรอง `p_codes` เอง เพราะ RLS เป็นเพดาน ไม่ใช่ตัวกรอง
+>
+> **เปลี่ยนวิธีนับ** — เป้า New List / Sourcing ย้ายจาก `owner_stage` (นับทรัพย์ที่ถึงขั้น)
+> มาเป็น `activity` (นับกิจกรรมที่บันทึก) ตาม HAUS V2 · `targets.label` ต้องย้ายตาม ไม่งั้น
+> ตัวอ่านกับตัวแก้จะไม่ตรงกัน
+>
+> ⚠️ **`action_type` และ `kpi_template` มี GRANT ระดับคอลัมน์** — คอลัมน์ใหม่ต้อง
+> `grant select/update (col)` ไม่งั้นอ่านออกมาเป็น NULL เงียบ ๆ (เคยโดนมาแล้วที่
+> `main_1_hr.avatar_path`)
+>
+> ⚠️ **สคีมาไม่ได้เก็บเป็นไฟล์ migration ในรีโป** — เปลี่ยนผ่าน Supabase อย่างเดียว
+> ไฟล์นี้จึงเป็นบันทึกเดียวที่มี

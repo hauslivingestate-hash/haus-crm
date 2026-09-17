@@ -1,7 +1,7 @@
 import { Topbar } from "@/components/Topbar";
 import { SettingsView } from "@/components/SettingsView";
 import { getColorableLists } from "@/lib/tables/colors";
-import { getListings, getEmployees, getZones, getActionTypes, getActionUsage, getPropertyTypeCodes, getRbacConfig, getTeams, getKpiTemplates, getChecklistTemplates, getRoleOptions } from "@/lib/queries";
+import { getListings, getEmployees, getZones, getActionTypes, getActionCategories, getActionUsage, getPropertyTypeCodes, getRbacConfig, getTeams, getKpiTemplates, getChecklistTemplates, getRoleOptions } from "@/lib/queries";
 import { getAccounts } from "@/lib/accounts";
 
 export default async function SettingsPage({
@@ -22,12 +22,13 @@ export default async function SettingsPage({
     propertyTypeUsage[l.property_type] = (propertyTypeUsage[l.property_type] ?? 0) + 1;
   }
 
-  const [accounts, employees, zones, actionTypes, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates, checklistTemplates, roleOptions, colorLists] =
+  const [accounts, employees, zones, actionTypes, actionCategories, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates, checklistTemplates, roleOptions, colorLists] =
     await Promise.all([
     getAccounts(),
     getEmployees(),
     getZones(),
     getActionTypes(),
+    getActionCategories(),
     getActionUsage(),
     getPropertyTypeCodes(),
     getRbacConfig(),
@@ -50,6 +51,7 @@ export default async function SettingsPage({
           accounts={accounts}
           employees={employees}
           actionTypes={actionTypes}
+          actionCategories={actionCategories}
           actionUsage={actionUsage}
           propertyTypeCodes={propertyTypeCodes}
           rbac={rbac}
