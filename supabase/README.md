@@ -1,43 +1,39 @@
 # Schema tracking
 
-**Status: scaffolding only. The baseline has not been pulled yet.**
+The database schema is tracked here. `supabase/migrations/` holds all 95
+migrations, fetched from the remote history table on 2026-09-17 with
+`supabase migration fetch` — so the repo and the database agree, and the
+database can be rebuilt from this repo.
 
-`config.toml` is here and the project is ready to link, but
-`supabase/migrations/` does not exist. **The schema still lives only inside
-Supabase** — 95 migrations, applied through the dashboard and the MCP. Nothing in
-this repo can rebuild the database.
-
-That is fine with one database and one developer. It stops being fine at the
-first staging environment, the first other engineer, or the first time somebody
-needs to know what the schema looked like last month.
-
-## Finishing it
-
-Three commands, and they need the **company** Supabase account —
-`supabase projects list` on this machine is currently signed in to a different
-one, which is why this was not completed in the same pass as the code.
+## Day to day
 
 ```bash
-supabase login                                    # the account that owns the project
-supabase link --project-ref jpufhxzvqfrdcblfmrmu  # asks for the database password
-supabase db pull                                  # writes the baseline
+supabase migration new <name>   # write a new migration
+supabase db push                # apply it to the linked project
+supabase migration list         # compare local files against remote history
 ```
 
-`db pull` dumps the whole remote schema to
-`supabase/migrations/<timestamp>_remote_schema.sql` and records it as already
-applied in the remote history, so a later `db push` will not try to replay it.
+Changes made outside a migration file — in the dashboard, the SQL editor or
+through an MCP `apply_migration` — land in the remote history but not on disk.
+Run `supabase migration fetch` afterwards to bring the file down, and commit it.
+`supabase migration list` is what tells you the two have drifted.
 
-⚠️ **Do not hand-write migration files for what is already applied.** The
-baseline is a single dump of the current state; individual files recreating
-migrations the remote has already run would duplicate it and put local and
-remote history out of step. Hand-written migrations start *after* the baseline
-exists.
+## ⚠️ Never run `migration repair --status reverted` to clear a mismatch
 
-⚠️ **Review the generated file before committing.** `db pull` diffs the remote
-against the CLI's default local stack, so the dump can include objects Supabase
-manages itself. Read it rather than committing it unseen.
+`db pull` suggests it, one line per migration, whenever local files and remote
+history differ. It does not fix the difference — it rewrites the REMOTE history
+table to claim 95 applied migrations were never applied. That was how this repo
+looked before the fetch, and the correct answer was `migration fetch`, not
+rewriting the record of what the database has actually run.
 
-## Until then
+## Still worth knowing
 
-[DATA_MODEL.md](../DATA_MODEL.md) is the only record of what changed and why.
-Keep adding a dated block there for every schema change, baseline or no baseline.
+- **Migrations are the only schema record, but not the only schema authority.**
+  A `create or replace function` in a late migration silently supersedes an
+  earlier one. Read the newest file for a given object, not the first.
+- **Column-level grants bite.** `main_1_hr`, `action_type` and `kpi_template`
+  give `authenticated` per-column privileges, so a new column reads NULL until
+  it is granted explicitly. Every migration adding a column to those tables
+  needs a matching `grant select (col)`.
+- **`DATA_MODEL.md`** still carries the reasoning — what changed and why. The
+  migrations carry the what; they do not carry the why.

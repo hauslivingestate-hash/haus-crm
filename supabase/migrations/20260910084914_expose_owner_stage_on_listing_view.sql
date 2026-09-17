@@ -1,0 +1,95 @@
+-- Appends owner_stage to v_main_listing. CREATE OR REPLACE VIEW may only add columns at the
+-- END of the list, so it goes after agreement_end; everything above is the existing
+-- definition, unchanged.
+--
+-- ⚠️ security_invoker=true is restated deliberately. The view carries it today, and it is
+-- what makes main_4_listing_database's RLS apply to whoever is querying — without it this
+-- view would read as its owner and hand every agent the owner phone numbers that RLS exists
+-- to withhold.
+create or replace view public.v_main_listing
+with (security_invoker = true) as
+ SELECT l.listing_id,
+    l.date_created,
+    l.project_id,
+    l.listing_status,
+    l.potential,
+    l.sign,
+    l.vdo,
+    l.ddproperty_link,
+    l.livinginsider_link,
+    l.livinginsider_date,
+    l.propertyhub_link,
+    l.old_price,
+    l.new_price,
+    l.update_remark,
+    l.owner_focus,
+    l.listing_type,
+    l.unit_no,
+    l.owner_id,
+    l.owner_talk_last_date,
+    l.activity_comment,
+    l.property_type,
+    l.in_out_project,
+    l.road_soi,
+    l.zone,
+    l.bed,
+    l.bath,
+    l.area_rai,
+    l.area_ngan,
+    l.area_wa,
+    l.area_sqm,
+    l.floor,
+    l.building,
+    l.direction,
+    l.view_type,
+    l.unit_position,
+    l.parking,
+    l.asking_price,
+    l.rental_price,
+    l.price_remark,
+    l.remark,
+    l.link_location,
+    l.unit_condition,
+    l.created_by,
+    l.shorts_reels_link,
+    l.hometour_link,
+    l.updated_at,
+    l.created_at,
+    l.marketing_report,
+    l.facebook_ad_link,
+    l.new_photo_link,
+    l.hook,
+    l.photo_album_link,
+    l.link,
+    l.last_match,
+    l.last_match_type,
+    l.last_match_price,
+    l.last_match_remark,
+    l.common_fee_rate,
+    l.common_fee_unit,
+    l.common_fee_note,
+    l.built_year,
+    l.sale_id,
+    l.dd_boost,
+    l.lv_boost,
+    l.fb_repost,
+    l.buyer_persona,
+    p.project_name_thai AS listing_name,
+    p.project_name_eng,
+    z.name_thai AS zone_name_thai,
+    z.name_eng AS zone_name_eng,
+    o.owner_name,
+    o.owner_phone,
+    o.owner_line,
+    COALESCE(l.sale_id, zone_primary_sale(l.zone)) AS effective_sale_id,
+        CASE
+            WHEN l.livinginsider_date IS NOT NULL THEN CURRENT_DATE - l.livinginsider_date
+            ELSE NULL::integer
+        END AS days_on_market,
+    l.agreement_start,
+    l.agreement_end,
+    l.owner_stage
+   FROM main_4_listing_database l
+     LEFT JOIN main_3_property_detail p ON p.project_id = l.project_id
+     LEFT JOIN main_2_owner o ON o.owner_id = l.owner_id
+     LEFT JOIN zone z ON z.zone_id = l.zone;;
