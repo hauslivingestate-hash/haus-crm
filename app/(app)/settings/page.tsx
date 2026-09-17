@@ -3,6 +3,7 @@ import { SettingsView } from "@/components/SettingsView";
 import { getColorableLists } from "@/lib/tables/colors";
 import { getListings, getEmployees, getZones, getActionTypes, getActionCategories, getActionUsage, getPropertyTypeCodes, getRbacConfig, getTeams, getKpiTemplates, getChecklistTemplates, getRoleOptions } from "@/lib/queries";
 import { getAccounts } from "@/lib/accounts";
+import { getAiUsageSummary } from "@/lib/ai/usage";
 
 export default async function SettingsPage({
   searchParams,
@@ -22,7 +23,7 @@ export default async function SettingsPage({
     propertyTypeUsage[l.property_type] = (propertyTypeUsage[l.property_type] ?? 0) + 1;
   }
 
-  const [accounts, employees, zones, actionTypes, actionCategories, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates, checklistTemplates, roleOptions, colorLists] =
+  const [accounts, employees, zones, actionTypes, actionCategories, actionUsage, propertyTypeCodes, rbac, teams, kpiTemplates, checklistTemplates, roleOptions, colorLists, aiUsage] =
     await Promise.all([
     getAccounts(),
     getEmployees(),
@@ -37,6 +38,7 @@ export default async function SettingsPage({
     getChecklistTemplates(),
     getRoleOptions(),
     getColorableLists(),
+    getAiUsageSummary(),
   ]);
 
   return (
@@ -59,6 +61,7 @@ export default async function SettingsPage({
           kpiTemplates={kpiTemplates}
           checklistTemplates={checklistTemplates}
           roleOptions={roleOptions}
+          aiUsage={aiUsage}
         />
       </div>
     </>

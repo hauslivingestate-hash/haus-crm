@@ -865,3 +865,43 @@ test gate lives in [HANDOVER_CHECKLIST.md](./HANDOVER_CHECKLIST.md)._
 >
 > ⚠️ **สคีมาไม่ได้เก็บเป็นไฟล์ migration ในรีโป** — เปลี่ยนผ่าน Supabase อย่างเดียว
 > ไฟล์นี้จึงเป็นบันทึกเดียวที่มี
+
+---
+
+## 2026-09-17 — คิว AI: วางข้อความให้ AI อ่าน
+
+> **`ai_job`** (ใหม่) — คิวการอ่านข้อความด้วย AI. `employee_code` (default
+> `current_employee_code()` — client ส่งมาเองไม่ได้), `kind` (`lead`|`listing`), `status`
+> (`queued`|`running`|`done`|`error`), `raw_text`, `draft` jsonb, `note`, `error`, `title`,
+> `created_at` / `started_at` / `finished_at` / `consumed_at`, `outcome` (`saved`|`discarded`)
+>
+> **แถวไม่เคยถูกลบ** — `consumed_at` ซ่อนจากถาด, `outcome` บอกว่าดราฟต์ได้ถูกบันทึกจริงไหม
+> ซึ่งเป็นตัวชี้วัดเดียวที่ซื่อสัตย์ว่า AI อ่านได้ดีพอหรือยัง · ไม่มี policy DELETE
+>
+> **RLS = แถวตัวเองเท่านั้น ทุกกรณี** ไม่มี scope "ดูทั้งหมด" โดยตั้งใจ — บทสนทนา LINE ที่วาง
+> มาเป็นข้อความดิบของลูกค้า คนอื่นไม่มีเหตุผลต้องอ่าน แม้แต่หัวหน้าทีม · INSERT ยังกรอง
+> ตาม `kind` ด้วย (`has_perm('ai.parse_lead')` / `has_perm('ai.parse_listing')`)
+>
+> **`ai_usage`** (ใหม่) — `employee_code`, `kind`, `model`, `input_tokens`, `output_tokens`,
+> `created_at` · **เก็บ token ไม่เก็บบาท** เพราะราคาต่อล้าน token เปลี่ยนได้ ถ้าเก็บเป็นบาท
+> ตัวเลขเก่าจะกลายเป็นเรื่องแต่งทันทีที่เปลี่ยน tier · append-only (ไม่มี UPDATE/DELETE) ·
+> SELECT = ของตัวเอง หรือทั้งบริษัทถ้ามี `roles.manage`
+>
+> **`ai_job_sweep()`** (ใหม่, SECURITY INVOKER) — เปลี่ยนงานที่ค้างเกิน 3 นาทีเป็น `error`
+> ที่กดลองใหม่ได้ · ต้องเป็นฟังก์ชันเพราะวัดอายุจาก `coalesce(started_at, created_at)`
+> ซึ่ง PostgREST เขียนเป็น filter ไม่ได้ — ถ้าวัดจาก `created_at` อย่างเดียว การกดลองใหม่
+> ของงานเก่าจะถูกตัดสินว่าค้างทันที และจะไม่มีงานไหนสำเร็จเป็นครั้งที่สองได้เลย
+>
+> **สิทธิ์ใหม่สองตัว** — `ai.parse_lead` และ `ai.parse_listing` (group `ai` · AI / ผู้ช่วย)
+> ค่าเริ่มต้น: Admin เปิดฝั่งลีด · ฝั่งทรัพย์เปิดเฉพาะ CEO / ผู้ดูแลระบบ (เซลส์ปิด) ·
+> ⚠️ CEO และ system_admin เก็บสิทธิ์เป็นแถวจริงใน `role_permissions` ไม่ใช่ wildcard —
+> สิทธิ์ใหม่ต้อง insert ให้สอง role นี้ด้วย ไม่งั้นจะโดนล็อกออกเงียบ ๆ
+>
+> **`after()` ไม่ต้องใช้ service_role** — Next.js ยังให้ `cookies()` ใน callback ของ
+> `after()` เมื่อเรียกจาก Route Handler หรือ Server Function ดังนั้นตัวรันงานเขียนกลับผ่าน
+> session client ปกติ และ RLS มีผลกับมันเหมือนกับ request ที่สั่งคิว · ใช้ได้บน Vercel /
+> Node / Docker แต่ **ใช้ไม่ได้กับ static export**
+>
+> **โครงสร้างไฟล์ migration กลับมาแล้ว** — `supabase/migrations/` ติดตามสคีมาจริงตั้งแต่
+> 2026-09-17 (95 ไฟล์จาก `supabase migration fetch` + ของใหม่) คำเตือนในบล็อกก่อนหน้าว่า
+> "สคีมาไม่ได้เก็บเป็นไฟล์ migration" ไม่เป็นจริงอีกต่อไป

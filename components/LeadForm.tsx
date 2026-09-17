@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { X, ChevronDown, UserRound, Building2, Check, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
-import { AiPasteBox } from "@/components/AiPasteBox";
+import { AiPasteBox, AiDraftNote } from "@/components/AiPasteBox";
 import { emptyLead, type NewLead, type LeadRole } from "@/lib/leads";
 // LIVE vocabularies — loaded from the DB lookup tables via lib/lookups.ts. These are the
 // values the FK columns actually accept; the old seed slugs ("ddproperty", "line_oa") match
@@ -13,7 +13,7 @@ import { emptyLead, type NewLead, type LeadRole } from "@/lib/leads";
 import { useMasterData } from "@/components/MasterDataProvider";
 import { createLead } from "@/lib/mutations/leads";
 import { ListingCombobox } from "@/components/ListingCombobox";
-import { type LeadDraft } from "@/lib/ai/parseLead";
+import { type LeadParseDraft } from "@/lib/ai/types";
 import { cn } from "@/lib/cn";
 
 export interface AgentOption {
@@ -36,6 +36,8 @@ export function LeadForm({
   mode,
   createdBy,
   agents,
+  draft,
+  draftNote,
   onClose,
   onCreated,
 }: {
@@ -43,6 +45,13 @@ export function LeadForm({
   mode: "admin" | "rep";
   createdBy: string;
   agents: AgentOption[];
+  /** A finished AI parse being reviewed, or null for a blank form. Every value in it has
+   *  already been checked against the live lookup tables (lib/ai/parse.ts), so it can be
+   *  applied straight onto the draft — see applyDraft below. */
+  draft?: LeadParseDraft | null;
+  /** What the parser wants the reviewer to know: duplicates, a listing code it could not
+   *  match, how much it read. Shown above the fields it filled. */
+  draftNote?: string | null;
   onClose: () => void;
   onCreated?: () => void;
 }) {
@@ -90,6 +99,50 @@ export function LeadForm({
     });
   }, [open, leadTypes]);
 
+  /* AN AI DRAFT ARRIVING — from the tray, or from the paste box above while this form is
+     already open.
+     
+     Keyed on the draft OBJECT, not on `open`: a parse that lands mid-edit has to fill the
+     form it is looking at, and the reset effect above only fires on an open/close edge.
+     
+     Everything is a patch, never a replacement: whatever was typed before the parse landed
+     survives unless the parser actually read that field. `lead_type` carries the buyer/owner
+     axis, so `role` is derived from it rather than being a second thing the parser has to
+     agree with. */
+  React.useEffect(() => {
+    if (!open || !draft) return;
+    setLead((l) => {
+      const next: NewLead = { ...l, requirements: { ...l.requirements } };
+      if (draft.lead_name) next.lead_name = draft.lead_name;
+      if (draft.phone) next.phone = draft.phone;
+      if (draft.line_id) next.lineId = draft.line_id;
+      if (draft.lead_type) {
+        next.lead_type = draft.lead_type;
+        next.role = draft.lead_type.startsWith("Owner") ? "owner" : "buyer";
+      }
+      if (draft.marketing_channel) next.source = draft.marketing_channel;
+      if (draft.contact_by) next.contactBy = draft.contact_by;
+      if (draft.gender) next.gender = draft.gender;
+      if (draft.nationality) next.nationality = draft.nationality;
+      if (draft.budget != null) next.budget = draft.budget;
+      if (draft.listing_code) next.listing_code = draft.listing_code;
+      if (draft.remark) next.remark = draft.remark;
+      if (draft.interest_zone) next.requirements.zone = draft.interest_zone;
+      if (draft.interest_property_type) next.requirements.propertyType = draft.interest_property_type;
+      if (draft.purpose) next.requirements.purpose = draft.purpose;
+      if (draft.sell_reason) next.requirements.reason = draft.sell_reason;
+      return next;
+    });
+    // Anything the parser put in the folded half has to be visible, or the form would claim
+    // to have read a budget nobody can see.
+    if (
+      draft.budget != null || draft.interest_zone || draft.interest_property_type ||
+      draft.purpose || draft.sell_reason || draft.remark || draft.listing_code
+    ) {
+      setExpanded(true);
+    }
+  }, [open, draft]);
+
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -121,21 +174,6 @@ export function LeadForm({
     const next: Partial<NewLead> = { listing_code: code };
     if (mode === "admin" && !assigneeTouched) next.sale_id = sale ?? "";
     set(next);
-  };
-
-  const applyAi = (d: LeadDraft) => {
-    const patch: Partial<NewLead> = {};
-    if (d.role) patch.role = d.role;
-    if (d.lead_name) patch.lead_name = d.lead_name;
-    if (d.phone) patch.phone = d.phone;
-    if (d.source) patch.source = d.source;
-    if (d.budget != null) patch.budget = d.budget;
-    const req: Partial<NewLead["requirements"]> = {};
-    if (d.zone) req.zone = d.zone;
-    if (d.propertyType) req.propertyType = d.propertyType;
-    set(patch);
-    if (Object.keys(req).length) setReq(req);
-    if (d.budget != null || d.zone || d.propertyType) setExpanded(true);
   };
 
   const canSave = !!lead.lead_name.trim() && !!lead.phone.trim() && !busy;
@@ -213,7 +251,8 @@ export function LeadForm({
           </button>
         </div>
 
-        <AiPasteBox onFilled={applyAi} />
+        <AiPasteBox kind="lead" />
+        <AiDraftNote note={draftNote ?? null} />
 
         {/* Role: buyer vs owner */}
         <div className="flex gap-1.5">

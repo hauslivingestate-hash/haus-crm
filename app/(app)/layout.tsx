@@ -8,7 +8,8 @@ import { ProbationProvider } from "@/components/ProbationProvider";
 import { NotificationsProvider } from "@/components/NotificationsProvider";
 import { ActivityProvider } from "@/components/ActivityProvider";
 import { LeaveProvider } from "@/components/LeaveProvider";
-import { LeadIntakeFab } from "@/components/LeadIntakeFab";
+import { ParseQueueProvider } from "@/components/ParseQueueProvider";
+import { FabDock } from "@/components/FabDock";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getAuthContext } from "@/lib/auth";
@@ -86,7 +87,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           : null
       }
     >
-      {/* Inside RbacProvider — feeds/leads are scoped to the current viewer. */}
+      {/* Inside RbacProvider — feeds/leads are scoped to the current viewer.
+
+          ParseQueueProvider wraps EVERYTHING rather than just the dock: the paste box lives
+          inside both intake forms, and + เพิ่มทรัพย์ renders its form from the ทรัพย์ page's
+          own tree. A provider mounted only around the dock would throw there. */}
+      <ParseQueueProvider>
       <MasterDataProvider initial={lookups}>
         <ChecklistProvider templates={checklistTemplates}>
           <CopyTemplatesProvider overrides={copyOverrides}>
@@ -100,9 +106,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   <LeaveProvider requests={leaveRequests} allowances={leaveAllowances}>
                     <ShellProvider initialCollapsed={collapsed}>
                       <AppFrame sidebar={<Sidebar counts={navCounts} />}>{children}</AppFrame>
-                      {/* Lead intake FAB — gated to leads.create (admin/back-office). The
-                          only remaining FAB (CEO: "FAB เหลือแค่เพิ่มลีด"). */}
-                      <LeadIntakeFab agents={agents} />
+                      {/* The whole bottom-right corner: the AI paste tray stacked above the
+                          lead-intake FAB, each gated on its own permission. See FabDock for
+                          why they share one fixed container instead of positioning
+                          themselves. */}
+                      <FabDock agents={agents} />
                     </ShellProvider>
                   </LeaveProvider>
                 </ActivityProvider>
@@ -111,6 +119,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </CopyTemplatesProvider>
         </ChecklistProvider>
       </MasterDataProvider>
+      </ParseQueueProvider>
     </RbacProvider>
   );
 }

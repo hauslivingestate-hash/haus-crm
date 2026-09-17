@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ShieldCheck, Users, Map, Home, ListChecks, Activity, Target, Info, Lock, ClipboardList, Megaphone, Medal, Tags, CalendarOff, KeyRound, Palette } from "lucide-react";
+import { ShieldCheck, Users, Map, Home, ListChecks, Activity, Target, Info, Lock, ClipboardList, Megaphone, Medal, Tags, CalendarOff, KeyRound, Palette, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { type Zone } from "@/lib/zones";
 import { RolesManager } from "@/components/RolesManager";
@@ -20,6 +20,8 @@ import { SalesRankManager } from "@/components/SalesRankManager";
 import { LeaveAllowanceManager } from "@/components/LeaveAllowanceManager";
 import { AccountsManager } from "@/components/AccountsManager";
 import { StatusColorsManager, type ColorableList } from "@/components/StatusColorsManager";
+import { AiUsagePanel } from "@/components/AiUsagePanel";
+import type { AiUsageSummary } from "@/lib/ai/usage";
 import type { AccountRow } from "@/lib/accounts";
 import type { Employee } from "@/lib/team";
 import type { AttachMode } from "@/lib/actions";
@@ -30,7 +32,7 @@ import { useRbac } from "@/components/RbacProvider";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 
-type SectionKey = "roles" | "teams" | "zones" | "property_types" | "lead_fields" | "lead_tags" | "action_types" | "kpi" | "ranks" | "checklists" | "copy" | "leave" | "accounts" | "status_colors";
+type SectionKey = "roles" | "teams" | "zones" | "property_types" | "lead_fields" | "lead_tags" | "action_types" | "kpi" | "ranks" | "checklists" | "copy" | "leave" | "accounts" | "status_colors" | "ai";
 // Each section is gated to a permission — the sub-nav only shows what the viewer can govern,
 // so Listing Support (reference.manage) sees the reference lists but not roles/zones/KPI.
 type Section = { key: SectionKey; label: string; icon: LucideIcon; perm: string };
@@ -59,6 +61,10 @@ const SECTIONS: Section[] = [
   { key: "leave", label: "โควตาวันลา", icon: CalendarOff, perm: "leave.manage" },
   // Reaches auth.users directly via service_role — CEO / HR / system_admin only.
   { key: "accounts", label: "บัญชีผู้ใช้", icon: KeyRound, perm: "people.manage_accounts" },
+  // Spend, not settings: WHO may use the AI is set in บทบาท & สิทธิ์ like every other
+  // permission. `roles.manage` matches the ai_usage SELECT policy, which is what lets this
+  // panel show the whole company rather than one person's own parses.
+  { key: "ai", label: "AI & ค่าใช้จ่าย", icon: Sparkles, perm: "roles.manage" },
 ];
 
 export function SettingsView({
@@ -76,6 +82,7 @@ export function SettingsView({
   checklistTemplates,
   roleOptions,
   colorLists,
+  aiUsage,
   initialSection,
 }: {
   zones: Zone[];
@@ -100,6 +107,8 @@ export function SettingsView({
   kpiTemplates: KpiTemplate[];
   /** The five colour-bearing lookup lists, for ตั้งค่า → สีสถานะ. */
   colorLists: ColorableList[];
+  /** Token spend + draft outcomes for the AI panel. */
+  aiUsage: AiUsageSummary;
   /** Value-add checklist definitions. */
   checklistTemplates: ChecklistTemplate[];
   /** Roles a checklist step can be assigned to. */
@@ -300,6 +309,20 @@ export function SettingsView({
               — บอกพนักงานให้เปลี่ยนรหัสผ่านเองที่หน้า “บัญชีของฉัน” หลัง login ครั้งแรก
             </Note>
             <AccountsManager accounts={accounts} />
+          </>
+        )}
+        {section === "ai" && (
+          <>
+            <SectionHeader
+              title="AI & ค่าใช้จ่าย"
+              desc="ค่าใช้จ่ายของ “วางข้อความให้ AI อ่าน” และผลของดราฟต์ที่ AI แยกมาให้ · CEO เท่านั้น"
+            />
+            <Note>
+              สิทธิ์ว่าใครใช้ AI ได้บ้าง ตั้งที่ <span className="text-text">บทบาท &amp; สิทธิ์</span> —
+              มีสองสิทธิ์แยกกัน คือ “ให้ AI อ่านข้อความลีด” และ “ให้ AI อ่านข้อความทรัพย์” ·
+              ค่าเริ่มต้น: Admin เปิดฝั่งลีด · เซลส์ปิดฝั่งทรัพย์
+            </Note>
+            <AiUsagePanel usage={aiUsage} />
           </>
         )}
       </div>

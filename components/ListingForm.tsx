@@ -15,6 +15,8 @@ import {
   type ListingFieldGroup,
 } from "@/lib/listingFields";
 import { ListingSectionBlock, type DraftValue } from "@/components/ListingFieldInput";
+import { AiPasteBox, AiDraftNote } from "@/components/AiPasteBox";
+import type { ListingParseDraft } from "@/lib/ai/types";
 import {
   ListingPhotoPicker,
   uploadStaged,
@@ -44,11 +46,21 @@ export function ListingForm({
   open,
   onClose,
   ownerName,
+  draft: aiDraft,
+  draftNote,
+  onCreated,
 }: {
   open: boolean;
   onClose: () => void;
   /** Nickname of the signed-in person — the listing is filed under them, no picker. */
   ownerName: string;
+  /** A finished AI parse being reviewed, or null for a blank form. `values` is keyed exactly
+   *  as lib/listingFields.ts and every value has already been checked against the live
+   *  lookup tables (lib/ai/parse.ts), so it applies straight onto the draft. */
+  draft?: ListingParseDraft | null;
+  draftNote?: string | null;
+  /** Fired once the listing is really saved — the queue uses it to mark the job `saved`. */
+  onCreated?: () => void;
 }) {
   const router = useRouter();
   const { can } = useRbac();
@@ -78,6 +90,27 @@ export function ListingForm({
       setProgress(null);
     }
   }, [open]);
+
+  /* AN AI DRAFT ARRIVING — from the tray, or from the paste box above while this form is
+     already open.
+
+     Keyed on the draft OBJECT rather than on `open`, so a parse that lands mid-edit fills
+     the form being looked at. It is a PATCH: anything already typed survives unless the
+     parser actually read that field.
+
+     `values` needs no mapping table because it is keyed to lib/listingFields.ts — the same
+     registry this form renders from. That is the whole reason the parser was written against
+     the registry instead of its own field list. */
+  React.useEffect(() => {
+    if (!open || !aiDraft) return;
+    setDraft((d) => ({ ...d, ...aiDraft.values }));
+    // The project is not a column — it is the picker, and it is what gives the listing its
+    // name. An unmatched name is still shown, so it can be created rather than retyped.
+    if (aiDraft.projectId) {
+      setProjectId(aiDraft.projectId);
+      setProjectLabel(aiDraft.projectLabel ?? "");
+    }
+  }, [open, aiDraft]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -135,6 +168,7 @@ export function ListingForm({
       setProjectId("");
       setProjectLabel("");
       setPhotos([]);
+      onCreated?.();
       router.refresh();
     } catch (err) {
       // A rejected server action is not the same as { ok: false }. Without this the form
@@ -172,6 +206,9 @@ export function ListingForm({
         </div>
 
         <div className="overflow-y-auto p-4 flex flex-col gap-3">
+        <AiPasteBox kind="listing" />
+        <AiDraftNote note={draftNote ?? null} />
+
         {/* Filed under whoever is adding it — shown, not chosen. */}
         <div className="shrink-0 h-9 px-3 rounded-md border border-border bg-surface-2 text-body text-text-muted flex items-center gap-2">
           <UserRound size={14} strokeWidth={1.75} className="text-text-subtle" />
