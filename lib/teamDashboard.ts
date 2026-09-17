@@ -294,7 +294,7 @@ export async function getStandingTeamRevenueTargets(teamId: string): Promise<Rec
  * stated rather than silently absorbed.
  *
  * ── EVERY MEMBER, INCLUDING THE QUIET ONES ──────────────────────────────────────
- * Same rule as TeamAgentsTable. An empty column is the fact a leader most needs;
+ * Same rule as the leaderboard. An empty column is the fact a leader most needs;
  * dropping it would turn the grid into a list of the people who were already fine.
  */
 export async function getTeamActivityHeatmap(team: TeamOption, range: Range): Promise<ActivityHeatmap> {
