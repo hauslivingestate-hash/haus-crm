@@ -9,7 +9,7 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: new URL(
-          process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://jpufhxzvqfrdcblfmrmu.supabase.co"
+          process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://mmsornnhtkvcjqsynxic.supabase.co"
         ).hostname,
         pathname: "/storage/v1/object/public/**",
       },

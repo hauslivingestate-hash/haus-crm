@@ -5,11 +5,11 @@
 // configured on the host. Env vars, if set (Vercel → Settings → Environment Variables),
 // take priority.
 export const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://jpufhxzvqfrdcblfmrmu.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mmsornnhtkvcjqsynxic.supabase.co";
 
 export const SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "sb_publishable_MXdGWde2_RvLAWQrJ0ORWw_K18B0rvc";
+  "sb_publishable_1baGO3emW3G2aM97nVHP7w_HQpPG3XI";
 
 // AUTH KILL-SWITCH — ON as of 2026-08-03.
 //
