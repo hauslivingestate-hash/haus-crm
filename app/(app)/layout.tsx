@@ -15,6 +15,7 @@ import { cookies } from "next/headers";
 import { getAuthContext } from "@/lib/auth";
 import { getLookups, getAssignableAgents } from "@/lib/lookups";
 import { getNavCounts } from "@/lib/navCounts";
+import { getFoldedSections } from "@/lib/navPrefs";
 import {
   getLeaveRequests,
   getLeaveAllowances,
@@ -59,6 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     copyOverrides,
     checklistTemplates,
     navCounts,
+    foldedSections,
   ] = auth
     ? await Promise.all([
         getLookups(),
@@ -71,8 +73,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         getCopyTemplateOverrides(),
         getChecklistTemplates(),
         getNavCounts(auth),
+        getFoldedSections(auth),
       ])
-    : [undefined, [], [], undefined, undefined, [], [], {}, [], {}];
+    : [undefined, [], [], undefined, undefined, [], [], {}, [], {}, []];
 
   return (
     <RbacProvider
@@ -105,7 +108,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                       both sides see the same queue instantly. */}
                   <LeaveProvider requests={leaveRequests} allowances={leaveAllowances}>
                     <ShellProvider initialCollapsed={collapsed}>
-                      <AppFrame sidebar={<Sidebar counts={navCounts} />}>{children}</AppFrame>
+                      <AppFrame sidebar={<Sidebar counts={navCounts} folded={foldedSections} />}>{children}</AppFrame>
                       {/* The whole bottom-right corner: the AI paste tray stacked above the
                           lead-intake FAB, each gated on its own permission. See FabDock for
                           why they share one fixed container instead of positioning

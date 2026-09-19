@@ -14,6 +14,9 @@ import {
   Sprout,
   Settings,
   CalendarOff,
+  Upload,
+  RefreshCw,
+  Megaphone,
 } from "lucide-react";
 
 export interface NavItem {
@@ -52,6 +55,16 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/", label: "แดชบอร์ด", icon: LayoutDashboard },
       { href: "/today", label: "แผนวันนี้", icon: CalendarCheck, perm: ["performance.view_own", "performance.view_team"] },
+    ],
+  },
+  {
+    // Listing Support's desk (Ben, 2026-09-19) — one entry per job so each carries its own
+    // count of work waiting. Everything lives under /support, away from the sales pages.
+    title: "โต๊ะงาน Support",
+    items: [
+      { href: "/support/new", label: "ลงประกาศใหม่", icon: Upload, perm: "support.workspace" },
+      { href: "/support/update", label: "อัปเดตประกาศ", icon: RefreshCw, perm: "support.workspace" },
+      { href: "/support/facebook", label: "Facebook Post", icon: Megaphone, perm: "support.workspace" },
     ],
   },
   {

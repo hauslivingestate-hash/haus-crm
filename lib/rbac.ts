@@ -51,6 +51,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: "listings.create", label: "เพิ่มทรัพย์ใหม่", hint: "งานของเซลล์ — สร้างรายการทรัพย์ (แยกจากการแก้ไข)" },
       { key: "listings.edit", label: "แก้ไขทรัพย์" },
       { key: "listings.marketing", label: "การตลาด / ลงพอร์ทัล" },
+      {
+        key: "support.workspace",
+        label: "โต๊ะงาน Support",
+        hint: "คิวลงประกาศ · อัปเดตประกาศ · โพสต์กลุ่ม Facebook · กระจายลีด — Listing Support",
+      },
       { key: "projects.edit", label: "แก้ไขโครงการ" },
       { key: "lastmatch.add", label: "เพิ่ม Last Match" },
       // CEO feedback R1: a sale may see ONLY their own closes ("Last Match ของตัวเองเท่านั้น"),
@@ -282,6 +287,8 @@ export const SEED_ROLES: Role[] = [
       "reference.manage",
       // Owns the value-add checklist templates for A-List/Exclusive listings (cross-team steps).
       "checklists.manage",
+      // The Support desk (/support): posting queue, portal updates, FB-group re-posts.
+      "support.workspace",
       // Also edits the ad-copy templates (คำประกาศโฆษณา) alongside Marketing.
       "copy.manage",
       // No activity.log: this role only manages/posts listings on portals — it doesn't do

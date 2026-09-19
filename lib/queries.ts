@@ -239,7 +239,7 @@ export interface ListingRow {
 }
 
 /** Every column of `v_main_listing`, in the ListingRow order. Single source for both queries. */
-const LISTING_COLUMNS = [
+export const LISTING_COLUMNS = [
   "listing_id", "listing_name", "listing_status", "potential", "listing_type", "owner_focus",
   "date_created", "created_at", "updated_at", "days_on_market", "created_by",
   "agreement_start", "agreement_end",

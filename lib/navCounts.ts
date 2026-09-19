@@ -3,6 +3,7 @@ import type { AuthContext } from "@/lib/auth";
 import { navItemFor } from "@/lib/nav";
 import { getOverdueFollowUps } from "@/lib/salesDashboard";
 import { todayISO } from "@/lib/momentum";
+import { getSupportCounts } from "@/lib/support";
 
 /* The numbers on the sidebar.
  *
@@ -44,7 +45,7 @@ export async function getNavCounts(auth: AuthContext): Promise<NavCounts> {
   const supabase = await createClient();
   const today = todayISO();
 
-  const [tasks, overdue, unassigned] = await Promise.all([
+  const [tasks, overdue, unassigned, support] = await Promise.all([
     shows("/today")
       ? supabase
           .from("tasks")
@@ -62,6 +63,8 @@ export async function getNavCounts(auth: AuthContext): Promise<NavCounts> {
           .select("lead_id", { count: "exact", head: true })
           .or("sale_id.is.null,sale_id.eq.")
       : null,
+    // โต๊ะงาน Support — same rules as the three pages (lib/support.ts).
+    shows("/support/new") ? getSupportCounts() : null,
   ]);
 
   const counts: NavCounts = {};
@@ -70,5 +73,8 @@ export async function getNavCounts(auth: AuthContext): Promise<NavCounts> {
   // ทรัพย์, and every listing grade has no window yet, so it would read 0 today anyway.
   if (overdue?.totalLeads) counts["/leads"] = overdue.totalLeads;
   if (unassigned?.count) counts["/assign"] = unassigned.count;
+  if (support?.new) counts["/support/new"] = support.new;
+  if (support?.update) counts["/support/update"] = support.update;
+  if (support?.facebook) counts["/support/facebook"] = support.facebook;
   return counts;
 }

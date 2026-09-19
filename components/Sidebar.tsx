@@ -1,8 +1,9 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsUpDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { NAV, navItemFor } from "@/lib/nav";
 import { cn } from "@/lib/cn";
 import { useShell } from "@/components/Shell";
@@ -12,11 +13,13 @@ import { IdentityMenu } from "@/components/IdentityMenu";
 import { useLeave } from "@/components/LeaveProvider";
 import type { NavCounts } from "@/lib/navCounts";
 import { Brand } from "@/components/Brand";
+import { saveFoldedSections } from "@/lib/mutations/navPrefs";
 
 /** Desktop: static rail in the layout grid, 228px or collapsed to a 64px icon rail.
  *  Mobile: off-canvas drawer overlay, never collapsed — there is nothing to save width for. */
-export function Sidebar({ counts = {} }: { counts?: NavCounts }) {
+export function Sidebar({ counts = {}, folded = [] }: { counts?: NavCounts; folded?: string[] }) {
   const { mobileOpen, setMobileOpen, collapsed } = useShell();
+  const fold = useFoldedSections(folded);
   return (
     <>
       {/* Desktop rail */}
@@ -27,7 +30,7 @@ export function Sidebar({ counts = {} }: { counts?: NavCounts }) {
           collapsed ? "w-16" : "w-[228px]"
         )}
       >
-        <SidebarBody collapsed={collapsed} counts={counts} />
+        <SidebarBody collapsed={collapsed} counts={counts} fold={fold} />
       </aside>
 
       {/* Mobile drawer */}
@@ -48,14 +51,35 @@ export function Sidebar({ counts = {} }: { counts?: NavCounts }) {
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
-          <SidebarBody collapsed={false} counts={counts} />
+          <SidebarBody collapsed={false} counts={counts} fold={fold} />
         </aside>
       </div>
     </>
   );
 }
 
-function SidebarBody({ collapsed, counts }: { collapsed: boolean; counts: NavCounts }) {
+/* Folded sections, per person (Ben, 2026-09-19 — "แก้เฉพาะหน้าของเรา"). Starts from what the
+   server read out of table_prefs, folds instantly on click, and saves in the background. One
+   state for both the desktop rail and the mobile drawer, so they never disagree. A failed
+   save only costs the preference on the next visit, so it is logged rather than surfaced. */
+function useFoldedSections(initial: string[]) {
+  const [folded, setFolded] = React.useState<Set<string>>(() => new Set(initial));
+  // The save is called from the click handler, never from inside a setState updater: React
+  // may run updaters during render, and a server action updates the Router — which React
+  // rejects as "Cannot update a component (Router) while rendering Sidebar".
+  const toggle = (title: string) => {
+    const next = new Set(folded);
+    if (next.has(title)) next.delete(title);
+    else next.add(title);
+    setFolded(next);
+    saveFoldedSections([...next]).catch((e) => console.warn("saveFoldedSections", e));
+  };
+  return { folded, toggle };
+}
+
+type Fold = ReturnType<typeof useFoldedSections>;
+
+function SidebarBody({ collapsed, counts, fold }: { collapsed: boolean; counts: NavCounts; fold: Fold }) {
   const pathname = usePathname();
   const { can, currentUser, roles, avatarUrl } = useRbac();
   const { setCollapsed } = useShell();
@@ -94,6 +118,11 @@ function SidebarBody({ collapsed, counts }: { collapsed: boolean; counts: NavCou
         {NAV.map((group, gi) => {
           const items = group.items.filter((i) => can(i.perm));
           if (items.length === 0) return null;
+          // The icon rail has no headers to click, so it always shows every item. A folded
+          // section still opens while you are on one of its pages — the preference is kept.
+          const hasActive = items.some((i) => i.href === current?.href);
+          const isFolded = !collapsed && !!group.title && fold.folded.has(group.title) && !hasActive;
+          const foldedWork = isFolded ? items.reduce((n, i) => n + badge(i.href), 0) : 0;
           return (
             <div
               key={group.title || group.items[0]?.href}
@@ -103,9 +132,25 @@ function SidebarBody({ collapsed, counts }: { collapsed: boolean; counts: NavCou
                 (collapsed ? (
                   gi > 0 && <div className="mx-1 mb-2 border-t border-border" />
                 ) : (
-                  <div className="mb-1 px-2 text-label uppercase text-text-subtle">{group.title}</div>
+                  <button
+                    type="button"
+                    onClick={() => fold.toggle(group.title)}
+                    aria-expanded={!isFolded}
+                    className="group/sec mb-1 flex w-full items-center gap-1 rounded px-2 text-label uppercase text-text-subtle hover:text-text"
+                  >
+                    <span className="truncate">{group.title}</span>
+                    {foldedWork > 0 && <NavBadge count={foldedWork} collapsed={false} />}
+                    <ChevronDown
+                      size={13}
+                      className={cn(
+                        "shrink-0 transition-transform",
+                        foldedWork > 0 ? "ml-1" : "ml-auto",
+                        isFolded ? "-rotate-90" : "opacity-0 group-hover/sec:opacity-100"
+                      )}
+                    />
+                  </button>
                 ))}
-              {items.map((item) => {
+              {!isFolded && items.map((item) => {
                 const active = current?.href === item.href;
                 const Icon = item.icon;
                 const count = badge(item.href);

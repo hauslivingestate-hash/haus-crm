@@ -1,4 +1,5 @@
 import { LayoutDashboard } from "lucide-react";
+import { redirect } from "next/navigation";
 import { Topbar } from "@/components/Topbar";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { SalesDashboard } from "@/components/dashboard/SalesDashboard";
@@ -33,6 +34,11 @@ export default async function DashboardPage({
   // An account with no employee row can't be scored — there is no employee_code to
   // filter by, and inventing one would show someone else's numbers.
   if (!auth?.employeeCode) return <Empty reason="account" />;
+  // Listing Support has no sales numbers to show; their home is the Support desk (Ben,
+  // 2026-09-19). Anyone who also files listings (CEO, sales) keeps the dashboard.
+  if (auth.permissions.includes("support.workspace") && !auth.permissions.includes("listings.create")) {
+    redirect("/support");
+  }
   if (!tab) return <Empty reason="permission" />;
 
   const canSetTargets =
